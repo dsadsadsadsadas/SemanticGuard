@@ -1,0 +1,22 @@
+[
+  {
+    "iteration": 1,
+    "cheater_avg_reward": 59.63875000000046,
+    "cheater_avg_detectability": 0.0225,
+    "cheater_win_rate": 0.0,
+    "detector_precision": 1.0,
+    "detector_recall": 0.9476190476190476,
+    "detectability_lambda": 0.15000000000000002,
+    "training_time": 15.104483366012573
+  },
+  {
+    "iteration": 2,
+    "cheater_avg_reward": 84.50037499999894,
+    "cheater_avg_detectability": 0.0225,
+    "cheater_win_rate": 0.0,
+    "detector_precision": 1.0,
+    "detector_recall": 1.0,
+    "detectability_lambda": 0.2,
+    "training_time": 14.218420505523682
+  }
+]

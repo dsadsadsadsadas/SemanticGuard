@@ -1,0 +1,40 @@
+{
+  "config": {
+    "total_iterations": 3,
+    "cheater_timesteps_per_iter": 5000,
+    "initial_lambda": 0.1,
+    "final_lambda": 0.25
+  },
+  "results": [
+    {
+      "iteration": 1,
+      "cheater_avg_reward": 59.63875000000046,
+      "cheater_avg_detectability": 0.0225,
+      "cheater_win_rate": 0.0,
+      "detector_precision": 1.0,
+      "detector_recall": 0.9476190476190476,
+      "detectability_lambda": 0.15000000000000002,
+      "training_time": 15.104483366012573
+    },
+    {
+      "iteration": 2,
+      "cheater_avg_reward": 84.50037499999894,
+      "cheater_avg_detectability": 0.0225,
+      "cheater_win_rate": 0.0,
+      "detector_precision": 1.0,
+      "detector_recall": 1.0,
+      "detectability_lambda": 0.2,
+      "training_time": 14.218420505523682
+    },
+    {
+      "iteration": 3,
+      "cheater_avg_reward": 40.19500000000021,
+      "cheater_avg_detectability": 0.032499999999999994,
+      "cheater_win_rate": 0.0,
+      "detector_precision": 1.0,
+      "detector_recall": 0.7254901960784313,
+      "detectability_lambda": 0.25,
+      "training_time": 13.494791746139526
+    }
+  ]
+}
