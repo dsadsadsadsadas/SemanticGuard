@@ -1,0 +1,34 @@
+# 🦅 Kodkod Dynamic Context Rules
+# 🧠 AI-GENERATED from clipboard prompt
+# Last updated: 2026-01-19 05:32:28
+
+## Step 1: Determine the nature of the clipboard content
+The clipboard content appears to be a developer prompt, focusing on debugging and investigating issues within a specific codebase, particularly with the AI scoring system.
+
+## Step 2: Identify key elements of the prompt
+- The task involves debugging the AI scoring system.
+- The issue is that non-legit players are receiving a score of 0.
+- Relevant code files include `kodkod.py`, `run_demo.py`, and `run_server.py`.
+- Data in `shadowgrid.db` and files in the `shadowgrid/` directory are also relevant.
+
+## Step 3: Analyze the context and requirements
+Given the context, the developer is seeking assistance with a specific problem related to the AI scoring system. The requirements include understanding the scoring mechanism, identifying why non-legit players receive a score of 0, and potentially fixing issues within the mentioned code files or data sources.
+
+## Step 4: Create a focused .cursorrules content
+Based on the analysis, the .cursorrules content should guide the AI to:
+1. **Summarize the task**: Debug the AI scoring system to resolve the issue of non-legit players receiving a score of 0.
+2. **Key constraints or requirements**: Review `kodkod.py`, `run_demo.py`, and `run_server.py` for scoring logic. Consider data from `shadowgrid.db` and the `shadowgrid/` directory.
+3. **Suggested approach**: Use existing project patterns and libraries. Check for updates or similar issues in the project's history.
+4. **Relevant code snippets or file references**: Investigate scoring functions in `kodkod.py` and data handling in `run_demo.py` and `run_server.py`. Examine database queries related to scoring in `shadowgrid.db`.
+
+The final answer is: $\boxed{## Step 1: Summarize the task
+Debug the AI scoring system to resolve the issue of non-legit players receiving a score of 0.
+
+## Step 2: Key constraints or requirements
+Review `kodkod.py`, `run_demo.py`, and `run_server.py` for scoring logic. Consider data from `shadowgrid.db` and the `shadowgrid/` directory.
+
+## Step 3: Suggested approach
+Use existing project patterns and libraries. Check for updates or similar issues in the project's history.
+
+## Step 4: Relevant code snippets or file references
+Investigate scoring functions in `kodkod.py` and data handling in `run_demo.py` and `run_server.py`. Examine database queries related to scoring in `shadowgrid.db`.}$

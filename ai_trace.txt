@@ -1,0 +1,7 @@
+# AI Trace File - Paste AI responses here for loop detection
+
+This is the first unique response from the AI. It contains original content.
+
+This is a second unique response with different content about databases.
+
+This is a second unique response with different content about databases.
