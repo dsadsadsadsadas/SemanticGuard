@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """
-🦅 TREPAN - The Observer, Watchdog & Clipboard Brain
-A dynamic context injection system with:
+🦅 TREPAN - The Observer, Watchdog, Clipboard Brain & Red Team
+A dynamic context injection system with integrated security auditing.
+
+Features:
 - Phase 1: File-based context detection
 - Phase 2: Loop detection via AI response monitoring
 - Phase 3: Smart clipboard-based context injection with Groq AI
+- Phase 4: Integrated Red Team Security Audit (Auto-Detect & Ask)
 
 Author: Project TREPAN
 """
@@ -12,15 +15,16 @@ Author: Project TREPAN
 import os
 import sys
 import time
+import json
 import difflib
 import threading
+import re
 from pathlib import Path
 from collections import deque
-from typing import Optional
+from typing import Optional, Dict, Tuple
 
 # Third-party imports
 from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 from watchdog.events import FileSystemEventHandler
 from dotenv import load_dotenv
 from ast_engine import scan_for_secrets
@@ -59,9 +63,10 @@ except ImportError:
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_MODEL_RED_TEAM = os.getenv("GROQ_MODEL_RED_TEAM", "llama-3.1-70b-versatile")
 
-# Path constants
-RULES_FILE = "GEMINI.md"  # Antigravity reads this automatically
+# Path constants - ONLY GEMINI.md, never .cursorrules
+RULES_FILE = "GEMINI.md"
 AI_TRACE_FILE = "ai_trace.txt"
 
 # Loop detection settings
@@ -70,7 +75,43 @@ MEMORY_SIZE = 5
 
 # Clipboard settings
 CLIPBOARD_CHECK_INTERVAL = 0.5  # seconds
-MAX_CLIPBOARD_LENGTH = 25000  # Increased for long prompts (handled by AI relevance check)
+MAX_CLIPBOARD_LENGTH = 25000
+
+# Red Team Trigger Keywords
+SECURITY_TRIGGER_KEYWORDS = {'why', 'error', 'bug', 'fix', 'auth', 'login', 'crash', 'fail', 'broken', 'issue', 'password', 'secret'}
+
+# Input timeout for Red Team prompt (seconds)
+RED_TEAM_INPUT_TIMEOUT = 5.0
+
+# ANSI Colors
+RED = "\033[91m"
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+CYAN = "\033[96m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+
+# ============================================================================
+# RED TEAM SYSTEM PROMPT
+# ============================================================================
+
+RED_TEAM_SYSTEM_PROMPT = """You are a HOSTILE RED TEAM HACKER.
+Your goal is to find LOGICAL VULNERABILITIES in the provided code.
+Focus on:
+- IDOR (Insecure Direct Object References)
+- Injection Flaws (SQL, Command, etc.)
+- Broken Access Control
+- Sensitive Data Exposure
+- Race Conditions
+
+Output JSON ONLY:
+{
+  "status": "SAFE" or "DANGER",
+  "issue": "Brief description of the vulnerability (max 1 sentence)",
+  "fix_instruction": "Precise instruction to fix it (max 2 sentences)"
+}
+If SAFE, fix_instruction can be empty.
+"""
 
 # ============================================================================
 # CONTEXT RULES DICTIONARY
@@ -220,10 +261,7 @@ def is_ide_window() -> bool:
     return False
 
 def get_project_map(watch_dir: str) -> str:
-    """
-    Generate a map of top-level files and folders in the project.
-    Used to provide Groq AI with project context.
-    """
+    """Generate a map of top-level files and folders in the project."""
     items = []
     ignore_patterns = {'.git', '__pycache__', 'venv', 'node_modules', '.env', '.venv'}
     
@@ -250,214 +288,6 @@ def get_project_map(watch_dir: str) -> str:
         items.append(f"Error reading directory: {e}")
     
     return "\n".join(items) if items else "Empty project"
-
-
-# ============================================================================
-# PROJECT CACHE - Full Context Awareness
-# ============================================================================
-
-class ProjectCache:
-    """
-    Reads and caches all project files on startup for full context awareness.
-    Provides the AI with complete knowledge of the codebase.
-    """
-    
-    # File extensions to read and cache
-    CODE_EXTENSIONS = {
-        '.py', '.js', '.ts', '.jsx', '.tsx', '.vue', '.svelte',
-        '.html', '.css', '.scss', '.sass', '.less',
-        '.json', '.yaml', '.yml', '.toml', '.ini', '.cfg',
-        '.md', '.txt', '.rst',
-        '.sql', '.prisma', '.graphql',
-        '.sh', '.bash', '.ps1', '.bat',
-        '.dockerfile', '.docker-compose.yml',
-        '.env.example', '.gitignore', '.cursorrules'
-    }
-    
-    # Directories to ignore
-    IGNORE_DIRS = {
-        '.git', '__pycache__', 'venv', '.venv', 'node_modules',
-        'dist', 'build', '.next', '.nuxt', 'coverage',
-        '.pytest_cache', '.mypy_cache', 'eggs', '*.egg-info'
-    }
-    
-    # Files to ignore (TREPAN's own files should NEVER be cached)
-    IGNORE_FILES = {
-        '.env', '.DS_Store', 'Thumbs.db', '*.pyc', '*.pyo',
-        'package-lock.json', 'yarn.lock', 'poetry.lock',
-        'trepan.py', 'ai_trace.txt', 'GEMINI.md', 'requirements.txt'  # TREPAN's own files
-    }
-    
-    # Max file size to cache (100KB)
-    MAX_FILE_SIZE = 100 * 1024
-    
-    # Max total cache size (500KB)
-    MAX_CACHE_SIZE = 500 * 1024
-    
-    def __init__(self, watch_dir: str):
-        self.watch_dir = watch_dir
-        self.cache: dict[str, str] = {}
-        self.total_size = 0
-        self.file_count = 0
-        self.load_time = 0.0
-    
-    def _should_ignore_dir(self, dirname: str) -> bool:
-        """Check if directory should be ignored."""
-        return dirname in self.IGNORE_DIRS or dirname.startswith('.')
-    
-    def _should_cache_file(self, filepath: str) -> bool:
-        """Check if file should be cached."""
-        filename = os.path.basename(filepath)
-        ext = os.path.splitext(filepath)[1].lower()
-        
-        # Ignore hidden files
-        if filename.startswith('.') and filename not in {'.gitignore', '.env.example'}:
-            return False
-        
-        # Ignore specific files
-        if filename in self.IGNORE_FILES:
-            return False
-        
-        # Check extension or specific filenames
-        if ext in self.CODE_EXTENSIONS:
-            return True
-        
-        # Also cache extensionless important files
-        if filename.lower() in {'dockerfile', 'makefile', 'readme', 'license'}:
-            return True
-        
-        return False
-    
-    def _read_file_safe(self, filepath: str) -> Optional[str]:
-        """Safely read a file, handling encoding issues."""
-        try:
-            size = os.path.getsize(filepath)
-            if size > self.MAX_FILE_SIZE:
-                return f"[FILE TOO LARGE: {size // 1024}KB - content truncated]"
-            
-            # Try UTF-8 first, then fallback
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    return f.read()
-            except UnicodeDecodeError:
-                try:
-                    with open(filepath, 'r', encoding='latin-1') as f:
-                        return f.read()
-                except:
-                    return "[BINARY FILE - cannot read]"
-        except Exception as e:
-            return f"[ERROR: {e}]"
-    
-    def build_cache(self) -> None:
-        """Scan and cache all project files."""
-        start_time = time.time()
-        self.cache = {}
-        self.total_size = 0
-        self.file_count = 0
-        
-        print(f"📚 [{time.strftime('%H:%M:%S')}] Building project cache...")
-        
-        for root, dirs, files in os.walk(self.watch_dir):
-            # Filter out ignored directories
-            dirs[:] = [d for d in dirs if not self._should_ignore_dir(d)]
-            
-            for filename in files:
-                # Skip Windows reserved device names
-                if filename.lower() in {'nul', 'con', 'prn', 'aux', 'com1', 'com2', 'lpt1', 'lpt2'}:
-                    continue
-                
-                filepath = os.path.join(root, filename)
-                
-                # Try to get relative path, skip if it fails (Windows special files)
-                try:
-                    rel_path = os.path.relpath(filepath, self.watch_dir)
-                except ValueError:
-                    continue
-                
-                if not self._should_cache_file(filepath):
-                    continue
-                
-                # Check if we've exceeded max cache size
-                if self.total_size >= self.MAX_CACHE_SIZE:
-                    print(f"⚠️  Cache limit reached ({self.MAX_CACHE_SIZE // 1024}KB)")
-                    break
-                
-                content = self._read_file_safe(filepath)
-                if content:
-                    self.cache[rel_path] = content
-                    self.total_size += len(content)
-                    self.file_count += 1
-            else:
-                continue
-            break
-        
-        self.load_time = time.time() - start_time
-        print(f"✅ [{time.strftime('%H:%M:%S')}] Cached {self.file_count} files ({self.total_size // 1024}KB) in {self.load_time:.2f}s")
-    
-    def get_context_string(self, max_length: int = 50000) -> str:
-        """
-        Generate a context string for the AI with project file contents.
-        
-        Args:
-            max_length: Maximum character length for the context
-            
-        Returns:
-            Formatted string with file contents
-        """
-        if not self.cache:
-            return "No files cached."
-        
-        lines = [f"## Project Files ({self.file_count} files, {self.total_size // 1024}KB)\n"]
-        current_length = len(lines[0])
-        
-        # Prioritize important files first
-        priority_files = ['README.md', 'PLANS.md', 'PENDING_TASKS.md', 'requirements.txt', 
-                         'package.json', 'pyproject.toml', '.cursorrules']
-        
-        sorted_files = []
-        for pf in priority_files:
-            if pf in self.cache:
-                sorted_files.append(pf)
-        
-        # Add remaining files
-        for filepath in sorted(self.cache.keys()):
-            if filepath not in sorted_files:
-                sorted_files.append(filepath)
-        
-        for filepath in sorted_files:
-            content = self.cache[filepath]
-            
-            # Truncate large files for context
-            if len(content) > 2000:
-                content = content[:2000] + "\n... [truncated]"
-            
-            file_block = f"\n### 📄 {filepath}\n```\n{content}\n```\n"
-            
-            if current_length + len(file_block) > max_length:
-                lines.append(f"\n... [{len(sorted_files) - len(lines) + 1} more files not shown due to length limit]")
-                break
-            
-            lines.append(file_block)
-            current_length += len(file_block)
-        
-        return "".join(lines)
-    
-    def get_file_summary(self) -> str:
-        """Get a brief summary of cached files."""
-        if not self.cache:
-            return "No files cached."
-        
-        # Group by extension
-        by_ext: dict[str, int] = {}
-        for filepath in self.cache:
-            ext = os.path.splitext(filepath)[1] or 'other'
-            by_ext[ext] = by_ext.get(ext, 0) + 1
-        
-        summary = [f"📚 Cached: {self.file_count} files ({self.total_size // 1024}KB)"]
-        for ext, count in sorted(by_ext.items(), key=lambda x: -x[1])[:5]:
-            summary.append(f"  {ext}: {count}")
-        
-        return "\n".join(summary)
 
 
 def calculate_similarity(text1: str, text2: str) -> float:
@@ -500,7 +330,7 @@ def inject_context(filepath: str, watch_dir: str) -> str:
 
 
 def update_rules_file(context: str, watch_dir: str, trigger_file: str):
-    """Update the .cursorrules file with the appropriate context rules."""
+    """Update GEMINI.md with the appropriate context rules."""
     rules_path = os.path.join(watch_dir, RULES_FILE)
     
     header = f"""# 🦅 TREPAN Dynamic Context Rules
@@ -517,6 +347,165 @@ def update_rules_file(context: str, watch_dir: str, trigger_file: str):
 
 
 # ============================================================================
+# PROJECT CACHE - Full Context Awareness
+# ============================================================================
+
+class ProjectCache:
+    """Reads and caches all project files on startup for full context awareness."""
+    
+    CODE_EXTENSIONS = {
+        '.py', '.js', '.ts', '.jsx', '.tsx', '.vue', '.svelte',
+        '.html', '.css', '.scss', '.sass', '.less',
+        '.json', '.yaml', '.yml', '.toml', '.ini', '.cfg',
+        '.md', '.txt', '.rst',
+        '.sql', '.prisma', '.graphql',
+        '.sh', '.bash', '.ps1', '.bat',
+        '.dockerfile', '.docker-compose.yml',
+        '.env.example', '.gitignore'
+    }
+    
+    IGNORE_DIRS = {
+        '.git', '__pycache__', 'venv', '.venv', 'node_modules',
+        'dist', 'build', '.next', '.nuxt', 'coverage',
+        '.pytest_cache', '.mypy_cache', 'eggs', '*.egg-info'
+    }
+    
+    IGNORE_FILES = {
+        '.env', '.DS_Store', 'Thumbs.db', '*.pyc', '*.pyo',
+        'package-lock.json', 'yarn.lock', 'poetry.lock',
+        'trepan.py', 'ai_trace.txt', 'GEMINI.md', 'requirements.txt'
+    }
+    
+    MAX_FILE_SIZE = 100 * 1024  # 100KB
+    MAX_CACHE_SIZE = 500 * 1024  # 500KB
+    
+    def __init__(self, watch_dir: str):
+        self.watch_dir = watch_dir
+        self.cache: dict[str, str] = {}
+        self.total_size = 0
+        self.file_count = 0
+        self.load_time = 0.0
+    
+    def _should_ignore_dir(self, dirname: str) -> bool:
+        return dirname in self.IGNORE_DIRS or dirname.startswith('.')
+    
+    def _should_cache_file(self, filepath: str) -> bool:
+        filename = os.path.basename(filepath)
+        ext = os.path.splitext(filepath)[1].lower()
+        
+        if filename.startswith('.') and filename not in {'.gitignore', '.env.example'}:
+            return False
+        if filename in self.IGNORE_FILES:
+            return False
+        if ext in self.CODE_EXTENSIONS:
+            return True
+        if filename.lower() in {'dockerfile', 'makefile', 'readme', 'license'}:
+            return True
+        return False
+    
+    def _read_file_safe(self, filepath: str) -> Optional[str]:
+        try:
+            size = os.path.getsize(filepath)
+            if size > self.MAX_FILE_SIZE:
+                return f"[FILE TOO LARGE: {size // 1024}KB - content truncated]"
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    return f.read()
+            except UnicodeDecodeError:
+                try:
+                    with open(filepath, 'r', encoding='latin-1') as f:
+                        return f.read()
+                except:
+                    return "[BINARY FILE - cannot read]"
+        except Exception as e:
+            return f"[ERROR: {e}]"
+    
+    def build_cache(self) -> None:
+        start_time = time.time()
+        self.cache = {}
+        self.total_size = 0
+        self.file_count = 0
+        
+        print(f"📚 [{time.strftime('%H:%M:%S')}] Building project cache...")
+        
+        for root, dirs, files in os.walk(self.watch_dir):
+            dirs[:] = [d for d in dirs if not self._should_ignore_dir(d)]
+            
+            for filename in files:
+                if filename.lower() in {'nul', 'con', 'prn', 'aux', 'com1', 'com2', 'lpt1', 'lpt2'}:
+                    continue
+                
+                filepath = os.path.join(root, filename)
+                
+                try:
+                    rel_path = os.path.relpath(filepath, self.watch_dir)
+                except ValueError:
+                    continue
+                
+                if not self._should_cache_file(filepath):
+                    continue
+                
+                if self.total_size >= self.MAX_CACHE_SIZE:
+                    print(f"⚠️  Cache limit reached ({self.MAX_CACHE_SIZE // 1024}KB)")
+                    break
+                
+                content = self._read_file_safe(filepath)
+                if content:
+                    self.cache[rel_path] = content
+                    self.total_size += len(content)
+                    self.file_count += 1
+            else:
+                continue
+            break
+        
+        self.load_time = time.time() - start_time
+        print(f"✅ [{time.strftime('%H:%M:%S')}] Cached {self.file_count} files ({self.total_size // 1024}KB) in {self.load_time:.2f}s")
+    
+    def get_context_string(self, max_length: int = 50000) -> str:
+        if not self.cache:
+            return "No files cached."
+        
+        lines = [f"## Project Files ({self.file_count} files, {self.total_size // 1024}KB)\n"]
+        current_length = len(lines[0])
+        
+        priority_files = ['README.md', 'PLANS.md', 'PENDING_TASKS.md', 'requirements.txt', 
+                         'package.json', 'pyproject.toml']
+        
+        sorted_files = []
+        for pf in priority_files:
+            if pf in self.cache:
+                sorted_files.append(pf)
+        
+        for filepath in sorted(self.cache.keys()):
+            if filepath not in sorted_files:
+                sorted_files.append(filepath)
+        
+        for filepath in sorted_files:
+            content = self.cache[filepath]
+            if len(content) > 2000:
+                content = content[:2000] + "\n... [truncated]"
+            
+            file_block = f"\n### 📄 {filepath}\n```\n{content}\n```\n"
+            
+            if current_length + len(file_block) > max_length:
+                lines.append(f"\n... [{len(sorted_files) - len(lines) + 1} more files not shown due to length limit]")
+                break
+            
+            lines.append(file_block)
+            current_length += len(file_block)
+        
+        return "".join(lines)
+    
+    def find_file_by_keyword(self, keyword: str) -> Optional[Tuple[str, str]]:
+        """Find a file matching keyword and return (filepath, content)."""
+        keyword = keyword.lower()
+        for rel_path, content in self.cache.items():
+            if keyword in rel_path.lower():
+                return (rel_path, content)
+        return None
+
+
+# ============================================================================
 # FILE WATCHING HANDLERS
 # ============================================================================
 
@@ -527,7 +516,7 @@ class TREPANEventHandler(FileSystemEventHandler):
         super().__init__()
         self.watch_dir = watch_dir
         self.last_context = None
-        self._ignore_files = {'.cursorrules', '.git', '__pycache__', 'venv', 'ai_trace.txt'}
+        self._ignore_files = {'GEMINI.md', '.git', '__pycache__', 'venv', 'ai_trace.txt'}
     
     def _should_ignore(self, path: str) -> bool:
         basename = os.path.basename(path)
@@ -561,96 +550,18 @@ class TREPANEventHandler(FileSystemEventHandler):
                     for issue in issues:
                         print(f"   Line {issue['line']}: [{issue['type']}] {issue['message']}")
                     print("─────────────────────────────────────────────────────────────────\n")
-            except Exception as e:
+            except Exception:
                 pass
 
 
-class LoopSniffer(FileSystemEventHandler):
-    """Handler for loop detection via ai_trace.txt monitoring."""
-    
-    def __init__(self, watch_dir: str):
-        super().__init__()
-        self.watch_dir = watch_dir
-        self.memory: deque = deque(maxlen=MEMORY_SIZE)
-        self.last_content = ""
-        self.loop_detected = False
-        self.trace_file = os.path.join(watch_dir, AI_TRACE_FILE)
-    
-    def on_modified(self, event):
-        if event.is_directory:
-            return
-        if os.path.basename(event.src_path) != AI_TRACE_FILE:
-            return
-        
-        try:
-            with open(event.src_path, 'r', encoding='utf-8') as f:
-                current_content = f.read()
-        except Exception as e:
-            print(f"⚠️  Error reading trace file: {e}")
-            return
-        
-        if current_content == self.last_content:
-            return
-        
-        new_text = current_content[len(self.last_content):].strip()
-        self.last_content = current_content
-        
-        if not new_text or new_text.startswith('#'):
-            return
-        
-        self._on_ai_response(new_text)
-    
-    def _on_ai_response(self, text: str):
-        print(f"🔍 [{time.strftime('%H:%M:%S')}] Analyzing response ({len(text)} chars)...")
-        
-        max_similarity = 0.0
-        for past_response in self.memory:
-            similarity = calculate_similarity(text, past_response)
-            max_similarity = max(max_similarity, similarity)
-            
-            if similarity >= SIMILARITY_THRESHOLD:
-                self._trigger_emergency_break(text, past_response, similarity)
-                return
-        
-        self.memory.append(text)
-        self.loop_detected = False
-        print(f"✅ [{time.strftime('%H:%M:%S')}] Response OK (max similarity: {max_similarity:.1%}) - Memory: {len(self.memory)}/{MEMORY_SIZE}")
-    
-    def _trigger_emergency_break(self, new_text: str, matched_text: str, similarity: float):
-        if self.loop_detected:
-            print(f"🚨 [{time.strftime('%H:%M:%S')}] Still in EMERGENCY mode (similarity: {similarity:.1%})")
-            return
-        
-        self.loop_detected = True
-        print(f"\n🚨🚨🚨 LOOP DETECTED! 🚨🚨🚨")
-        print(f"   Similarity: {similarity:.1%} (threshold: {SIMILARITY_THRESHOLD:.0%})")
-        print(f"   New text preview: {new_text[:50]}...")
-        print(f"   Matched preview:  {matched_text[:50]}...\n")
-        
-        rules_path = os.path.join(self.watch_dir, RULES_FILE)
-        header = f"""# 🦅 TREPAN Dynamic Context Rules
-# 🚨 EMERGENCY INJECTION - Loop Detected!
-# Last updated: {time.strftime('%Y-%m-%d %H:%M:%S')}
-# Similarity: {similarity:.1%}
-
-"""
-        content = header + CONTEXT_RULES["Emergency_Loop"]
-        
-        with open(rules_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        
-        print(f"🚨 [{time.strftime('%H:%M:%S')}] Injected EMERGENCY_LOOP context → {RULES_FILE}")
-
-
 # ============================================================================
-# CLIPBOARD BRAIN (Phase 3)
+# CLIPBOARD BRAIN WITH INTEGRATED RED TEAM (Phase 3 + 4)
 # ============================================================================
 
 class ClipboardBrain:
     """
     Smart clipboard monitoring with AI-powered context analysis.
-    Uses Groq to distinguish user prompts from code/AI responses.
-    Now with full project context from ProjectCache.
+    Now includes integrated Red Team "Auto-Detect & Ask" functionality.
     """
     
     def __init__(self, watch_dir: str, project_cache: Optional[ProjectCache] = None):
@@ -667,6 +578,10 @@ class ClipboardBrain:
         # Loop Detection Memory
         self.memory: deque = deque(maxlen=MEMORY_SIZE)
         
+        # User input result for Red Team
+        self._user_input_result = None
+        self._input_event = threading.Event()
+        
         # Initialize Groq client
         if GROQ_AVAILABLE and GROQ_API_KEY:
             try:
@@ -681,7 +596,6 @@ class ClipboardBrain:
         """Generate the system prompt with full project context."""
         project_map = get_project_map(self.watch_dir)
         
-        # Get full project context from cache if available
         if self.project_cache and self.project_cache.cache:
             project_context = self.project_cache.get_context_string(max_length=12000)
         else:
@@ -699,15 +613,12 @@ Determine if the clipboard content is a DEVELOPER PROMPT that needs context, or 
 - Random data, JSON blobs, or configuration dumps
 - Markdown documentation without a question
 - Code that looks like it was copied to move elsewhere
-- **Clearly referring to a DIFFERENT project** (e.g. prompt asks about "TREPAN Architecture" but the current project is a Game with `players.py`)
-- *Note: If a file exists in BOTH (like helpful scripts), check if the prompt aligns with the CURRENT project's goals (e.g. Game Logic vs Tool Logic).*
+- **Clearly referring to a DIFFERENT project**
 
-## RESPOND with optimized .cursorrules if:
+## RESPOND with optimized context rules if:
 - It's a question or request from a developer
 - It's a task description or feature request
 - It's a problem statement seeking a solution
-- It's a prompt that would benefit from focused AI assistance
-- **It IS relevant to the current project structure below**
 
 ## Current Project Structure:
 {project_map}
@@ -717,14 +628,10 @@ Determine if the clipboard content is a DEVELOPER PROMPT that needs context, or 
 
 ## Output Format:
 - If IGNORE: Output EXACTLY the word "IGNORE" (nothing else)
-- If PROMPT: Output a focused, helpful .cursorrules content that will help an AI solve the specific request. Include:
-  1. A brief summary of the task
-  2. Key constraints or requirements based on existing code patterns
-  3. Suggested approach using existing project patterns/libraries
-  4. Relevant code snippets or file references from the project"""
+- If PROMPT: Output a focused, helpful context set that will help an AI solve the specific request."""
 
     def _analyze_with_groq(self, text: str) -> Optional[str]:
-        """Send text to Groq for analysis."""
+        """Send text to Groq for context analysis."""
         if not self.client:
             return None
         
@@ -745,24 +652,15 @@ Determine if the clipboard content is a DEVELOPER PROMPT that needs context, or 
 
     def _is_ai_response(self, text: str) -> bool:
         """Heuristic check: Is this text likely an AI response?"""
-        # Check for Common AI Phrasings
         ai_phrases = [
             "Here is the code", "Here's the code", "Certainly!", "I understand",
             "I apologize", "As an AI", "Based on the code", "Sure, here is",
             "I've updated the", "The issue is caused by"
         ]
-
-        # Check start of text
         start_text = text[:100].lower()
         for phrase in ai_phrases:
             if phrase.lower() in start_text:
                 return True
-
-        # Check for large Markdown Block ratio (AI responses are mostly Code Blocks)
-        if "```" in text:
-            # Simple heuristic: If it has code blocks and fits the phrases, it's AI
-            pass
-
         return False
 
     def _check_for_loops(self, text: str):
@@ -779,7 +677,6 @@ Determine if the clipboard content is a DEVELOPER PROMPT that needs context, or 
                 return
 
         self.memory.append(text)
-        # print(f"✅ Loop Check OK (max similarity: {max_similarity:.1%})")
 
     def _trigger_emergency_break(self, new_text: str, matched_text: str, similarity: float):
         print(f"\n🚨🚨🚨 LOOP DETECTED! (Similarity: {similarity:.1%}) 🚨🚨🚨")
@@ -794,8 +691,144 @@ Determine if the clipboard content is a DEVELOPER PROMPT that needs context, or 
             f.write(header + CONTEXT_RULES["Emergency_Loop"])
         print(f"🚨 [EMERGENCY] Injected STOP context → {RULES_FILE}")
 
+    # ========================================================================
+    # RED TEAM INTEGRATION
+    # ========================================================================
+    
+    def _is_security_trigger(self, text: str) -> bool:
+        """Check if text contains security-related keywords or is code."""
+        text_lower = text.lower()
+        words = set(re.findall(r'\b\w+\b', text_lower))
+        
+        # Check for trigger keywords
+        if words & SECURITY_TRIGGER_KEYWORDS:
+            return True
+        
+        # Check if it looks like code (has syntax characters)
+        if any(c in text for c in '{}();='):
+            return True
+        
+        return False
+    
+    def _resolve_red_team_target(self, text: str) -> Tuple[str, str, str]:
+        """
+        Resolve the target for Red Team audit.
+        Returns: (type, content, identifier)
+        """
+        # If it looks like code, use clipboard directly
+        is_code = len(text.split('\n')) > 1 or any(c in text for c in '{}();=')
+        
+        if is_code:
+            return ("CODE", text, "Clipboard Snippet")
+        
+        # Try to find matching file from keywords
+        if self.project_cache:
+            keywords = re.findall(r'\b\w+\b', text)
+            for word in sorted(keywords, key=len, reverse=True):
+                if len(word) < 3:
+                    continue
+                result = self.project_cache.find_file_by_keyword(word)
+                if result:
+                    return ("FILE", result[1], result[0])
+        
+        # Fallback to clipboard content
+        return ("TEXT", text, "Clipboard Content")
+    
+    def _prompt_for_red_team(self, target_name: str) -> bool:
+        """
+        Prompt user in terminal for Red Team audit with timeout.
+        Returns True if user accepts, False otherwise.
+        """
+        print(f"\n{CYAN}>>> ⚠️  DETECTED POTENTIAL ISSUE in {BOLD}{target_name}{RESET}")
+        print(f"{YELLOW}>>> 🧨 Launch Red Team Audit? [y/N]: {RESET}", end="", flush=True)
+        
+        # Use threading with timeout for input
+        self._user_input_result = None
+        self._input_event.clear()
+        
+        def get_input():
+            try:
+                self._user_input_result = input().lower().strip()
+            except EOFError:
+                self._user_input_result = 'n'
+            self._input_event.set()
+        
+        input_thread = threading.Thread(target=get_input, daemon=True)
+        input_thread.start()
+        
+        # Wait for input with timeout
+        got_input = self._input_event.wait(timeout=RED_TEAM_INPUT_TIMEOUT)
+        
+        if not got_input:
+            print(f"\n{YELLOW}>>> (Timeout - Skipping Red Team){RESET}")
+            return False
+        
+        return self._user_input_result == 'y'
+    
+    def _run_red_team_audit(self, content: str) -> Dict:
+        """Execute Red Team audit via Groq."""
+        print(f"\n{CYAN}🔄 Initializing Cyber-Attack Simulation (Groq)...{RESET}")
+        
+        try:
+            completion = self.client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": RED_TEAM_SYSTEM_PROMPT},
+                    {"role": "user", "content": content}
+                ],
+                model=GROQ_MODEL_RED_TEAM,
+                temperature=0.3,
+                response_format={"type": "json_object"}
+            )
+            parsed = json.loads(completion.choices[0].message.content)
+            if isinstance(parsed, list):
+                return parsed[0] if parsed else {}
+            return parsed
+        except Exception as e:
+            print(f"{RED}❌ Red Team Audit Failed: {e}{RESET}")
+            return {}
+    
+    def _apply_red_team_feedback(self, result: Dict, target_name: str):
+        """Apply Red Team findings - print results and update GEMINI.md if DANGER."""
+        status = result.get('status', 'UNKNOWN').upper()
+        issue = result.get('issue', 'No details provided.')
+        fix = result.get('fix_instruction', '')
+
+        print(f"\n{BOLD}🔍 RED TEAM AUDIT RESULTS for {target_name}:{RESET}")
+        
+        if status == 'SAFE':
+            print(f"{GREEN}✅ STATUS: SAFE{RESET}")
+            print(f"   Analysis: {issue}")
+            return
+
+        print(f"{RED}🛑 STATUS: DANGER DETECTED{RESET}")
+        print(f"   Vulnerability: {BOLD}{issue}{RESET}")
+        print(f"   Required Fix: {fix}")
+
+        # Update GEMINI.md with security constraint
+        rules_path = os.path.join(self.watch_dir, RULES_FILE)
+        header = f"""# 🛑 SECURITY INTERVENTION
+# The Red Team detected a vulnerability in {target_name}.
+# Issue: {issue}
+# 
+# CONSTRAINT: You MUST implement the following fix:
+# {fix}
+#
+# Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
+
+"""
+        try:
+            with open(rules_path, 'w', encoding='utf-8') as f:
+                f.write(header)
+            print(f"\n{GREEN}💉 Context Injected into {RULES_FILE}{RESET}")
+        except Exception as e:
+            print(f"{RED}❌ Failed to update rules file: {e}{RESET}")
+
+    # ========================================================================
+    # MAIN CLIPBOARD PROCESSING
+    # ========================================================================
+    
     def _process_clipboard(self, text: str):
-        """Process new clipboard content."""
+        """Process new clipboard content with Red Team integration."""
 
         # Step 0: Window Awareness Check
         if WINDOW_AWARENESS_AVAILABLE:
@@ -808,12 +841,24 @@ Determine if the clipboard content is a DEVELOPER PROMPT that needs context, or 
             print(f"🚫 [IGNORED] Too long ({len(text)} chars)")
             return
 
-        # Step 2: Auto-Detect AI Response (Phase 2 Loop Detection)
+        # Step 2: Auto-Detect AI Response (Loop Detection)
         if self._is_ai_response(text):
             self._check_for_loops(text)
             return
 
-        # Step 3: Check Cache (Exact match + Similarity check)
+        # Step 3: Security Trigger Check (Red Team)
+        if self._is_security_trigger(text):
+            target_type, target_content, target_name = self._resolve_red_team_target(text)
+            
+            if self._prompt_for_red_team(target_name):
+                # User accepted - Run Red Team Audit
+                result = self._run_red_team_audit(target_content)
+                if result:
+                    self._apply_red_team_feedback(result, target_name)
+                return
+            # User declined or timeout - continue with normal context update
+
+        # Step 4: Check Cache (Exact match + Similarity check)
         if text in self.result_cache:
             result = self.result_cache[text]
             print(f"📝 [PROMPT] Reuse cached result (Exact match)")
@@ -827,7 +872,7 @@ Determine if the clipboard content is a DEVELOPER PROMPT that needs context, or 
                 self._add_to_cache(text, cached_result)
                 return
 
-        # Step 4: AI Gatekeeper (Groq)
+        # Step 5: AI Gatekeeper (Groq)
         print(f"🧠 Analyzing prompt ({len(text)} chars)...")
         result = self._analyze_with_groq(text)
 
@@ -835,7 +880,7 @@ Determine if the clipboard content is a DEVELOPER PROMPT that needs context, or 
             print(f"⚠️  Skipped (Groq unavailable)")
             return
 
-        # Step 5: Cache and Apply
+        # Step 6: Cache and Apply
         self._add_to_cache(text, result)
         self._apply_rules(result)
 
@@ -847,7 +892,7 @@ Determine if the clipboard content is a DEVELOPER PROMPT that needs context, or 
         self.result_cache[text] = result
 
     def _apply_rules(self, result: str):
-        """Write the result to the rules file."""
+        """Write the result to GEMINI.md."""
         if result.strip().upper() == "IGNORE":
             print(f"🚫 [IGNORED] Content irrelevant or not a prompt")
             return
@@ -892,10 +937,10 @@ def main():
     """Main entry point for TREPAN."""
     watch_dir = os.getcwd()
     
-    # Initialize .cursorrules if it doesn't exist
+    # Initialize GEMINI.md if it doesn't exist
     rules_path = os.path.join(watch_dir, RULES_FILE)
     if not os.path.exists(rules_path):
-        header = f"""# 🦅 Kodkod Dynamic Context Rules
+        header = f"""# 🦅 TREPAN Dynamic Context Rules
 # Auto-initialized on startup
 # Last updated: {time.strftime('%Y-%m-%d %H:%M:%S')}
 
@@ -913,17 +958,19 @@ def main():
     
     print("""
 ╔═══════════════════════════════════════════════════════════════════╗
-║  🦅 KODKOD - The Observer, Watchdog & Clipboard Brain              ║
-║  Dynamic Context Injection + Loop Detection + Smart Clipboard      ║
+║  🦅 TREPAN - Observer, Watchdog, Brain & Red Team                  ║
+║  Context Injection + Loop Detection + Security Audit               ║
 ╚═══════════════════════════════════════════════════════════════════╝
     """)
     print(f"👁️  Watching: {watch_dir}")
     print(f"📝 Rules file: {RULES_FILE}")
     print(f"🔍 Trace file: {AI_TRACE_FILE}")
-    print(f"🧠 Groq Model: {GROQ_MODEL}")
+    print(f"🧠 Groq Model (Context): {GROQ_MODEL}")
+    print(f"🔴 Groq Model (Red Team): {GROQ_MODEL_RED_TEAM}")
     print("─" * 68)
-    print("Features: File Context | Loop Detection | Clipboard Brain")
+    print("Features: File Context | Loop Detection | Clipboard Brain | Red Team")
     print(f"Thresholds: Loop={SIMILARITY_THRESHOLD:.0%} | Clipboard Max={MAX_CLIPBOARD_LENGTH} chars")
+    print(f"Red Team Triggers: {', '.join(SECURITY_TRIGGER_KEYWORDS)}")
     print("─" * 68)
     print("Press Ctrl+C to stop...\n")
     
@@ -933,11 +980,9 @@ def main():
     
     # Set up file watchers
     context_handler = TREPANEventHandler(watch_dir)
-    # loop_sniffer = LoopSniffer(watch_dir)  <-- REMOVED (Replaced by ClipboardBrain Loop Detection)
     
     observer = Observer()
     observer.schedule(context_handler, watch_dir, recursive=True)
-    # observer.schedule(loop_sniffer, watch_dir, recursive=False)
     
     # Set up clipboard brain (in separate thread) with project cache
     clipboard_brain = None
@@ -955,12 +1000,12 @@ def main():
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n\n🛑 Kodkod stopped. Cleaning up...")
+        print("\n\n🛑 TREPAN stopped. Cleaning up...")
         if clipboard_brain:
             clipboard_brain.stop()
         observer.stop()
         
-        # Delete .cursorrules to avoid confusion when Kodkod is not running
+        # Delete GEMINI.md to avoid confusion when TREPAN is not running
         rules_path = os.path.join(watch_dir, RULES_FILE)
         try:
             if os.path.exists(rules_path):
