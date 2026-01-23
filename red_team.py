@@ -62,10 +62,15 @@ If SAFE, fix_instruction can be empty.
 
 class RedTeamAuditor:
     def __init__(self):
-        if not GROQ_API_KEY:
-            print(f"{RED}❌ Error: GROQ_API_KEY not found in .env{RESET}")
+        try:
+            from llm_gateway import LLMGateway
+            self.gateway = LLMGateway()
+            if not self.gateway.is_available():
+                print(f"{RED}⚠️  LLM Gateway reported issues with provider: {self.gateway.config.provider}{RESET}")
+        except ImportError:
+            print(f"{RED}❌ Error: llm_gateway.py not found.{RESET}")
             sys.exit(1)
-        self.client = Groq(api_key=GROQ_API_KEY)
+            
         self.cwd = os.getcwd()
 
     def get_clipboard(self) -> str:
@@ -132,34 +137,15 @@ class RedTeamAuditor:
                 return False
 
     def audit(self, content: str) -> Dict:
-        print(f"\n{CYAN}🔄 Initializing Cyber-Attack Simulation (Groq)...{RESET}")
-        try:
-            completion = self.client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": content}
-                ],
-                model=GROQ_MODEL,
-                temperature=0.3,
-                # Remove response_format="json_object" if it causes issues with list returns, 
-                # but usually it enforces object. Llama might be returning a list though.
-                response_format={"type": "json_object"}
-            )
-            parsed = json.loads(completion.choices[0].message.content)
-            # Handle if model returns a list wrapped in a key or just a list
-            if isinstance(parsed, list):
-                if len(parsed) > 0:
-                    return parsed[0]
-                return {} 
-            return parsed
-        except Exception as e:
-            print(f"{RED}❌ Audit Failed: {e}{RESET}")
-            # print raw content for debug
-            try:
-                print(f"DEBUG Raw Content: {completion.choices[0].message.content}")
-            except:
-                pass
+        print(f"\n{CYAN}🔄 Initializing Cyber-Attack Simulation ({self.gateway.config.provider})...{RESET}")
+        
+        result = self.gateway.audit_code(content, "Target Code")
+        
+        if result.get('status') == 'ERROR':
+            print(f"{RED}❌ Audit Failed: {result.get('issue')}{RESET}")
             sys.exit(1)
+            
+        return result
 
     def apply_feedback(self, result: Dict, target_name: str):
         status = result.get('status', 'UNKNOWN').upper()

@@ -1,0 +1,85 @@
+
+═══════════🛡️ TREPAN PACKAGE SENTINEL TEST SUITE ═══════════
+Testing Phase 9: Supply Chain Security
+════════════════════════════════════════════════════════════
+
+🧪 TEST 1: SAFE PACKAGES ────────────────────────────────────
+  requests: ALLOW - ✅ ALLOWED
+    └─ ✅ Package passed all security checks
+  numpy: ALLOW - ✅ ALLOWED
+    └─ ✅ Package passed all security checks
+
+============================================================
+✅ PASS: Safe Packages Test
+============================================================
+  requests: ALLOW - ✅ ALLOWED
+  numpy: ALLOW - ✅ ALLOWED
+
+🧪 TEST 2: TYPOSQUATTED PACKAGES ────────────────────────────
+  requessts: BLOCK - ✅ DETECTED
+    └─ Package 'requessts' does not exist on pypi
+    💡 Did you mean: requests?
+  numpyy: BLOCK - ✅ DETECTED
+    └─ Package 'numpyy' does not exist on pypi
+    💡 Did you mean: numpy?
+  pandass: BLOCK - ✅ DETECTED
+    └─ Package 'pandass' does not exist on pypi
+    💡 Did you mean: pandas?
+  djanggo: BLOCK - ✅ DETECTED
+    └─ Package 'djanggo' does not exist on pypi
+    💡 Did you mean: django?
+
+============================================================
+✅ PASS: Typosquatted Packages Test
+============================================================
+  requessts: BLOCK - ✅ DETECTED
+  numpyy: BLOCK - ✅ DETECTED
+  pandass: BLOCK - ✅ DETECTED
+  djanggo: BLOCK - ✅ DETECTED
+
+🧪 TEST 3: NEW/LOW REPUTATION PACKAGE ───────────────────────
+  Package: totally-legit-package-2026 (age: 0 days)
+  Action: BLOCK - ✅ BLOCKED
+    └─ 🆕 Package is only 0 days old (min: 7)
+    └─ 📉 Low downloads: 5/week (min: 100)
+
+============================================================
+✅ PASS: New/Low Reputation Package Test
+============================================================
+  Package: totally-legit-package-2026 (age: 0 days)
+  Action: BLOCK - ✅ BLOCKED
+
+🧪 TEST 4: BLOCKLIST ENFORCEMENT ────────────────────────────
+  Package: malicious-package (on blocklist)
+  Action: BLOCK - ✅ BLOCKED
+    └─ Package is on the blocklist
+
+============================================================
+✅ PASS: Blocklist Enforcement Test
+============================================================
+  Package: malicious-package (on blocklist)
+  Action: BLOCK - ✅ BLOCKED
+
+🧪 TEST 5: ALLOWLIST BYPASS ─────────────────────────────────
+  Package: internal-company-package (on allowlist)
+  Action: ALLOW - ✅ ALLOWED
+    └─ Package is on the allowlist
+
+============================================================
+✅ PASS: Allowlist Bypass Test
+============================================================
+  Package: internal-company-package (on allowlist)
+  Action: ALLOW - ✅ ALLOWED
+
+════════════════════════════════════════════════════════════
+📊 TEST SUMMARY
+════════════════════════════════════════════════════════════
+  ✅ PASS: Safe Packages
+  ✅ PASS: Typosquatted Packages
+  ✅ PASS: New/Low Reputation
+  ✅ PASS: Blocklist Enforcement
+  ✅ PASS: Allowlist Bypass
+
+Total: 5/5 tests passed
+
+🎉 ALL TESTS PASSED! Package Sentinel is working correctly.

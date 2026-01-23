@@ -1,0 +1,17 @@
+============================================================
+TREPAN JavaScript Taint Analysis Test
+============================================================
+
+[TAINTED VARIABLES]
+  userCode <- HTTP Request Body (line 3)
+  innerHTML <- URL Query Parameter (line 7)
+  cmd <- URL Query Parameter (line 10)
+  safeInput <- HTTP Request Body (line 14)
+
+[ISSUES FOUND: 3]
+  [CRITICAL] Line 4: RCE
+       Tainted variable 'userCode' (from HTTP Request Body) used in eval() - Arbitrary Code Execution
+  [HIGH] Line 7: XSS
+       Direct untrusted input (URL Query Parameter) passed to innerHTML Assignment
+  [CRITICAL] Line 11: RCE
+       Tainted variable 'cmd' (from URL Query Parameter) used in child_process.exec()
