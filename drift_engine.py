@@ -134,6 +134,24 @@ class DriftEngine:
             "transformers_installed": HAS_TRANSFORMERS,
             "hardware_sentinel_available": HAS_HARDWARE
         }
+    
+    def get_embedding(self, text: str):
+        """
+        Get embedding as numpy array (TR-11 Consistency Engine support).
+        
+        Args:
+            text: The text to embed
+            
+        Returns:
+            numpy.ndarray embedding or None if not ready
+        """
+        if not self.is_ready:
+            return None
+        try:
+            embedding = self.model.encode(text, convert_to_tensor=False)
+            return embedding
+        except Exception:
+            return None
 
 
 # Global Instance

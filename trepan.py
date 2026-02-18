@@ -853,8 +853,30 @@ def main():
                     from policy_gatekeeper import launch_gatekeeper
                     from context_manager import context_db
                     
+                    # TR-10: Import phase detector for context
+                    try:
+                        from phase_detector import phase_detector
+                        phase_context = phase_detector.get_current_phase()
+                    except ImportError:
+                        phase_context = None
+                    
+                    # TR-10.5: Import invariant explainer
+                    try:
+                        from invariant_explainer import explainer
+                        event_ctx = {
+                            "phase": phase_context.get("phase_name", "NORMAL_FLOW") if phase_context else "NORMAL_FLOW",
+                            "drift_score": request['score'],
+                            "shrinkage_ratio": len(request['new']) / max(len(request['old']), 1),
+                            "regex_hits": request.get('regex_hits', []),
+                            "lane": "LOUD"
+                        }
+                        explanation = explainer.explain(event_ctx)
+                    except ImportError:
+                        explanation = None
+                    
                     print(f"⚡ Handling UI Request on Main Thread (Drift: {request['score']:.2f})")
                     
+                    # Launch gatekeeper (it will display phase banner + explanation internally)
                     action, intent_law, intent_why = launch_gatekeeper(
                         request['score'], 
                         request['old'], 
@@ -870,8 +892,16 @@ def main():
                             
                     elif action == "COMMIT":
                         if context_db:
-                            context_db.log_diamond(request['score'], request['new'], intent_law, intent_why)
-                            print("💎 COMMITTED to Context")
+                            # TR-10 + TR-10.5: Pass phase context and explanation
+                            context_db.log_diamond(
+                                request['score'], 
+                                request['new'], 
+                                intent_law, 
+                                intent_why,
+                                phase_context=phase_context,
+                                explanation=explanation
+                            )
+                            print("💎 COMMITTED to Context (with Micro-Data + Explanation)")
                             
                     elif action == "IGNORE":
                         print("💨 IGNORED by User")
