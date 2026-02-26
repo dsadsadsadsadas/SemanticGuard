@@ -1,0 +1,94 @@
+{
+  "name": "trepan-gatekeeper",
+  "displayName": "Trepan Gatekeeper 🛡️",
+  "description": "Architectural airbag — blocks file saves that violate your project's .trepan/ pillar rules.",
+  "version": "2.1.0",
+  "publisher": "trepan",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "icon": "icons/icon128.png",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "trepan.status",
+        "title": "Trepan: Show Server Status"
+      },
+      {
+        "command": "trepan.toggleEnabled",
+        "title": "Trepan: Toggle Airbag On/Off"
+      },
+      {
+        "command": "trepan.askGatekeeper",
+        "title": "🛡️ Ask Trepan"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "trepan.askGatekeeper",
+          "group": "navigation"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "trepan-sidebar",
+          "title": "Trepan Architect",
+          "icon": "resources/trepan-shield.svg"
+        }
+      ]
+    },
+    "views": {
+      "trepan-sidebar": [
+        {
+          "id": "trepan.explorer",
+          "name": "Logic Gate Status",
+          "type": "webview"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Trepan Gatekeeper",
+      "properties": {
+        "trepan.serverUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8000",
+          "description": "URL of the Trepan inference server"
+        },
+        "trepan.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable the save airbag"
+        },
+        "trepan.timeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "description": "Max ms to wait for server response before failing open"
+        },
+        "trepan.excludePatterns": {
+          "type": "array",
+          "default": [
+            "**/node_modules/**",
+            "**/.git/**",
+            "**/*.md",
+            "**/*.json",
+            "**/*.lock"
+          ],
+          "description": "Glob patterns to skip evaluation (always allowed to save)"
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0"
+  }
+}
