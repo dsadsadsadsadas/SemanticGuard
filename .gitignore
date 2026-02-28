@@ -8,3 +8,5 @@ unsloth_compiled_cache/
 trepan_vault/
 node_modules/
 out/
+output.txt
+output2.txt
