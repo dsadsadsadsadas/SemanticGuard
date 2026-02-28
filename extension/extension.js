@@ -76,22 +76,38 @@ function activate(context) {
 
     // ── THE AIRBAG ────────────────────────────────────────────────────────────
     const saveHook = vscode.workspace.onWillSaveTextDocument((event) => {
-        const cfg = vscode.workspace.getConfiguration("trepan");
-        if (!cfg.get("enabled")) return; // disabled by user
+        console.log('[TREPAN DEBUG] Save event triggered for:', event.document.fileName);
+        try {
+            const cfg = vscode.workspace.getConfiguration("trepan");
+            if (!cfg.get("enabled")) {
+                console.log('[TREPAN DEBUG] Airbag is DISABLED in settings. Skipping.');
+                return;
+            }
 
-        // Bypass standard excludes if this is a Pillar file (Selective Pass)
-        const relPath = vscode.workspace.asRelativePath(event.document.uri);
-        const isPillar = relPath.startsWith(".trepan") && relPath.endsWith(".md");
+            // Bypass standard excludes if this is a Pillar file (Selective Pass)
+            const relPath = vscode.workspace.asRelativePath(event.document.uri);
+            const isPillar = relPath.startsWith(".trepan") && relPath.endsWith(".md");
+            console.log(`[TREPAN DEBUG] relPath=${relPath} | isPillar=${isPillar} | serverOnline=${serverOnline}`);
 
-        if (!isPillar) {
-            const excludes = cfg.get("excludePatterns") ?? [];
-            if (excludes.some((pat) => matchGlob(pat, relPath))) return;
+            if (!isPillar) {
+                const excludes = cfg.get("excludePatterns") ?? [];
+                if (excludes.some((pat) => matchGlob(pat, relPath))) {
+                    console.log('[TREPAN DEBUG] File matched exclude pattern. Skipping.');
+                    return;
+                }
+            }
+
+            // Skip if server is offline — fail open
+            if (!serverOnline) {
+                console.warn('[TREPAN DEBUG] Server is OFFLINE. Airbag failing open for this save.');
+                return;
+            }
+
+            event.waitUntil(evaluateSave(event.document));
+        } catch (error) {
+            console.error('[TREPAN ERROR] Save listener crashed:', error);
+            vscode.window.showErrorMessage(`Trepan Extension Crash: ${error.message}`);
         }
-
-        // Skip if server is offline — fail open
-        if (!serverOnline) return;
-
-        event.waitUntil(evaluateSave(event.document));
     });
 
     context.subscriptions.push(saveHook);
@@ -119,6 +135,8 @@ async function evaluateSave(document) {
         const incomingContent = document.getText();
 
         setStatus("checking");
+        // Action 1: Push the SCANNING state to sidebar immediately
+        trepanSidebarProvider.sendMessage({ type: 'scanning', title: 'Meta-Gate Audit: ' + fileName });
         try {
             const res = await fetchWithTimeout(`${serverUrl}/evaluate_pillar`, {
                 method: "POST",
@@ -142,6 +160,8 @@ async function evaluateSave(document) {
                 score: data.drift_score?.toFixed(2),
                 action: data.action,
                 thought: data.raw_output,
+                filename: fileName,
+                incomingContent: incomingContent,
             });
 
             if (data.action === "REJECT") {
@@ -163,6 +183,11 @@ async function evaluateSave(document) {
                 }
 
                 throw new Error(`Trepan Meta-Gate: architectural change rejected (score ${score})`);
+            }
+
+            if (data.action === "VAULT_COMPROMISED") {
+                vscode.window.showErrorMessage(`🚨 VAULT COMPROMISED: ${data.raw_output}`, { modal: true });
+                throw new Error("Trepan Meta-Gate: Vault Cryptographic Signature Invalid.");
             }
 
             setStatus("accepted");
@@ -367,6 +392,51 @@ class TrepanSidebarProvider {
         this._view = webviewView;
         webviewView.webview.options = { enableScripts: true };
         webviewView.webview.html = this._getHtmlForWebview();
+
+        // Listen for messages from the Webview (like button clicks)
+        webviewView.webview.onDidReceiveMessage(async (message) => {
+            if (message.command === 'resign_vault') {
+                const cfg = vscode.workspace.getConfiguration("trepan");
+                const serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8000";
+                try {
+                    vscode.window.showInformationMessage("🛡️ Re-signing Trepan Vault...");
+                    const res = await fetchWithTimeout(`${serverUrl}/resign_vault`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" }
+                    }, 10000);
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        vscode.window.showInformationMessage(`✅ ${data.message}`);
+                        this.sendMessage({ type: 'resign_success' });
+                    } else {
+                        vscode.window.showErrorMessage(`❌ Failed to re-sign vault: Server returned ${res.status}`);
+                    }
+                } catch (err) {
+                    vscode.window.showErrorMessage(`❌ Failed to connect to Trepan server to re-sign: ${err.message}`);
+                }
+            }
+
+            if (message.command === 'revert_save') {
+                const { filename } = message;
+                const folders = vscode.workspace.workspaceFolders;
+                if (!folders?.length) return;
+                const vaultPath = path.join(folders[0].uri.fsPath, ".trepan", "trepan_vault", filename);
+                const livePath = path.join(folders[0].uri.fsPath, ".trepan", filename);
+                if (fs.existsSync(vaultPath)) {
+                    fs.copyFileSync(vaultPath, livePath);
+                    const doc = await vscode.workspace.openTextDocument(livePath);
+                    await vscode.window.showTextDocument(doc);
+                    vscode.window.showInformationMessage(`🛡️ Reverted ${filename} to vault state.`);
+                    this.sendMessage({ type: 'reset' });
+                }
+            }
+
+            if (message.command === 'force_override') {
+                vscode.window.showWarningMessage(`⚠️ Force Override acknowledged. Trepan will allow the next save for this file.`);
+                this.sendMessage({ type: 'reset' });
+            }
+        });
     }
     sendMessage(message) {
         if (this._view) {
@@ -385,35 +455,141 @@ class TrepanSidebarProvider {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trepan Architect</title>
     <style>
-        body { font-family: var(--vscode-font-family); padding: 10px; color: var(--vscode-editor-foreground); }
-        .thought { color: var(--vscode-terminal-ansiBrightBlack); font-style: italic; white-space: pre-wrap; margin-bottom: 10px; }
+        body { font-family: var(--vscode-font-family); padding: 10px; color: var(--vscode-editor-foreground); transition: background-color 0.3s; }
+        body.compromised { background-color: rgba(255, 0, 0, 0.1); }
+        .thought { color: var(--vscode-terminal-ansiBrightBlack); font-style: italic; white-space: pre-wrap; margin-bottom: 10px; font-size: 0.9em; }
         .action-accept { color: var(--vscode-testing-iconPassed); font-weight: bold; }
-        .action-reject { color: var(--vscode-testing-iconFailed); font-weight: bold; text-shadow: 0 0 5px rgba(255,0,0,0.5); }
+        .action-reject { color: var(--vscode-testing-iconFailed); font-weight: bold; }
+        .action-error { color: orange; font-weight: bold; }
+        .action-compromised { color: #ff4d4d; font-weight: bold; font-size: 1.2em; }
         .log-entry { margin-bottom: 20px; border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 10px; }
+        .scanning { display: flex; align-items: center; gap: 8px; color: var(--vscode-terminal-ansiBrightYellow); }
+        .spinner { width: 14px; height: 14px; border: 2px solid var(--vscode-terminal-ansiBrightYellow); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .compromise-alert { display: none; background-color: #ffcccc; color: #990000; padding: 15px; border-left: 5px solid #cc0000; margin-bottom: 20px; border-radius: 4px; }
+        .compromise-alert.active { display: block; }
+        .btn { border: none; padding: 8px 14px; cursor: pointer; font-weight: bold; margin-top: 8px; margin-right: 6px; border-radius: 4px; }
+        .btn-danger { background-color: #cc0000; color: white; }
+        .btn-danger:hover { background-color: #990000; }
+        .btn-warn { background-color: #b36b00; color: white; }
+        .btn-warn:hover { background-color: #804d00; }
+        .btn-revert { background-color: #1a73e8; color: white; }
+        .btn-revert:hover { background-color: #1557b0; }
     </style>
 </head>
 <body>
+    <div id="compromise-banner" class="compromise-alert">
+        <h3 style="margin-top:0;">🛑 VAULT COMPROMISE DETECTED</h3>
+        <p>The architectural pillars have been modified outside of Trepan's authorization. Please review the rules in your .trepan folder.</p>
+        <button id="resign-btn" class="btn btn-danger">⚠️ I have reviewed the rules. Re-Sign Vault.</button>
+    </div>
+
     <div id="content">
         <h2>🏛️ Trepan Vault Access</h2>
         <p>Awaiting architectural changes...</p>
     </div>
     <script>
+        const vscode = acquireVsCodeApi();
         const contentDiv = document.getElementById('content');
+        const compromiseBanner = document.getElementById('compromise-banner');
+        
+        document.getElementById('resign-btn').addEventListener('click', () => {
+            vscode.postMessage({ command: 'resign_vault' });
+        });
+
         window.addEventListener('message', event => {
             const message = event.data;
+            
+            if (message.type === 'reset') {
+                document.body.classList.remove('compromised');
+                compromiseBanner.classList.remove('active');
+                contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2><p>Awaiting architectural changes...</p>';
+                return;
+            }
+            
+            if (message.type === 'resign_success') {
+                document.body.classList.remove('compromised');
+                compromiseBanner.classList.remove('active');
+                contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2><p style="color: var(--vscode-testing-iconPassed); font-weight: bold;">✅ Successfully Re-Signed Vault!</p>';
+                setTimeout(() => {
+                    contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2><p>Awaiting architectural changes...</p>';
+                }, 3000);
+                return;
+            }
+
+            // SCANNING: show loading spinner while AI is thinking
+            if (message.type === 'scanning') {
+                contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2><div class="scanning"><div class="spinner"></div><span>🛡️ Trepan is evaluating architectural drift...</span></div>';
+                return;
+            }
+            
             if (message.type === 'log') {
-                if (contentDiv.querySelector('p')) contentDiv.innerHTML = '';
+                if (message.action === 'VAULT_COMPROMISED') {
+                    document.body.classList.add('compromised');
+                    compromiseBanner.classList.add('active');
+                }
+
                 const entry = document.createElement('div');
                 entry.className = 'log-entry';
                 let html = '<h3>' + message.title + '</h3>';
                 if (message.score) html += '<p>Drift Score: ' + message.score + '</p>';
-                if (message.action) {
-                    const actClass = message.action === 'ACCEPT' ? 'action-accept' : 'action-reject';
-                    html += '<p class="' + actClass + '">Verdict: ' + message.action + '</p>';
+
+                if (message.action === 'ACCEPT') {
+                    html += '<p class="action-accept">✅ Verdict: ACCEPT</p>';
+                    if (message.thought) {
+                        html += '<button class="btn btn-revert" id="seeReasoningBtn">💭 See Reasoning</button>';
+                        html += '<div id="reasoningContent" style="display:none; margin-top:10px; padding:10px; background-color:var(--vscode-editor-inactiveSelectionBackground); border-radius:4px;"><div class="thought">' + message.thought + '</div></div>';
+                    }
+
+                } else if (message.action === 'REJECT') {
+                    html += '<p class="action-reject">🛑 Verdict: REJECT</p>';
+                    if (message.thought) {
+                        html += '<button class="btn btn-revert" id="seeReasoningBtn">💭 See Reasoning</button>';
+                        html += '<div id="reasoningContent" style="display:none; margin-top:10px; padding:10px; background-color:var(--vscode-editor-inactiveSelectionBackground); border-radius:4px;"><div class="thought">' + message.thought + '</div></div>';
+                    }
+                    html += '<div style="margin-top:10px;">';
+                    html += '<button class="btn btn-revert" id="revertBtn">↩️ Revert Save</button>';
+                    html += '<button class="btn btn-warn" id="overrideBtn">⚠️ Force Override</button>';
+                    html += '</div>';
+
+                } else if (message.action === 'ERROR') {
+                    html += '<p class="action-error">⚠️ Verdict: ERROR (AI hallucinated — no valid output)</p>';
+                    if (message.thought) {
+                        html += '<button class="btn btn-revert" id="seeReasoningBtn">💭 See Reasoning</button>';
+                        html += '<div id="reasoningContent" style="display:none; margin-top:10px; padding:10px; background-color:var(--vscode-editor-inactiveSelectionBackground); border-radius:4px;"><div class="thought">' + message.thought + '</div></div>';
+                    }
+
+                } else if (message.action === 'VAULT_COMPROMISED') {
+                    html += '<p class="action-compromised">🚨 VAULT COMPROMISED</p>';
+
+                } else {
+                    if (message.action) html += '<p>Verdict: ' + message.action + '</p>';
+                    if (message.thought) {
+                        html += '<button class="btn btn-revert" id="seeReasoningBtn">💭 See Reasoning</button>';
+                        html += '<div id="reasoningContent" style="display:none; margin-top:10px; padding:10px; background-color:var(--vscode-editor-inactiveSelectionBackground); border-radius:4px;"><div class="thought">' + message.thought + '</div></div>';
+                    }
                 }
-                if (message.thought) html += '<div class="thought">' + message.thought + '</div>';
+
                 entry.innerHTML = html;
-                contentDiv.prepend(entry);
+                contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2>';
+                contentDiv.appendChild(entry);
+
+                // Wire up buttons via event delegation on the entry element
+                entry.addEventListener('click', (e) => {
+                    const target = e.target;
+                    if (target.id === 'seeReasoningBtn') {
+                        const reasoningContent = document.getElementById('reasoningContent');
+                        if (reasoningContent) {
+                            const isHidden = reasoningContent.style.display === 'none';
+                            reasoningContent.style.display = isHidden ? 'block' : 'none';
+                            target.innerText = isHidden ? '🙈 Hide Reasoning' : '💭 See Reasoning';
+                        }
+                    } else if (target.id === 'revertBtn') {
+                        vscode.postMessage({ command: 'revert_save', filename: message.filename });
+                    } else if (target.id === 'overrideBtn') {
+                        vscode.postMessage({ command: 'force_override' });
+                    }
+                });
             }
         });
     </script>

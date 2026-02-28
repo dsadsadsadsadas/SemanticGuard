@@ -4,59 +4,42 @@ Formats the 5-pillar workspace context + user command into the
 exact prompt template Trepan_Model_V2 was trained on.
 """
 _TEMPLATE = """\
-SYSTEM INSTRUCTIONS:
-You are Trepan, a ruthless, deterministic Logic Gate for software architecture. 
-Your ONLY job is to compare the INCOMING CODE against the 6 PILLARS. 
-Do not be polite.
+### SYSTEM: TREPAN ARCHITECT META-GATE
+You are a deterministic logic gate. Evaluate the [INCOMING_CODE] against the [GOLDEN_STATE], [SYSTEM_RULES], and the [PROJECT_CONTEXT].
 
-Mandatory Source Mapping: Before stating a violation, you MUST physically look at the provided text for GOLDEN STATE and SYSTEM RULES.
-Explicit Citation: If the violation is about the Tech Stack (Language, Framework, DB), you MUST cite GOLDEN STATE. If the violation is about formatting, passwords, or "Banana" rules, you MUST cite SYSTEM RULES.
+[PROJECT_CONTEXT]
+{readme_content}
 
-EXPECTED OUTPUT FORMAT:
-THOUGHT: [1 sentence analysis]
-VIOLATION: [State the rule] SOURCE: [Exact File Name, e.g., golden_state.md]
-DRIFT SCORE: [0.00 to 1.00]
-ACTION: [REJECT or ACCEPT]
-
----
-## GOLDEN STATE
+[GOLDEN_STATE]
 {golden_state}
 
-## SYSTEM RULES
+[SYSTEM_RULES]
 {system_rules}
 
-## PENDING TASKS
-{pending_tasks}
-
-## DONE TASKS
-{done_tasks}
-
-## HISTORY PHASES
-{history_phases}
-
-## PROBLEMS & RESOLUTIONS
-{problems_and_resolutions}
-
----
-## INCOMING CODE
+[INCOMING_CODE]
 {user_command}
 
+CRITICAL DIRECTIVES:
+1. TECH STACK: Reject any code or frameworks not explicitly allowed in the Golden State.
+2. CONTEXTUAL RELEVANCE: Reject any words, rules, or sentences (e.g., 'Banana') that do not logically belong in the described Project Context. If the context does not explicitly justify the word (e.g., an app about fruits), it is a Context Drift violation and MUST trigger a REJECT with a score of 1.00.
+
 ---
-[RULING]
-THOUGHT:"""
+[THOUGHT]
+(1 sentence analysis checking both tech stack and context)
+[SCORE]
+(1.00 for nonsense/violations, 0.00 for perfect alignment)
+[ACTION]
+(REJECT or ACCEPT)"""
 
 
 def build_prompt(
     golden_state: str,
-    done_tasks: str,
-    pending_tasks: str,
-    history_phases: str,
     system_rules: str,
-    problems_and_resolutions: str,
     user_command: str,
+    readme_content: str,
 ) -> str:
     """
-    Assemble the full prompt from the 5 workspace pillars.
+    Assemble the full prompt from the workspace pillars.
     Returns a string ready to be tokenized.
     """
     # Sanitize: strip excessive whitespace, replace empty with placeholder
@@ -65,11 +48,8 @@ def build_prompt(
         return cleaned if cleaned else fallback
 
     return _TEMPLATE.format(
+        readme_content=_clean(readme_content, "No project context provided. Enforce strict technical baseline."),
         golden_state=_clean(golden_state, "(no golden state defined — create .trepan/golden_state.md)"),
-        done_tasks=_clean(done_tasks, "(no completed tasks yet)"),
-        pending_tasks=_clean(pending_tasks, "(no pending tasks defined)"),
-        history_phases=_clean(history_phases, "(no history phases)"),
         system_rules=_clean(system_rules, "(no system rules defined — create .trepan/system_rules.md)"),
-        problems_and_resolutions=_clean(problems_and_resolutions, "(no known problems)"),
         user_command=_clean(user_command, "(empty command)"),
     )

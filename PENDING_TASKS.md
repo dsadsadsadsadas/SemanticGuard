@@ -14,6 +14,7 @@
 - [x] Registered "Trepan Architect" sidebar in `package.json` (2026-02-26)
 - [x] Implemented Shadow Vault & Meta-Gate `/evaluate_pillar` routing (2026-02-26)
 - [x] Implemented "Trepan Architect" sidebar UI logic in `extension.js` (2026-02-26)
+- [x] Fixed dead "See Reasoning" button — now toggles AI thought hidden/visible in sidebar (2026-02-27)
 - [ ] Test install: `Extensions: Install from VSIX` or press F5 in extension dev host
 - [ ] Create `.trepan/problems_and_resolutions.md` pillar file
 - [ ] Implement REJECT history log → `.trepan/drift_log.jsonl`

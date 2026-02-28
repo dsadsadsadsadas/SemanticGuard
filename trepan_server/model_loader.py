@@ -11,7 +11,14 @@ Load priority:
 
 import os
 import logging
+import warnings
 from pathlib import Path
+
+# Silence transformers deprecation noise (FutureWarning logging bug in older versions)
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="transformers")
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("transformers.modeling_attn_mask_utils").setLevel(logging.ERROR)
 
 logger = logging.getLogger("trepan.model")
 
@@ -38,19 +45,36 @@ def get_model():
 def generate(prompt: str) -> str:
     """Run greedy inference on prompt, return generated text only."""
     import torch
+    from transformers import GenerationConfig
     model, tokenizer = get_model()
 
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1800)
     device = next(model.parameters()).device
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
+    # Stop strings: physically halt token generation when model tries to roleplay.
+    # GenerationConfig stop_strings requires the tokenizer to compute byte-level token overlaps.
+    stop_sequences = [
+        "User:",    # Roleplay start
+        "\nUser:",  # Roleplay on new line
+        "###",      # Dialogue separator
+        "[THOUGHT]", # Model looping back to re-evaluate
+        "\n\n\n",  # Triple newline = trailing yap
+    ]
+
+    gen_config = GenerationConfig(
+        max_new_tokens=120,       # Tight budget — short answers only
+        do_sample=False,          # Greedy decoding = deterministic
+        temperature=1.0,          # Must be 1.0 when do_sample=False (ignored anyway)
+        pad_token_id=tokenizer.eos_token_id,
+    )
+
     with torch.no_grad():
         out = model.generate(
             **inputs,
-            max_new_tokens=200,
-            do_sample=False,
-            temperature=0.1,
-            pad_token_id=tokenizer.eos_token_id,
+            generation_config=gen_config,
+            tokenizer=tokenizer,           # Needed for stop_strings byte-overlap
+            stop_strings=stop_sequences,
         )
     generated = out[0][inputs["input_ids"].shape[1]:]
     return tokenizer.decode(generated, skip_special_tokens=True).strip()

@@ -1,0 +1,20 @@
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\Trepan\trepan_server\server.py", line 44, in init_vault
+    print("\U0001f50d SHADOW VAULT INITIALIZATION STARTING...")
+  File "C:\Users\ethan\miniconda3\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f50d' in position 0: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "C:\Users\ethan\Documents\Projects\Trepan\trepan_server\server.py", line 83, in init_vault
+    print(f"\n\u274c CRITICAL ERROR IN init_vault: {e}")
+  File "C:\Users\ethan\miniconda3\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u274c' in position 2: character maps to <undefined>
+
+==================================================

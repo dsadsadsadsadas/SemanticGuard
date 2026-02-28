@@ -60,12 +60,17 @@ PILLARS = {
     "system_rules.md": """\
 # 📏 System Rules — Linter, Security & Formatting
 
+## AI & Context Awareness Requirements
+Rule 1 : Strict Contextual Synchronization: Every architectural change must logically align with the established Project Context (README). If a developer introduces a new feature, rule, or concept, they must simultaneously update all affected pillars to prevent architectural drift. Isolated updates that create a contradiction between pillars or the project's core context are strictly forbidden.
+Rule 2 : After Understanding With User What the Project is about, create a Detailed And Planned Readme File, that is also Accepted by User.
+
 ## Security Rules (Hard Blockers)
-- NO hardcoded secrets, API keys, or passwords
-- NO `eval()` or `exec()` with user input
-- NO `os.system()` or `subprocess` with `shell=True`
-- ALL file paths must use `os.path.realpath()` + `startswith()` validation
-- ALL SQL queries must use parameterized statements
+Rule 3 : NO hardcoded secrets, API keys, or passwords
+Rule 4 : NO `eval()` or `exec()` with user input
+Rule 5 : NO `os.system()` or `subprocess` with `shell=True`
+Rule 6 : ALL file paths must use `os.path.realpath()` + `startswith()` validation
+Rule 7 : ALL SQL queries must use parameterized statements
+Rule 8 : YOUR ARE NOT ALLOWED TO TOUCH trepan_vault NOR .trepan.lock
 
 ## Code Style
 - Max line length: 100 characters
