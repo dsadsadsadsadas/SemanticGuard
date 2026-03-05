@@ -28,12 +28,36 @@
       {
         "command": "trepan.askGatekeeper",
         "title": "🛡️ Ask Trepan"
+      },
+      {
+        "command": "trepan.openLedger",
+        "title": "🛡️ Open Trepan Ledger"
+      },
+      {
+        "command": "trepan.reviewWithLedger",
+        "title": "🔍 Trepan: Review Changes vs. Walkthrough"
+      },
+      {
+        "command": "trepan.initializeProject",
+        "title": "⚡ Trepan: Initialize Project"
       }
     ],
     "menus": {
       "editor/context": [
         {
           "command": "trepan.askGatekeeper",
+          "group": "navigation"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "trepan.reviewWithLedger",
+          "group": "inline"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "trepan.reviewWithLedger",
           "group": "navigation"
         }
       ]
@@ -61,7 +85,7 @@
       "properties": {
         "trepan.serverUrl": {
           "type": "string",
-          "default": "http://127.0.0.1:8000",
+          "default": "http://127.0.0.1:8001",
           "description": "URL of the Trepan inference server"
         },
         "trepan.enabled": {

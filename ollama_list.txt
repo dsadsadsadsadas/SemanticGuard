@@ -1,0 +1,5 @@
+NAME                       ID              SIZE      MODIFIED       
+llama3.1:8b                46e0c10c039e    4.9 GB    32 minutes ago    
+nomic-embed-text:latest    0a109f422b47    274 MB    11 days ago       
+llama3.1:latest            46e0c10c039e    4.9 GB    12 days ago       
+dolphin-llama3:latest      613f068e29f8    4.7 GB    2 weeks ago       

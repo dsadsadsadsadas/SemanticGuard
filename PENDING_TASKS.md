@@ -6,6 +6,7 @@
 - [ ] Fix model loading — resolve PEFT/transformers version conflict in conda env
 - [ ] Upload `Trepan_Model_V2` to HuggingFace for remote download support
 - [ ] Add `/metrics` endpoint (token latency, request count, hit/reject ratio)
+- [ ] **Cleanup**: `sudo snap remove ollama --purge` (permanently remove broken snap files)
 
 ### Extension (VS Code — onWillSaveTextDocument approach)
 - [x] `extension/package.json` — VS Code extension manifest (2026-02-26)
@@ -15,6 +16,9 @@
 - [x] Implemented Shadow Vault & Meta-Gate `/evaluate_pillar` routing (2026-02-26)
 - [x] Implemented "Trepan Architect" sidebar UI logic in `extension.js` (2026-02-26)
 - [x] Fixed dead "See Reasoning" button — now toggles AI thought hidden/visible in sidebar (2026-02-27)
+- [x] Updated extension connection auto-discovery for dynamic ports and fallback logic (2026-03-04)
+- [x] Implemented Pillar-Sync Split Brain fix, atomic vault rebuilds, and `check_pillar_integrity.py` (2026-03-05)
+- [x] Deep Technical Audit: trace_sync.log, OS error trapping, `/trigger_sync` live-reload endpoint, extension fallback (2026-03-05)
 - [ ] Test install: `Extensions: Install from VSIX` or press F5 in extension dev host
 - [ ] Create `.trepan/problems_and_resolutions.md` pillar file
 - [ ] Implement REJECT history log → `.trepan/drift_log.jsonl`

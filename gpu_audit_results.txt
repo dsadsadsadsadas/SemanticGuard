@@ -1,0 +1,24 @@
+--- TREPAN GPU DIAGNOSTIC TOOL ---
+========================================
+OS: win32
+Python: 3.11.14
+
+[INFO] Checking NVIDIA Drivers (nvidia-smi):
+[OK] nvidia-smi is reachable.
+   Detected: | NVIDIA-SMI 591.86                 Driver Version: 591.86         CUDA Version: 13.1     |
+   Detected: |   0  NVIDIA GeForce RTX 4060 Ti   WDDM  |   00000000:01:00.0  On |                  N/A |
+   Detected: |    0   N/A  N/A            4292    C+G   ...IA app\CEF\NVIDIA Overlay.exe      N/A      |
+   Detected: |    0   N/A  N/A           16640    C+G   ...IA app\CEF\NVIDIA Overlay.exe      N/A      |
+
+[INFO] Checking Library Support:
+[OK] PyTorch version: 2.10.0+cpu
+   CUDA available: False
+
+[INFO] Checking Ollama Environment Variables:
+   OLLAMA_HOST: 0.0.0.0
+   OLLAMA_MODELS: NOT SET
+   CUDA_VISIBLE_DEVICES: NOT SET
+   OLLAMA_LLM_LIBRARY: NOT SET
+
+[INFO] Checking Ollama Service Status:
+[OK] Ollama Service is RUNNING on localhost:11434

@@ -1,0 +1,2 @@
+NAME           ID              SIZE      PROCESSOR    CONTEXT    UNTIL              
+llama3.1:8b    46e0c10c039e    5.2 GB    100% CPU     4096       4 minutes from now    
