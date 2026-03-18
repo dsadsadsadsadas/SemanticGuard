@@ -34,6 +34,8 @@ def _guillotine_parser_inner(raw_output: str, system_rules: str = "") -> dict:
     
     # Pre-extract valid rule IDs from system_rules for validation
     valid_rule_ids = set()
+    # Map of numeric ID -> full rule text line, for fuzzy matching fallback
+    rule_text_lines = []
     if system_rules:
         # Match "Rule 1", "Rule #1", "Rule: 1", etc.
         rule_id_matches = re.findall(r'(?:Rule|Rule\s*#)\s*(\d+)', system_rules, re.IGNORECASE)
@@ -42,6 +44,10 @@ def _guillotine_parser_inner(raw_output: str, system_rules: str = "") -> dict:
             valid_rule_ids.add(f"#{rid}")
             valid_rule_ids.add(f"Rule {rid}")
             valid_rule_ids.add(f"Rule #{rid}")
+        # Collect all lines containing a rule number for fuzzy keyword matching
+        for line in system_rules.splitlines():
+            if re.search(r'(?:Rule|Rule\s*#)\s*\d+', line, re.IGNORECASE):
+                rule_text_lines.append(line.lower())
 
     for match in violation_pattern.finditer(text):
         v_text = match.group(1)
@@ -75,25 +81,67 @@ def _guillotine_parser_inner(raw_output: str, system_rules: str = "") -> dict:
         rid = rule_match.group(1).strip() if rule_match else ""
         
         # ─────────────────────────────────────────────────────────────────
-        # RULE PROBITY CHECK: Does this rule ID exist in our laws?
+        # RULE PROBITY CHECK (3-tier resilient matching)
+        #
+        # Tier 1: Exact match against known IDs (e.g. "#100", "Rule #100")
+        # Tier 2: Extract a bare #\d+ from whatever the LLM output
+        #         (e.g. "#100 (DOM_INTEGRITY_PROTECTION)" → "100")
+        # Tier 3: Fuzzy keyword match — if the LLM wrote the rule *name*
+        #         instead of the ID, scan the rules text for any line that
+        #         contains significant words from the LLM's string.
+        # If none match AND we have a known rule set, discard as hallucination.
         # ─────────────────────────────────────────────────────────────────
         is_valid_rule = False
+        canonical_rid = rid  # what we'll store in the violation
+
         if not rid or rid.lower() == "none":
             logger.warning(f"🚫 Discarding violation with null/none Rule ID: '{rid}'")
-        elif valid_rule_ids and rid not in valid_rule_ids:
-            # Check if the numeric part matches
-            rid_numeric = re.search(r'(\d+)', rid)
-            if rid_numeric and rid_numeric.group(1) in [re.search(r'(\d+)', vrid).group(1) for vrid in valid_rule_ids if re.search(r'(\d+)', vrid)]:
-                is_valid_rule = True
-            else:
-                logger.warning(f"🚫 Discarding hallucinated Rule ID: '{rid}' (Not in system_rules.md)")
-        else:
+
+        elif not valid_rule_ids:
+            # No system_rules loaded → cannot validate → trust the LLM
             is_valid_rule = True
+
+        elif rid in valid_rule_ids:
+            # Tier 1: exact match
+            is_valid_rule = True
+
+        else:
+            # Tier 2: extract any #\d+ from the LLM's rule string
+            numeric_in_rid = re.search(r'#?(\d+)', rid)
+            if numeric_in_rid:
+                num = numeric_in_rid.group(1)
+                valid_nums = {re.search(r'(\d+)', v).group(1)
+                              for v in valid_rule_ids if re.search(r'(\d+)', v)}
+                if num in valid_nums:
+                    is_valid_rule = True
+                    canonical_rid = f"#{num}"  # normalise to clean form
+                    logger.info(f"🔧 Rule ID normalised: '{rid}' → '{canonical_rid}'")
+
+            # Tier 3: fuzzy keyword match against rule text lines
+            if not is_valid_rule and rule_text_lines:
+                # Extract meaningful words (≥4 chars) from the LLM's string
+                keywords = [w.lower() for w in re.findall(r'[A-Za-z]{4,}', rid)]
+                if keywords:
+                    for rule_line in rule_text_lines:
+                        if any(kw in rule_line for kw in keywords):
+                            # Extract the rule number from that matching line
+                            num_in_line = re.search(r'#?(\d+)', rule_line)
+                            if num_in_line:
+                                canonical_rid = f"#{num_in_line.group(1)}"
+                                is_valid_rule = True
+                                logger.info(
+                                    f"🔧 Rule fuzzy-matched: '{rid}' → '{canonical_rid}' "
+                                    f"via line: '{rule_line[:60]}'"
+                                )
+                                break
+
+            if not is_valid_rule:
+                logger.warning(f"🚫 Discarding hallucinated Rule ID: '{rid}' (Not in system_rules.md)")
 
         if not is_valid_rule:
             continue # Skip this violation entirely
-            
-        v_data["rule_id"] = rid
+
+        v_data["rule_id"] = canonical_rid
         if desc_match: v_data["violation"] = desc_match.group(1).strip()
         
         if fix_match:  

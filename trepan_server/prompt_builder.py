@@ -29,6 +29,11 @@ STRUCTURAL_INTEGRITY_SYSTEM = """
    - Output ONLY [THOUGHT], [VIOLATION], [SCORE], and [ACTION] tags.
    - Score: Risks -> 0.85-1.0(REJECT); Style/Warnings -> 0.31-0.6(WARN); Clean/Pass -> 0.0(ACCEPT).
    - Only report physical violations present in the code.
+   - In the [VIOLATION] block, the Rule: field MUST contain ONLY the exact Rule ID (e.g. #100).
+     DO NOT include the rule name or description.
+     CORRECT:   Rule: #100
+     INCORRECT: Rule: #100 (DOM_INTEGRITY_PROTECTION)
+     INCORRECT: Rule: NO UNSAFE HTML
 """
 
 
@@ -58,7 +63,7 @@ OUTPUT FORMAT:
 [VIOLATION]
 File: <filename>
 Line: <line>
-Rule: <rule_id>
+Rule: <exact rule ID only, e.g. #100 — no name, no description>
 Description: <reason>
 [SUGGESTED_FIX]
 <code>
