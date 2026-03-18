@@ -1,170 +1,90 @@
 #!/usr/bin/env python3
 """
-🛡️ Trepan — Model Loader
-
-Load priority:
-  1. Unsloth  (fastest, GPU + 4-bit, preferred)
-  2. Transformers + PEFT  (no bitsandbytes, avoids broken conda packages)
-     2a. float16 on CUDA
-     2b. float32 on CPU  (slow, for dev/test only)
+🛡️ Trepan — Model Loader (Ollama API)
 """
 
-import os
 import logging
-import warnings
-from pathlib import Path
-
-# Silence transformers deprecation noise (FutureWarning logging bug in older versions)
-warnings.filterwarnings("ignore", category=FutureWarning)
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="transformers")
-logging.getLogger("transformers").setLevel(logging.ERROR)
-logging.getLogger("transformers.modeling_attn_mask_utils").setLevel(logging.ERROR)
+import requests
 
 logger = logging.getLogger("trepan.model")
-
-# Silence Unsloth's torchvision version mismatch warning before it even imports
-os.environ.setdefault("UNSLOTH_SKIP_TORCHVISION_CHECK", "1")
-
-_ADAPTER_PATH = str(Path(__file__).parent.parent / "Trepan_Model_V2")
-_BASE_MODEL   = "unsloth/llama-3-8b-bnb-4bit"
-_MAX_NEW_TOKENS = 512
-
-_model     = None
-_tokenizer = None
 
 
 # ─── Public API ──────────────────────────────────────────────────────────────
 
 def get_model():
-    """Return (model, tokenizer), loading on first call."""
-    if _model is None or _tokenizer is None:
-        _load_model()
-    return _model, _tokenizer
+    """Return dummy objects to satisfy legacy callers."""
+    return None, None
 
 
-def generate(prompt: str) -> str:
-    """Run greedy inference on prompt, return generated text only."""
-    import torch
-    from transformers import GenerationConfig
-    model, tokenizer = get_model()
+def generate(prompt: str, system_prompt: str = None, processor_mode: str = "GPU") -> str:
+    """
+    Run inference using local Ollama API with /api/chat endpoint.
+    Uses Alpaca-compatible chat format for fine-tuned models.
+    
+    Args:
+        prompt: User prompt
+        system_prompt: System prompt (optional)
+        processor_mode: "GPU" (default) or "CPU"
+    """
+    url = "http://localhost:11434/api/chat"
+    
+    # Build messages array for chat endpoint
+    messages = []
+    
+    if system_prompt:
+        messages.append({
+            "role": "system",
+            "content": system_prompt
+        })
+    
+    messages.append({
+        "role": "user",
+        "content": prompt
+    })
+    # Configure GPU/CPU based on mode
+    num_gpu = 99 if processor_mode == "GPU" else 0
+    
+    payload = {
+        "model": "llama3.1:8b",  # Stable Llama 3.1 8B model
+        "messages": messages,
+        "stream": False,
+        "options": {
+            "temperature": 0.1,
+            "num_ctx": 4096,     # Optimized for speed (less prefill overhead)
+            "num_predict": 1024, # Limit output length
+            "num_thread": 8,     # Use multiple threads for CPU segments
+            "num_gpu": num_gpu,  # 99 = all GPU, 0 = all CPU
+            "stop": [
+                "<|eot_id|>",
+                "<|start_header_id|>"
+            ]
+        }
+    }
 
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1800)
-    device = next(model.parameters()).device
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-
-    # Stop strings: physically halt token generation when model tries to roleplay.
-    # GenerationConfig stop_strings requires the tokenizer to compute byte-level token overlaps.
-    stop_sequences = [
-        "User:",    # Roleplay start
-        "\nUser:",  # Roleplay on new line
-        "###",      # Dialogue separator
-        "[THOUGHT]", # Model looping back to re-evaluate
-        "\n\n\n",  # Triple newline = trailing yap
-    ]
-
-    gen_config = GenerationConfig(
-        max_new_tokens=120,       # Tight budget — short answers only
-        do_sample=False,          # Greedy decoding = deterministic
-        temperature=1.0,          # Must be 1.0 when do_sample=False (ignored anyway)
-        pad_token_id=tokenizer.eos_token_id,
-    )
-
-    with torch.no_grad():
-        out = model.generate(
-            **inputs,
-            generation_config=gen_config,
-            tokenizer=tokenizer,           # Needed for stop_strings byte-overlap
-            stop_strings=stop_sequences,
-        )
-    generated = out[0][inputs["input_ids"].shape[1]:]
-    return tokenizer.decode(generated, skip_special_tokens=True).strip()
-
-
-# ─── Internal loading ─────────────────────────────────────────────────────────
-
-def _load_model():
-    global _model, _tokenizer
-
-    logger.info("🔄 Loading Trepan_Model_V2 adapter…")
-    logger.info(f"   Base    : {_BASE_MODEL}")
-    logger.info(f"   Adapter : {_ADAPTER_PATH}")
-
-    # ── 1. Try Unsloth ────────────────────────────────────────────────────────
+    logger.info(f"   Sending request to Ollama ({url}) [Mode: {processor_mode}]...")
+    logger.info(f"   System prompt: {system_prompt[:100] if system_prompt else 'None'}...")
+    logger.info(f"   User prompt: {prompt[:100]}...")
+    
     try:
-        from unsloth import FastLanguageModel
-
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=_ADAPTER_PATH,
-            max_seq_length=2048,
-            dtype=None,
-            load_in_4bit=True,
-        )
-        FastLanguageModel.for_inference(model)
-        _model, _tokenizer = model, tokenizer
-        logger.info("✅ Loaded via Unsloth (4-bit GPU)")
-        return
-
+        response = requests.post(url, json=payload, timeout=30)
+        
+        print(f"DEBUG: Ollama Status Code: {response.status_code}")
+        print(f"DEBUG: Raw Response Text: {response.text[:500]}...")
+        
+        response.raise_for_status()
+        
+        # Extract message content from chat response
+        result = response.json()["message"]["content"]
+        
+        logger.info(f"   Generated {len(result)} characters from Ollama: {result[:80]!r}")
+        return result
+    except requests.exceptions.Timeout:
+        logger.error("Ollama request timed out after 30 seconds")
+        raise RuntimeError("Ollama inference timeout")
+    except KeyError as e:
+        logger.error(f"Unexpected Ollama response format: {e}")
+        logger.error(f"Response: {response.json()}")
+        raise RuntimeError(f"Ollama response format error: {e}")
     except Exception as e:
-        logger.warning(f"⚠️  Unsloth unavailable ({type(e).__name__}: {e})")
-        logger.warning("    Falling back to transformers + PEFT…")
-
-    # ── 2. Transformers + PEFT fallback (NO bitsandbytes) ────────────────────
-    _load_peft_fallback()
-
-
-def _load_peft_fallback():
-    """
-    Minimal PEFT fallback — intentionally avoids bitsandbytes, accelerate,
-    datasets, and evaluate to prevent broken conda C-extension chains.
-    Loads in float16 on CUDA or float32 on CPU.
-    """
-    global _model, _tokenizer
-
-    # These three are the ONLY imports needed — no sklearn chain possible
-    import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-    from peft import PeftModel
-
-    cuda_ok = torch.cuda.is_available()
-    dtype  = torch.float16 if cuda_ok else torch.float32
-    device = "cuda"        if cuda_ok else "cpu"
-
-    if cuda_ok:
-        logger.info(f"   CUDA device : {torch.cuda.get_device_name(0)}")
-        logger.info(f"   VRAM free   : {torch.cuda.mem_get_info()[0] / 1e9:.1f} GB")
-    else:
-        logger.warning("   ⚠️  No CUDA detected — loading on CPU (slow!)")
-        logger.warning("   To fix: reinstall torch with CUDA support:")
-        logger.warning("   pip install torch==2.5.1+cu121 torchvision==0.20.1+cu121 "
-                       "--index-url https://download.pytorch.org/whl/cu121")
-
-    logger.info(f"   dtype={dtype}  device={device}")
-
-    # Load tokenizer from local adapter (has the tokenizer files)
-    tokenizer = AutoTokenizer.from_pretrained(
-        _ADAPTER_PATH,
-        trust_remote_code=False,
-        use_fast=True,
-    )
-
-    # Load the base model — NOTE: unsloth/llama-3-8b-bnb-4bit is a 4-bit
-    # checkpoint; without bitsandbytes we load the raw weights at float16/32.
-    # This needs ~16 GB VRAM (float16) or ~32 GB RAM (float32).
-    # For a lighter load, replace _BASE_MODEL with "meta-llama/Llama-3-8B".
-    logger.info("   Loading base model weights (this may take 1–3 minutes)…")
-    base = AutoModelForCausalLM.from_pretrained(
-        _BASE_MODEL,
-        torch_dtype=dtype,
-        low_cpu_mem_usage=True,
-        trust_remote_code=False,
-    )
-
-    if cuda_ok:
-        base = base.cuda()
-
-    logger.info("   Applying LoRA adapter…")
-    model = PeftModel.from_pretrained(base, _ADAPTER_PATH, is_trainable=False)
-    model.eval()
-
-    _model, _tokenizer = model, tokenizer
-    logger.info(f"✅ Loaded via PEFT fallback  [{device} / {dtype}]")
+        logger.error(f"Ollama generation failed: {e}")
+        raise RuntimeError(f"Ollama inference error: {e}")

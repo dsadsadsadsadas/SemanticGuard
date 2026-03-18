@@ -1,112 +1,28 @@
-2026-03-05 11:12:48,383 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4372, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 11:12:48,419 | ERROR | EVALUATE_PILLAR INFERENCE CRASHED — file: 'system_rules.md', error: Exception: Ollama API unavailable: HTTP Error 404: Not Found
-2026-03-05 11:19:27,657 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4371, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 11:19:27,681 | ERROR | EVALUATE_PILLAR INFERENCE CRASHED — file: 'system_rules.md', error: Exception: Ollama API unavailable: HTTP Error 404: Not Found
-2026-03-05 11:20:08,817 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4371, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 11:20:08,837 | ERROR | EVALUATE_PILLAR INFERENCE CRASHED — file: 'system_rules.md', error: Exception: Ollama API unavailable: HTTP Error 404: Not Found
-2026-03-05 11:22:39,687 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4375, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 11:22:39,722 | ERROR | EVALUATE_PILLAR INFERENCE CRASHED — file: 'system_rules.md', error: Exception: Ollama API unavailable: HTTP Error 404: Not Found
-2026-03-05 11:28:06,019 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4382, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 11:29:06,105 | ERROR | EVALUATE_PILLAR INFERENCE CRASHED — file: 'system_rules.md', error: Exception: Ollama API unavailable: timed out
-2026-03-05 11:29:06,116 | INFO | TRIGGER_SYNC — Live Reload initiated
-2026-03-05 11:29:06,130 | DEBUG | TRIGGER_SYNC — golden_state.md: IN SYNC (hash=e6ef7adb...)
-2026-03-05 11:29:06,144 | DEBUG | TRIGGER_SYNC — done_tasks.md: IN SYNC (hash=a75b0703...)
-2026-03-05 11:29:06,157 | DEBUG | TRIGGER_SYNC — pending_tasks.md: IN SYNC (hash=d5607ce1...)
-2026-03-05 11:29:06,170 | DEBUG | TRIGGER_SYNC — history_phases.md: IN SYNC (hash=3b4aa719...)
-2026-03-05 11:29:06,182 | INFO | TRIGGER_SYNC — system_rules.md: DRIFT DETECTED (live=4de9d057... vault=ea952b59...)
-2026-03-05 11:29:06,192 | INFO | TRIGGER_SYNC — system_rules.md: SYNCED ✅
-2026-03-05 11:29:06,208 | DEBUG | TRIGGER_SYNC — problems_and_resolutions.md: IN SYNC (hash=5859ebb0...)
-2026-03-05 11:29:06,240 | INFO | TRIGGER_SYNC — Lock re-signed after syncing 1 file(s)
-2026-03-05 11:29:06,241 | INFO | TRIGGER_SYNC COMPLETE — Synced 1 file(s): system_rules.md
-2026-03-05 11:29:09,951 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4391, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 11:30:00,012 | INFO | REJECT VERDICT — vault NOT updated for 'system_rules.md' (score=1.0)
-2026-03-05 11:30:00,015 | INFO | TRIGGER_SYNC — Live Reload initiated
-2026-03-05 11:30:00,025 | DEBUG | TRIGGER_SYNC — golden_state.md: IN SYNC (hash=e6ef7adb...)
-2026-03-05 11:30:00,032 | DEBUG | TRIGGER_SYNC — done_tasks.md: IN SYNC (hash=a75b0703...)
-2026-03-05 11:30:00,038 | DEBUG | TRIGGER_SYNC — pending_tasks.md: IN SYNC (hash=d5607ce1...)
-2026-03-05 11:30:00,044 | DEBUG | TRIGGER_SYNC — history_phases.md: IN SYNC (hash=3b4aa719...)
-2026-03-05 11:30:00,050 | INFO | TRIGGER_SYNC — system_rules.md: DRIFT DETECTED (live=4279adaa... vault=4de9d057...)
-2026-03-05 11:30:00,055 | INFO | TRIGGER_SYNC — system_rules.md: SYNCED ✅
-2026-03-05 11:30:00,062 | DEBUG | TRIGGER_SYNC — problems_and_resolutions.md: IN SYNC (hash=5859ebb0...)
-2026-03-05 11:30:00,084 | INFO | TRIGGER_SYNC — Lock re-signed after syncing 1 file(s)
-2026-03-05 11:30:00,085 | INFO | TRIGGER_SYNC COMPLETE — Synced 1 file(s): system_rules.md
-2026-03-05 11:30:55,670 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4380, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 11:31:45,972 | INFO | REJECT VERDICT — vault NOT updated for 'system_rules.md' (score=1.0)
-2026-03-05 11:31:45,974 | INFO | TRIGGER_SYNC — Live Reload initiated
-2026-03-05 11:31:45,984 | DEBUG | TRIGGER_SYNC — golden_state.md: IN SYNC (hash=e6ef7adb...)
-2026-03-05 11:31:45,990 | DEBUG | TRIGGER_SYNC — done_tasks.md: IN SYNC (hash=a75b0703...)
-2026-03-05 11:31:45,996 | DEBUG | TRIGGER_SYNC — pending_tasks.md: IN SYNC (hash=d5607ce1...)
-2026-03-05 11:31:46,002 | DEBUG | TRIGGER_SYNC — history_phases.md: IN SYNC (hash=3b4aa719...)
-2026-03-05 11:31:46,008 | INFO | TRIGGER_SYNC — system_rules.md: DRIFT DETECTED (live=fc9c453a... vault=4279adaa...)
-2026-03-05 11:31:46,013 | INFO | TRIGGER_SYNC — system_rules.md: SYNCED ✅
-2026-03-05 11:31:46,019 | DEBUG | TRIGGER_SYNC — problems_and_resolutions.md: IN SYNC (hash=5859ebb0...)
-2026-03-05 11:31:46,041 | INFO | TRIGGER_SYNC — Lock re-signed after syncing 1 file(s)
-2026-03-05 11:31:46,041 | INFO | TRIGGER_SYNC COMPLETE — Synced 1 file(s): system_rules.md
-2026-03-05 11:58:23,527 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4384, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 11:59:23,624 | ERROR | EVALUATE_PILLAR INFERENCE CRASHED — file: 'system_rules.md', error: Exception: Ollama API unavailable: timed out
-2026-03-05 11:59:23,637 | INFO | TRIGGER_SYNC — Live Reload initiated
-2026-03-05 11:59:23,650 | DEBUG | TRIGGER_SYNC — golden_state.md: IN SYNC (hash=e6ef7adb...)
-2026-03-05 11:59:23,657 | DEBUG | TRIGGER_SYNC — done_tasks.md: IN SYNC (hash=a75b0703...)
-2026-03-05 11:59:23,664 | DEBUG | TRIGGER_SYNC — pending_tasks.md: IN SYNC (hash=d5607ce1...)
-2026-03-05 11:59:23,671 | DEBUG | TRIGGER_SYNC — history_phases.md: IN SYNC (hash=3b4aa719...)
-2026-03-05 11:59:23,678 | INFO | TRIGGER_SYNC — system_rules.md: DRIFT DETECTED (live=cb5ae55b... vault=b5a9ecdd...)
-2026-03-05 11:59:23,684 | INFO | TRIGGER_SYNC — system_rules.md: SYNCED ✅
-2026-03-05 11:59:23,691 | DEBUG | TRIGGER_SYNC — problems_and_resolutions.md: IN SYNC (hash=5859ebb0...)
-2026-03-05 11:59:23,730 | INFO | TRIGGER_SYNC — Lock re-signed after syncing 1 file(s)
-2026-03-05 11:59:23,731 | INFO | TRIGGER_SYNC COMPLETE — Synced 1 file(s): system_rules.md
-2026-03-05 12:09:56,249 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4388, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 12:10:56,385 | ERROR | EVALUATE_PILLAR INFERENCE CRASHED — file: 'system_rules.md', error: Exception: Ollama API unavailable: timed out
-2026-03-05 12:10:56,392 | INFO | TRIGGER_SYNC — Live Reload initiated
-2026-03-05 12:10:56,400 | DEBUG | TRIGGER_SYNC — golden_state.md: IN SYNC (hash=e6ef7adb...)
-2026-03-05 12:10:56,405 | DEBUG | TRIGGER_SYNC — done_tasks.md: IN SYNC (hash=a75b0703...)
-2026-03-05 12:10:56,410 | DEBUG | TRIGGER_SYNC — pending_tasks.md: IN SYNC (hash=d5607ce1...)
-2026-03-05 12:10:56,415 | DEBUG | TRIGGER_SYNC — history_phases.md: IN SYNC (hash=3b4aa719...)
-2026-03-05 12:10:56,420 | INFO | TRIGGER_SYNC — system_rules.md: DRIFT DETECTED (live=3de4d67c... vault=a16e611f...)
-2026-03-05 12:10:56,424 | INFO | TRIGGER_SYNC — system_rules.md: SYNCED ✅
-2026-03-05 12:10:56,435 | DEBUG | TRIGGER_SYNC — problems_and_resolutions.md: IN SYNC (hash=5859ebb0...)
-2026-03-05 12:10:56,454 | INFO | TRIGGER_SYNC — Lock re-signed after syncing 1 file(s)
-2026-03-05 12:10:56,454 | INFO | TRIGGER_SYNC COMPLETE — Synced 1 file(s): system_rules.md
-2026-03-05 12:47:31,251 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4223, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 12:48:31,864 | ERROR | EVALUATE_PILLAR INFERENCE CRASHED — file: 'system_rules.md', error: Exception: Ollama API unavailable: timed out
-2026-03-05 12:48:31,869 | INFO | TRIGGER_SYNC — Live Reload initiated
-2026-03-05 12:48:31,884 | DEBUG | TRIGGER_SYNC — golden_state.md: IN SYNC (hash=e6ef7adb...)
-2026-03-05 12:48:31,894 | DEBUG | TRIGGER_SYNC — done_tasks.md: IN SYNC (hash=a75b0703...)
-2026-03-05 12:48:31,905 | DEBUG | TRIGGER_SYNC — pending_tasks.md: IN SYNC (hash=d5607ce1...)
-2026-03-05 12:48:31,922 | DEBUG | TRIGGER_SYNC — history_phases.md: IN SYNC (hash=3b4aa719...)
-2026-03-05 12:48:31,932 | INFO | TRIGGER_SYNC — system_rules.md: DRIFT DETECTED (live=1d249bd2... vault=068bb70d...)
-2026-03-05 12:48:31,939 | INFO | TRIGGER_SYNC — system_rules.md: SYNCED ✅
-2026-03-05 12:48:31,947 | DEBUG | TRIGGER_SYNC — problems_and_resolutions.md: IN SYNC (hash=5859ebb0...)
-2026-03-05 12:48:31,977 | INFO | TRIGGER_SYNC — Lock re-signed after syncing 1 file(s)
-2026-03-05 12:48:31,977 | INFO | TRIGGER_SYNC COMPLETE — Synced 1 file(s): system_rules.md
-2026-03-05 13:15:28,966 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4227, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 13:15:28,967 | CRITICAL | EVALUATE_PILLAR ABORT — GPU VERIFICATION FAILED: Ollama service unreachable: name 'urllib' is not defined
-2026-03-05 13:15:34,168 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4219, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 13:15:34,168 | CRITICAL | EVALUATE_PILLAR ABORT — GPU VERIFICATION FAILED: Ollama service unreachable: name 'urllib' is not defined
-2026-03-05 13:19:27,829 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4218, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 13:19:27,829 | CRITICAL | EVALUATE_PILLAR ABORT — GPU VERIFICATION FAILED: Ollama service unreachable: name 'urllib' is not defined
-2026-03-05 13:21:20,113 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4218, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 13:21:20,113 | CRITICAL | EVALUATE_PILLAR ABORT — GPU VERIFICATION FAILED: Ollama service unreachable: name 'urllib' is not defined
-2026-03-05 13:32:25,158 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4222, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 13:32:25,158 | CRITICAL | EVALUATE_PILLAR ABORT — GPU VERIFICATION FAILED: Ollama service unreachable: name 'urllib' is not defined
-2026-03-05 13:32:49,582 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4234, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 13:32:49,582 | CRITICAL | EVALUATE_PILLAR ABORT — GPU VERIFICATION FAILED: Ollama service unreachable: name 'urllib' is not defined
-2026-03-05 13:40:07,628 | CRITICAL | EVALUATE ABORT — GPU VERIFICATION FAILED: No Ollama process detected in nvidia-smi. Model might be on CPU!
-2026-03-05 13:40:07,848 | CRITICAL | EVALUATE ABORT — GPU VERIFICATION FAILED: No Ollama process detected in nvidia-smi. Model might be on CPU!
-2026-03-05 13:40:26,029 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4238, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 13:40:26,087 | CRITICAL | EVALUATE_PILLAR ABORT — GPU VERIFICATION FAILED: No Ollama process detected in nvidia-smi. Model might be on CPU!
-2026-03-05 14:07:15,755 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4242, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 14:07:15,820 | ERROR | EVALUATE_PILLAR INFERENCE CRASHED — file: 'system_rules.md', error: Exception: Ollama API Error 404: Model 'llama3.1:8b' not found. Please run 'ollama pull llama3.1:8b'
-2026-03-05 14:09:07,829 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4239, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 14:09:41,489 | INFO | REJECT VERDICT — vault NOT updated for 'system_rules.md' (score=1.0)
-2026-03-05 14:09:41,496 | INFO | TRIGGER_SYNC — Live Reload initiated
-2026-03-05 14:09:41,509 | DEBUG | TRIGGER_SYNC — golden_state.md: IN SYNC (hash=e6ef7adb...)
-2026-03-05 14:09:41,514 | DEBUG | TRIGGER_SYNC — done_tasks.md: IN SYNC (hash=a75b0703...)
-2026-03-05 14:09:41,520 | DEBUG | TRIGGER_SYNC — pending_tasks.md: IN SYNC (hash=d5607ce1...)
-2026-03-05 14:09:41,524 | DEBUG | TRIGGER_SYNC — history_phases.md: IN SYNC (hash=3b4aa719...)
-2026-03-05 14:09:41,531 | INFO | TRIGGER_SYNC — system_rules.md: DRIFT DETECTED (live=d1cbe575... vault=4105c8be...)
-2026-03-05 14:09:41,537 | INFO | TRIGGER_SYNC — system_rules.md: SYNCED ✅
-2026-03-05 14:09:41,543 | DEBUG | TRIGGER_SYNC — problems_and_resolutions.md: IN SYNC (hash=5859ebb0...)
-2026-03-05 14:09:41,563 | INFO | TRIGGER_SYNC — Lock re-signed after syncing 1 file(s)
-2026-03-05 14:09:41,564 | INFO | TRIGGER_SYNC COMPLETE — Synced 1 file(s): system_rules.md
-2026-03-05 14:10:02,302 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 4253, project_path: c:\Users\ethan\Documents\Projects\Trepan_Test_Zone
-2026-03-05 14:10:06,482 | INFO | REJECT VERDICT — vault NOT updated for 'system_rules.md' (score=1.0)
+2026-03-18 02:57:49,346 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 1736, project_path: NOT SET
+2026-03-18 02:57:56,869 | INFO | ACCEPT VERDICT — triggering vault sync for 'system_rules.md'
+2026-03-18 02:57:56,869 | INFO | SYNC START — file: system_rules.md, content_len: 1736
+2026-03-18 02:57:56,870 | DEBUG | VAULT WRITE OK — C:\Users\ethan\Documents\Projects\Trepan\.trepan\trepan_vault\system_rules.md
+2026-03-18 02:57:56,870 | DEBUG | LIVE WRITE OK — C:\Users\ethan\Documents\Projects\Trepan\.trepan\system_rules.md
+2026-03-18 02:57:56,879 | DEBUG | LOCK RESIGNED OK — root: C:\Users\ethan\Documents\Projects\Trepan
+2026-03-18 02:57:56,880 | INFO | SYNC COMPLETE ✅ — file: system_rules.md, new_hash: 5ed8bd004dbc7cad6d78dc9a6a8e6a43e6002746a539d84c109af7df5b437ccc
+2026-03-18 03:04:21,865 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 1736, project_path: NOT SET
+2026-03-18 03:04:29,048 | INFO | ACCEPT VERDICT — triggering vault sync for 'system_rules.md'
+2026-03-18 03:04:29,048 | INFO | SYNC START — file: system_rules.md, content_len: 1736
+2026-03-18 03:04:29,049 | DEBUG | VAULT WRITE OK — C:\Users\ethan\Documents\Projects\Trepan\.trepan\trepan_vault\system_rules.md
+2026-03-18 03:04:29,050 | DEBUG | LIVE WRITE OK — C:\Users\ethan\Documents\Projects\Trepan\.trepan\system_rules.md
+2026-03-18 03:04:29,052 | DEBUG | LOCK RESIGNED OK — root: C:\Users\ethan\Documents\Projects\Trepan
+2026-03-18 03:04:29,052 | INFO | SYNC COMPLETE ✅ — file: system_rules.md, new_hash: 5ed8bd004dbc7cad6d78dc9a6a8e6a43e6002746a539d84c109af7df5b437ccc
+2026-03-18 03:05:42,475 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 1849, project_path: NOT SET
+2026-03-18 03:05:44,583 | INFO | ACCEPT VERDICT — triggering vault sync for 'system_rules.md'
+2026-03-18 03:05:44,583 | INFO | SYNC START — file: system_rules.md, content_len: 1849
+2026-03-18 03:05:44,584 | DEBUG | VAULT WRITE OK — C:\Users\ethan\Documents\Projects\Trepan\.trepan\trepan_vault\system_rules.md
+2026-03-18 03:05:44,585 | DEBUG | LIVE WRITE OK — C:\Users\ethan\Documents\Projects\Trepan\.trepan\system_rules.md
+2026-03-18 03:05:44,593 | DEBUG | LOCK RESIGNED OK — root: C:\Users\ethan\Documents\Projects\Trepan
+2026-03-18 03:05:44,594 | INFO | SYNC COMPLETE ✅ — file: system_rules.md, new_hash: 9917ae9ba6f56e1f13127682d8dbdec2cdc0e05102f9437f5fbeb294c09815c6
+2026-03-18 03:06:14,860 | INFO | EVALUATE_PILLAR ENTRY — file: system_rules.md, content_len: 1736, project_path: NOT SET
+2026-03-18 03:06:17,407 | INFO | ACCEPT VERDICT — triggering vault sync for 'system_rules.md'
+2026-03-18 03:06:17,409 | INFO | SYNC START — file: system_rules.md, content_len: 1736
+2026-03-18 03:06:17,410 | DEBUG | VAULT WRITE OK — C:\Users\ethan\Documents\Projects\Trepan\.trepan\trepan_vault\system_rules.md
+2026-03-18 03:06:17,410 | DEBUG | LIVE WRITE OK — C:\Users\ethan\Documents\Projects\Trepan\.trepan\system_rules.md
+2026-03-18 03:06:17,411 | DEBUG | LOCK RESIGNED OK — root: C:\Users\ethan\Documents\Projects\Trepan
+2026-03-18 03:06:17,412 | INFO | SYNC COMPLETE ✅ — file: system_rules.md, new_hash: 5ed8bd004dbc7cad6d78dc9a6a8e6a43e6002746a539d84c109af7df5b437ccc

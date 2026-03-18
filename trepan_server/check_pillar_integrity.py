@@ -19,16 +19,8 @@ except ImportError:
         "problems_and_resolutions.md",
     ]
     def get_root_dir() -> str:
-        import platform
-        win_path = r"C:\Users\ethan\Documents\Projects\Trepan"
-        if sys.platform.startswith("linux"):
-            wsl_path = "/mnt/c/Users/ethan/Documents/Projects/Trepan"
-            if os.path.exists(wsl_path):
-                return wsl_path
-            return os.getcwd()
-        if os.path.exists(win_path):
-            return win_path
-        return os.getcwd()
+        # Dynamically resolve root relative to this script
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     def write_vault_lock(root_dir: str):
         pass # Only used if importing server fails, which we hope it doesn't

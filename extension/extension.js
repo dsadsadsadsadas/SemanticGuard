@@ -107,28 +107,36 @@ async function discoverServerURL(basePort = 8001) {
 
     console.log(`[TREPAN WSL] Testing connection URLs: ${candidateURLs.join(', ')}`);
 
-    // Test each URL
+    // We implement a robust retry mechanism (hammering localhost) to wake up sleeping WSL network adapters.
+    const MAX_RETRIES = 3;
+
     for (const url of candidateURLs) {
-        try {
-            console.log(`[TREPAN WSL] Testing: ${url}`);
-            const res = await fetchWithTimeout(`${url}/health`, {}, 3000);
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                console.log(`[TREPAN WSL] Testing (Attempt ${attempt}/${MAX_RETRIES}): ${url}`);
+                // Increased timeout to 5000ms to tolerate slow WSL bridge wake-ups
+                const res = await fetchWithTimeout(`${url}/health`, {}, 5000);
 
-            if (res.ok) {
-                const data = await res.json();
-                console.log(`[TREPAN WSL] ✅ Connected to: ${url}`);
-                console.log(`[TREPAN WSL] Server status: ${JSON.stringify(data)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log(`[TREPAN WSL] ✅ Connected to: ${url}`);
+                    console.log(`[TREPAN WSL] Server status: ${JSON.stringify(data)}`);
 
-                // Cache the successful URL
-                discoveredServerUrl = url;
-                return url;
+                    // Cache the successful URL
+                    discoveredServerUrl = url;
+                    return url;
+                }
+            } catch (error) {
+                // Wait briefly before retrying this specific URL
+                if (attempt < MAX_RETRIES) {
+                    console.log(`[TREPAN WSL] ⚠️ Attempt ${attempt} failed on ${url}, retrying in 500ms...`);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
             }
-        } catch (error) {
-            // SILENCE NOISE: Only log if we are desperate or if it's an unexpected error
-            // console.log(`[TREPAN WSL] ❌ Failed ${url}: ${error.code || error.message}`);
         }
     }
 
-    console.log(`[TREPAN WSL] ❌ All connection attempts failed (Tested ports: ${targetPorts.join(', ')})`);
+    console.log(`[TREPAN WSL] ❌ All connection attempts failed after ${MAX_RETRIES} retries. (Tested ports: ${targetPorts.join(', ')})`);
     return null;
 }
 
@@ -137,6 +145,218 @@ async function discoverServerURL(basePort = 8001) {
 let statusBarItem;
 let serverOnline = false;
 let discoveredServerUrl = null; // Cache the working server URL
+let outputChannel; // Global diagnostic output channel
+
+// ─── Evaluation Queue ────────────────────────────────────────────────────────
+// Serializes saves to prevent shotgun POST requests & Ollama bottlenecking.
+class SaveQueue {
+    constructor() {
+        this.promise = Promise.resolve();
+    }
+
+    enqueue(task) {
+        return new Promise((resolve, reject) => {
+            this.promise = this.promise
+                .then(() => task().then(resolve).catch(reject))
+                .catch(() => task().then(resolve).catch(reject));
+        });
+    }
+}
+const saveEvaluationQueue = new SaveQueue();
+
+// ─── Pivot Detection (Evolutionary Intelligence) ─────────────────────────────
+
+/**
+ * Detect if code removal represents a pivot away from a failed technology
+ * @param {vscode.TextDocument} document - The saved document
+ * @param {string} projectRoot - Workspace root path
+ */
+async function detectPivot(document, projectRoot) {
+    try {
+        console.log('[TREPAN PIVOT] Checking for pivots in:', document.fileName);
+
+        // 1. Get git diff for this file
+        const diff = await getGitDiff(document.fileName, projectRoot);
+        if (!diff) {
+            console.log('[TREPAN PIVOT] No git diff available');
+            return;
+        }
+
+        // 2. Detect removed technologies
+        const removedTechs = detectRemovedTechs(diff);
+        if (removedTechs.length === 0) {
+            console.log('[TREPAN PIVOT] No technologies removed');
+            return;
+        }
+
+        console.log('[TREPAN PIVOT] Removed technologies:', removedTechs);
+
+        // 3. Read problems_and_resolutions.md
+        const problems = await readProblemsFile(projectRoot);
+        const unresolvedProblems = problems.filter(p => p.status === 'UNRESOLVED');
+
+        if (unresolvedProblems.length === 0) {
+            console.log('[TREPAN PIVOT] No unresolved problems found');
+            return;
+        }
+
+        // 4. Match removed techs to unresolved problems
+        const pivots = [];
+        for (const tech of removedTechs) {
+            for (const problem of unresolvedProblems) {
+                if (problem.description.toLowerCase().includes(tech.toLowerCase())) {
+                    pivots.push({ tech, problem });
+                }
+            }
+        }
+
+        // 5. If pivots detected, trigger evolution
+        if (pivots.length > 0) {
+            for (const pivot of pivots) {
+                console.log(`[TREPAN PIVOT] 🔄 PIVOT DETECTED: Removed ${pivot.tech} after problem`);
+
+                // Call /evolve_memory
+                await triggerEvolution(projectRoot, pivot.tech);
+            }
+        }
+    } catch (error) {
+        console.error('[TREPAN PIVOT] Error detecting pivot:', error);
+    }
+}
+
+/**
+ * Get git diff for a file
+ * @param {string} fileName - Full path to file
+ * @param {string} projectRoot - Workspace root
+ * @returns {Promise<string|null>} - Git diff output or null
+ */
+async function getGitDiff(fileName, projectRoot) {
+    try {
+        const { exec } = require('child_process');
+        const { promisify } = require('util');
+        const execAsync = promisify(exec);
+
+        const relativePath = path.relative(projectRoot, fileName);
+        const { stdout } = await execAsync(`git diff HEAD "${relativePath}"`, {
+            cwd: projectRoot,
+            timeout: 5000
+        });
+
+        return stdout;
+    } catch (error) {
+        console.log('[TREPAN PIVOT] Git diff failed:', error.message);
+        return null;
+    }
+}
+
+/**
+ * Detect removed technologies from git diff
+ * @param {string} diff - Git diff output
+ * @returns {string[]} - Array of removed technology names
+ */
+function detectRemovedTechs(diff) {
+    const removedLines = diff.split('\n')
+        .filter(line => line.startsWith('-') && !line.startsWith('---'))
+        .map(line => line.substring(1).trim());
+
+    const techs = [];
+    const patterns = [
+        /import\s+(\w+)/,                    // Python: import torch
+        /from\s+(\w+)\s+import/,             // Python: from cuda import
+        /require\(['"](\w+)['"]\)/,          // JS: require('mongodb')
+        /import.*from\s+['"](\w+)['"]/,      // JS: import x from 'react'
+        /import\s+['"](\w+)['"]/,            // JS: import 'cuda'
+    ];
+
+    for (const line of removedLines) {
+        for (const pattern of patterns) {
+            const match = line.match(pattern);
+            if (match) {
+                techs.push(match[1].toLowerCase());
+            }
+        }
+    }
+
+    return [...new Set(techs)]; // Remove duplicates
+}
+
+/**
+ * Read and parse problems_and_resolutions.md
+ * @param {string} projectRoot - Workspace root
+ * @returns {Promise<Array>} - Array of problem objects
+ */
+async function readProblemsFile(projectRoot) {
+    try {
+        const problemsPath = path.join(projectRoot, '.trepan', 'problems_and_resolutions.md');
+        const content = fs.readFileSync(problemsPath, 'utf-8');
+        return parseProblems(content);
+    } catch (error) {
+        console.log('[TREPAN PIVOT] Could not read problems file:', error.message);
+        return [];
+    }
+}
+
+/**
+ * Parse problems from markdown content
+ * @param {string} content - Markdown content
+ * @returns {Array} - Array of problem objects
+ */
+function parseProblems(content) {
+    const problems = [];
+    const problemBlocks = content.split(/##\s+Problem\s+#\d+:/);
+
+    for (const block of problemBlocks.slice(1)) {
+        const statusMatch = block.match(/\*\*Status\*\*:\s*(\w+)/);
+        const status = statusMatch ? statusMatch[1] : 'UNKNOWN';
+
+        problems.push({
+            description: block,
+            status: status
+        });
+    }
+
+    return problems;
+}
+
+/**
+ * Trigger evolutionary memory update
+ * @param {string} projectRoot - Workspace root
+ * @param {string} tech - Technology that was pivoted away from
+ */
+async function triggerEvolution(projectRoot, tech) {
+    try {
+        const cfg = vscode.workspace.getConfiguration("trepan");
+        let serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8001";
+
+        // Try to use discovered URL
+        const discoveredUrl = await discoverServerURL();
+        if (discoveredUrl) {
+            serverUrl = discoveredUrl;
+        }
+
+        console.log(`[TREPAN PIVOT] Calling /evolve_memory at ${serverUrl}`);
+
+        const response = await fetchWithTimeout(`${serverUrl}/evolve_memory`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_path: projectRoot })
+        }, 60000); // 60 second timeout for Ollama processing
+
+        if (response.ok) {
+            const result = await response.json();
+            console.log('[TREPAN PIVOT] ✅ Evolution triggered successfully:', result);
+
+            // Show notification to user
+            vscode.window.showInformationMessage(
+                `✅ Trepan learned from pivot: Added rule "DO NOT USE ${tech.toUpperCase()}"`
+            );
+        } else {
+            console.error('[TREPAN PIVOT] Evolution failed:', response.status, response.statusText);
+        }
+    } catch (error) {
+        console.error('[TREPAN PIVOT] Error triggering evolution:', error);
+    }
+}
 
 // ─── Activation ──────────────────────────────────────────────────────────────
 
@@ -150,6 +370,10 @@ function activate(context) {
         vscode.window.registerWebviewViewProvider("trepan.explorer", trepanSidebarProvider)
     );
 
+    // Initialize Output Channel (Global Singleton)
+    outputChannel = vscode.window.createOutputChannel("Trepan Gatekeeper");
+    context.subscriptions.push(outputChannel);
+    
     // Status bar pill
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBarItem.command = "trepan.status";
@@ -380,7 +604,19 @@ function activate(context) {
         });
     });
 
-    context.subscriptions.push(askCommand, openLedgerCommand, reviewChangesCommand, initializeProjectCommand);
+    let toggleProcessorCommand = vscode.commands.registerCommand('trepan.toggleProcessor', async () => {
+        const cfg = vscode.workspace.getConfiguration("trepan");
+        const currentMode = cfg.get("processorMode") ?? "GPU";
+        
+        const newMode = currentMode === "GPU" ? "CPU" : "GPU";
+        await cfg.update("processorMode", newMode, vscode.ConfigurationTarget.Workspace);
+        
+        vscode.window.showInformationMessage(
+            `🛡️ Trepan: Switched to ${newMode} mode. Restart server for changes to take effect.`
+        );
+    });
+
+    context.subscriptions.push(askCommand, openLedgerCommand, reviewChangesCommand, initializeProjectCommand, toggleProcessorCommand);
 
     // Periodic server health check
     checkServerHealth();
@@ -389,42 +625,70 @@ function activate(context) {
 
     // ── THE AIRBAG ────────────────────────────────────────────────────────────
     const saveHook = vscode.workspace.onWillSaveTextDocument((event) => {
-        console.log('[TREPAN DEBUG] Save event triggered for:', event.document.fileName);
-        try {
-            const cfg = vscode.workspace.getConfiguration("trepan");
-            if (!cfg.get("enabled")) {
-                console.log('[TREPAN DEBUG] Airbag is DISABLED in settings. Skipping.');
-                return;
-            }
+        // Keep this synchronous and lightweight: immediately hand off the real work
+        // into a Promise passed to event.waitUntil so any synchronous exceptions
+        // are avoided by design.
+        console.log('[TREPAN DEBUG] Save event triggered for:', event.document.fileName, 'Reason:', event.reason);
 
-            // Bypass standard excludes if this is a Pillar file (Selective Pass)
-            const relPath = vscode.workspace.asRelativePath(event.document.uri);
-            const isPillar = relPath.startsWith(".trepan") && relPath.endsWith(".md");
-            console.log(`[TREPAN DEBUG] relPath=${relPath} | isPillar=${isPillar} | serverOnline=${serverOnline}`);
-
-            if (!isPillar) {
-                const excludes = cfg.get("excludePatterns") ?? [];
-                if (excludes.some((pat) => matchGlob(pat, relPath))) {
-                    console.log('[TREPAN DEBUG] File matched exclude pattern. Skipping.');
+        event.waitUntil((async () => {
+            try {
+                // Only trigger on explicit manual saves (Ctrl+S / Cmd+S). Ignore auto-saves on focus out/delay.
+                if (event.reason !== vscode.TextDocumentSaveReason.Manual) {
+                    console.log('[TREPAN DEBUG] Skipping auto-save event. Reason != Manual.');
                     return;
                 }
-            }
 
-            // Skip if server is offline — fail open
-            if (!serverOnline) {
-                console.warn('[TREPAN DEBUG] Server is OFFLINE. Airbag failing open for this save.');
-                return;
-            }
+                const cfg = vscode.workspace.getConfiguration("trepan");
+                if (!cfg.get("enabled")) {
+                    console.log('[TREPAN DEBUG] Airbag is DISABLED in settings. Skipping.');
+                    return;
+                }
 
-            event.waitUntil(evaluateSave(event.document));
-        } catch (error) {
-            console.error('[TREPAN ERROR] Save listener crashed:', error);
-            vscode.window.showErrorMessage(`Trepan Extension Crash: ${error.message}`);
-        }
+                // Bypass standard excludes if this is a Pillar file (Selective Pass)
+                const relPath = vscode.workspace.asRelativePath(event.document.uri);
+                const isPillar = relPath.startsWith(".trepan") && relPath.endsWith(".md");
+                console.log(`[TREPAN DEBUG] relPath=${relPath} | isPillar=${isPillar} | serverOnline=${serverOnline}`);
+
+                if (!isPillar) {
+                    const excludes = cfg.get("excludePatterns") ?? [];
+                    if (excludes.some((pat) => matchGlob(pat, relPath))) {
+                        console.log('[TREPAN DEBUG] File matched exclude pattern. Skipping.');
+                        return;
+                    }
+                }
+
+                // Check Server Offline
+                if (!serverOnline) {
+                    const enforcementMode = cfg.get("enforcementMode") ?? "Soft";
+                    if (enforcementMode === "Strict") {
+                        console.warn('[TREPAN DEBUG] Server is OFFLINE. Strict mode enforcing BLOCK.');
+                        vscode.window.showErrorMessage(`🛑 Trepan Strict Mode: Server is OFFLINE. Save blocked.`, { modal: true });
+                        throw new Error("Trepan Strict Mode: Server is offline. Save blocked.");
+                    }
+                    console.warn('[TREPAN DEBUG] Server is OFFLINE. Airbag failing open for this save.');
+                    return;
+                }
+
+                // Queue the evaluation sequentially to protect the GPU
+                await saveEvaluationQueue.enqueue(() => evaluateSave(event.document));
+            } catch (error) {
+                console.error('[TREPAN ERROR] Save listener async task failed:', error);
+                try { vscode.window.showErrorMessage(`Trepan Extension Crash: ${error.message}`); } catch (e) { /* swallow */ }
+                // Re-throw to let VS Code know the save participant failed (preserves previous behavior)
+                throw error;
+            }
+        })());
     });
 
-    const saveDoneHandler = vscode.workspace.onDidSaveTextDocument((document) => {
+    const saveDoneHandler = vscode.workspace.onDidSaveTextDocument(async (document) => {
         console.log('[TREPAN] Document Saved:', document.fileName);
+
+        // Check for pivots (evolutionary intelligence)
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+        if (workspaceFolder && serverOnline) {
+            const projectRoot = workspaceFolder.uri.fsPath;
+            await detectPivot(document, projectRoot);
+        }
     });
 
     context.subscriptions.push(saveHook, saveDoneHandler);
@@ -433,13 +697,31 @@ function activate(context) {
 // ─── Core Evaluation ─────────────────────────────────────────────────────────
 
 /**
+ * Rule Sanctuary: Detects if a document is within the .trepan/ folder
+ * Returns true if the file should be auto-accepted without audit
+ */
+function isRuleSanctuaryPath(document) {
+    const relPath = vscode.workspace.asRelativePath(document.uri);
+    // Normalize path separators for cross-platform compatibility
+    const normalizedPath = relPath.replace(/\\/g, '/');
+
+    // Check if path contains .trepan/ folder
+    return normalizedPath.includes('.trepan/') || normalizedPath.startsWith('.trepan/');
+}
+
+/**
  * @param {vscode.TextDocument} document
  * @returns {Promise<vscode.TextEdit[]>}
  */
 async function evaluateSave(document) {
+    /**
+     * RULE SANCTUARY: (REMOVED) - We now send all pillar changes to the Meta-Gate
+     * to ensure the Vault remains synchronized.
+     */
+
     const cfg = vscode.workspace.getConfiguration("trepan");
     let serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8001";
-    const timeoutMs = cfg.get("timeoutMs") ?? 30_000;
+    const timeoutMs = cfg.get("timeoutMs") ?? 300_000;
 
     // Use auto-discovery if the configured URL doesn't work
     const discoveredUrl = await discoverServerURL();
@@ -450,6 +732,10 @@ async function evaluateSave(document) {
         await cfg.update("serverUrl", discoveredUrl, vscode.ConfigurationTarget.Workspace);
     } else if (!discoveredUrl) {
         console.log(`[TREPAN EVAL] ❌ No server available for evaluation`);
+        if (cfg.get("enforcementMode") === "Strict") {
+            vscode.window.showErrorMessage(`🛑 Trepan Strict Mode: No server available. Save blocked.`, { modal: true });
+            throw new Error("Trepan Strict Mode: No server available.");
+        }
         return []; // Fail-open: allow save to proceed
     }
 
@@ -463,16 +749,13 @@ async function evaluateSave(document) {
         const fileName = path.basename(document.fileName);
         const incomingContent = document.getText();
 
-        // ============================================
-        // THE META-GATE: Policing the Law (.trepan/*.md)
-        // ============================================
         console.log(`[TREPAN META-GATE] Pillar file save detected: ${fileName}`);
 
         setStatus("checking");
-        // Action 1: Push the SCANNING state to sidebar immediately
         trepanSidebarProvider.sendMessage({ type: 'scanning', title: 'Meta-Gate Audit: ' + fileName });
+        
         try {
-            const projectPath = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || '';
+            const projectPath = vscode.workspace.workspaceFolders?.[0]?.fsPath || '';
             const res = await fetchWithTimeout(`${serverUrl}/evaluate_pillar`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -486,181 +769,103 @@ async function evaluateSave(document) {
             }
 
             const data = await res.json();
-            setStatus("online");
+            const driftScore = data.drift_score ?? 0;
+            const actionResult = data.action;
+            const reasoning = data.reasoning || "[No reasoning provided by server]";
 
-            // Parse the score correctly, preferring the specific Guillotine parser key if present
-            const driftScore = data.score ?? data.drift_score ?? 0;
-            const actionResult = data.verdict ?? data.action;
-            const thoughtReasoning = data.reasoning ?? data.raw_output;
-
-            // ═══════════════════════════════════════════════════════════════════
-            // AI ASSISTANT AUTONOMY: Parse and execute [AI_ASSISTANT_ACTIONS]
-            // ═══════════════════════════════════════════════════════════════════
-            await executeAIAssistantActions(thoughtReasoning, actionResult, driftScore);
-
-            // Send output to the reasoning sidebar
-            trepanSidebarProvider.sendMessage({
+            const webviewMessage = {
                 type: 'log',
                 title: 'Meta-Gate Audit: ' + fileName,
                 score: driftScore.toFixed(2),
                 action: actionResult,
-                thought: thoughtReasoning,
+                reasoning: reasoning,
                 filename: fileName,
-                incomingContent: incomingContent,
-            });
+                fullPath: document.uri.fsPath,
+                violations: data.violations || [],
+            };
+            console.log("[TREPAN DEBUG] FINAL MESSAGE", webviewMessage);
+            trepanSidebarProvider.sendMessage(webviewMessage);
+            await executeAIAssistantActions(reasoning, actionResult, driftScore);
 
             if (actionResult === "REJECT") {
                 const scoreDisplay = driftScore.toFixed(2);
-                vscode.window.showErrorMessage(`🛑 Trepan Blocked Pillar Save — Drift Score: ${scoreDisplay}`, { modal: true }, "See Reasoning");
-
-                // The Revert Mechanism - forcefully overwrite user's file with vault state
-                const workspaceEdit = new vscode.WorkspaceEdit();
-                const vaultPath = path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, ".trepan", "trepan_vault", fileName);
-                if (fs.existsSync(vaultPath)) {
-                    const vaultContent = fs.readFileSync(vaultPath, "utf-8");
-                    const fullRange = new vscode.Range(
-                        document.positionAt(0),
-                        document.positionAt(incomingContent.length)
-                    );
-                    workspaceEdit.replace(document.uri, fullRange, vaultContent);
-                    await vscode.workspace.applyEdit(workspaceEdit);
-                    vscode.window.showInformationMessage(`Vault state restored for ${fileName}.`);
-                }
-
-                throw new Error(`Trepan Meta-Gate: architectural change rejected (score ${scoreDisplay})`);
-            }
-
-            if (actionResult === "VAULT_COMPROMISED") {
-                vscode.window.showErrorMessage(`🚨 VAULT COMPROMISED: ${thoughtReasoning}`, { modal: true });
-                throw new Error("Trepan Meta-Gate: Vault Cryptographic Signature Invalid.");
+                vscode.window.showErrorMessage(`🛑 Trepan Blocked Save — Drift Score: ${scoreDisplay}`, { modal: true });
+                throw new Error(`Trepan Gatekeeper: architectural drift detected (score ${scoreDisplay})`);
             }
 
             setStatus("accepted");
             setTimeout(() => setStatus("online"), 2000);
-            return []; // ALLOW
-
+            return [];
         } catch (err) {
-            if (err.message?.startsWith("Trepan Meta-Gate")) throw err;
-
-            // ── LIVE RELOAD FALLBACK: If /evaluate_pillar failed (e.g. 500, 503, model not ready),
-            // force a direct vault sync from live files via /trigger_sync ──
-            console.log(`[TREPAN FALLBACK] /evaluate_pillar failed — attempting /trigger_sync live reload...`);
-            try {
-                const syncRes = await fetchWithTimeout(`${serverUrl}/trigger_sync`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                }, 10000);
-                if (syncRes.ok) {
-                    const syncData = await syncRes.json();
-                    console.log(`[TREPAN FALLBACK] /trigger_sync result: ${syncData.message}`);
-                    if (syncData.synced_files && syncData.synced_files.length > 0) {
-                        vscode.window.showInformationMessage(`Trepan: Vault force-synced ${syncData.synced_files.length} file(s)`);
-                    }
-                } else {
-                    console.warn(`[TREPAN FALLBACK] /trigger_sync returned ${syncRes.status}`);
-                }
-            } catch (syncErr) {
-                console.error(`[TREPAN FALLBACK] /trigger_sync also failed:`, syncErr.message);
-            }
-
+            console.error("Trepan Meta-Gate error:", err);
             setStatus("online");
             return [];
         }
-    }
+    } else {
+        // ============================================
+        // THE AIRBAG: Project File Evaluation
+        // ============================================
+        const fileName = path.basename(document.fileName);
+        const codeContent = document.getText();
+        const pillars = readPillars();
 
-    // ============================================
-    // STANDARD AIRBAG: Policing the Code 
-    // ============================================
-    const pillars = readPillars();
-    const fileName = path.basename(document.fileName);
-    const codeSnippet = document.getText().substring(0, 3000);
+        console.log(`[TREPAN AIRBAG] Document save detected: ${fileName}`);
 
-    const payload = {
-        ...pillars,
-        user_command: `[SAVE INTERCEPT — ${fileName}]\n\n${codeSnippet}`,
-    };
+        setStatus("checking");
+        trepanSidebarProvider.sendMessage({ type: 'scanning', title: 'Airbag Audit: ' + fileName });
 
-    setStatus("checking");
+        try {
+            const projectPath = vscode.workspace.workspaceFolders?.[0]?.fsPath || '';
+            const res = await fetchWithTimeout(`${serverUrl}/evaluate`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    filename: fileName,
+                    code_snippet: codeContent,
+                    pillars: pillars,
+                    project_path: projectPath
+                }),
+            }, timeoutMs);
 
-    try {
-        const res = await fetchWithTimeout(`${serverUrl}/evaluate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        }, timeoutMs);
-
-        if (!res.ok) {
-            console.warn(`Trepan: server returned ${res.status} — failing open`);
-            setStatus("online");
-            return [];
-        }
-
-        const data = await res.json();
-        setStatus("online");
-
-        // Parse the score correctly, preferring the specific Guillotine parser key if present
-        const driftScore = data.score ?? data.drift_score ?? 0;
-        const actionResult = data.verdict ?? data.action;
-        const thoughtReasoning = data.reasoning ?? data.raw_output ?? "";
-
-        // ═══════════════════════════════════════════════════════════════════
-        // AI ASSISTANT AUTONOMY: Parse and execute [AI_ASSISTANT_ACTIONS]
-        // ═══════════════════════════════════════════════════════════════════
-        await executeAIAssistantActions(thoughtReasoning, actionResult, driftScore);
-
-        // Send output to the reasoning sidebar
-        trepanSidebarProvider.sendMessage({
-            type: 'log',
-            title: 'Airbag Audit: ' + fileName,
-            score: driftScore.toFixed(2),
-            action: actionResult,
-            thought: thoughtReasoning,
-        });
-
-        if (actionResult === "REJECT") {
-            const scoreDisplay = driftScore.toFixed(2);
-            const reason = thoughtReasoning.split("\n").slice(0, 3).join(" ").substring(0, 200);
-
-            // Block the save — showing a modal error makes it unmissable
-            const choice = await vscode.window.showErrorMessage(
-                `🛑 Trepan Blocked Save — Drift Score: ${scoreDisplay}`,
-                { modal: true, detail: `Reason: ${reason}\n\nFix the architectural violation or disable Trepan to proceed.` },
-                "Override & Save Anyway",
-                "Open .trepan/system_rules.md"
-            );
-
-            if (choice === "Override & Save Anyway") {
+            if (!res.ok) {
+                console.warn(`Trepan: Airbag server returned ${res.status} — failing open`);
+                setStatus("online");
                 return [];
             }
 
-            if (choice === "Open .trepan/system_rules.md") {
-                openPillarFile("system_rules.md");
+            const data = await res.json();
+            const driftScore = data.drift_score ?? 0;
+            const actionResult = data.action;
+            const reasoning = data.reasoning || "[No reasoning provided by server]";
+
+            const webviewMessage = {
+                type: 'log',
+                title: 'Airbag Audit: ' + fileName,
+                score: driftScore.toFixed(2),
+                action: actionResult,
+                reasoning: reasoning,
+                filename: fileName,
+                fullPath: document.uri.fsPath,
+                violations: data.violations || [],
+            };
+
+            trepanSidebarProvider.sendMessage(webviewMessage);
+            await executeAIAssistantActions(reasoning, actionResult, driftScore);
+
+            if (actionResult === "REJECT") {
+                const scoreDisplay = driftScore.toFixed(2);
+                vscode.window.showErrorMessage(`🛑 Trepan Blocked Save — Drift Score: ${scoreDisplay}`, { modal: true });
+                throw new Error(`Trepan Airbag: architectural drift detected (score ${scoreDisplay})`);
             }
 
-            throw new Error(`Trepan Gatekeeper: architectural drift detected (score ${scoreDisplay})`);
-        }
-
-        // Handle WARN verdict (parser failed but we don't want to block)
-        if (actionResult === "WARN") {
-            console.warn('[TREPAN WARNING] Parser returned WARN - model output was malformed');
-            vscode.window.showWarningMessage(
-                `⚠️ Trepan: Model output was malformed, save allowed (fail-open)`,
-                { modal: false }
-            );
-            // Allow save to proceed (fail-open)
+            setStatus("accepted");
+            setTimeout(() => setStatus("online"), 2000);
+            return [];
+        } catch (err) {
+            console.error("Trepan Airbag error:", err);
             setStatus("online");
             return [];
         }
-
-        setStatus("accepted");
-        setTimeout(() => setStatus("online"), 2000);
-        return [];
-
-    } catch (err) {
-        if (err.message?.startsWith("Trepan Gatekeeper")) throw err;
-        console.warn("Trepan: evaluation error —", err.message, "— failing open");
-        setStatus("online");
-        return [];
     }
 }
 
@@ -707,13 +912,9 @@ async function checkServerHealth() {
         setStatus("offline");
 
         // Output detailed diagnostics to VS Code channel
-        const outputChannel = vscode.window.createOutputChannel("Trepan Gatekeeper");
-        outputChannel.appendLine(`[${new Date().toISOString()}] Health Check Failed`);
-        outputChannel.appendLine(`  Reason: No server responded to health checks`);
-        outputChannel.appendLine(`  Tested URLs: 127.0.0.1:8001, localhost:8001${await getWSLIP() ? `, WSL IP` : ''} (and fallback 8000)`);
+        outputChannel.appendLine(`[${new Date().toISOString()}] Health Check Status: Failed (Auto-Discovery)`);
         outputChannel.appendLine(`  Solution: Start server with 'python start_server.py --host 0.0.0.0'`);
-        outputChannel.show(true);
-
+        
         return;
     }
 
@@ -737,8 +938,7 @@ async function checkServerHealth() {
     } catch (error) {
         console.log(`[TREPAN HEALTH] ❌ Health check failed: ${error.message}`);
 
-        // Enhanced error logging with Node.js error codes
-        const outputChannel = vscode.window.createOutputChannel("Trepan Gatekeeper");
+        // Enhanced error logging using the global channel
         outputChannel.appendLine(`[${new Date().toISOString()}] Health Check Error`);
         outputChannel.appendLine(`  URL: ${discoveredUrl}`);
         outputChannel.appendLine(`  Error Code: ${error.code || 'UNKNOWN'}`);
@@ -756,8 +956,7 @@ async function checkServerHealth() {
             const solution = troubleshooting[error.code] || 'Unknown network error. Check server logs.';
             outputChannel.appendLine(`  Troubleshooting: ${solution}`);
         }
-
-        outputChannel.show(true);
+        
         serverOnline = false;
         setStatus("offline");
     }
@@ -864,13 +1063,14 @@ async function executeAIAssistantActions(llmResponse, verdict, score) {
         // ═══════════════════════════════════════════════════════════════════
         console.log('[TREPAN AI AUTONOMY] No [AI_ASSISTANT_ACTIONS] found - using fallback heuristics');
 
-        const thoughtMatch = llmResponse.match(/\[THOUGHT\]([\s\S]*?)(?:\[|$)/);
+        let thoughtMatch = llmResponse.match(/\[THOUGHT\]([\s\S]*?)(?:\[|$)/);
         if (!thoughtMatch) {
-            console.log('[TREPAN AI AUTONOMY] No [THOUGHT] section found - skipping');
-            return;
+            console.log('[TREPAN AI AUTONOMY] No [THOUGHT] section found - continuing without thought heuristics');
+            // Continue without returning so this autonomy code cannot block the save/fetch flow.
+            thoughtMatch = ['', ''];
         }
 
-        const thought = thoughtMatch[1].trim().toLowerCase();
+        const thought = (thoughtMatch[1] || '').trim().toLowerCase();
         const timestamp = new Date().toISOString().split('T')[0];
 
         // HEURISTIC 1: Detect rule violations (high drift score + REJECT)
@@ -969,10 +1169,53 @@ async function appendToFile(projectRoot, filePath, content) {
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-function fetchWithTimeout(url, options, ms) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ms);
-    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+function fetchWithTimeout(urlStr, options = {}, ms) {
+    return new Promise((resolve, reject) => {
+        const http = require('http');
+        const https = require('https');
+        let parsedUrl;
+
+        try {
+            parsedUrl = new URL(urlStr);
+        } catch (e) {
+            return reject(e);
+        }
+
+        const client = parsedUrl.protocol === 'https:' ? https : http;
+        const reqOptions = {
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port,
+            path: parsedUrl.pathname + parsedUrl.search,
+            method: options.method || 'GET',
+            headers: options.headers || {},
+            timeout: ms
+        };
+
+        const req = client.request(reqOptions, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                resolve({
+                    ok: res.statusCode >= 200 && res.statusCode < 300,
+                    status: res.statusCode,
+                    json: async () => JSON.parse(data),
+                    text: async () => data
+                });
+            });
+        });
+
+        req.on('timeout', () => {
+            req.destroy();
+            reject(new Error(`Timeout after ${ms}ms`));
+        });
+
+        req.on('error', err => reject(err));
+
+        if (options.body) {
+            req.write(typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
+        }
+        req.end();
+    });
 }
 
 /** Minimal glob matcher — supports ** and * wildcards */
@@ -1037,16 +1280,33 @@ class TrepanSidebarProvider {
                 vscode.window.showWarningMessage(`⚠️ Force Override acknowledged. Trepan will allow the next save for this file.`);
                 this.sendMessage({ type: 'reset' });
             }
+
+            if (message.command === 'apply_fix') {
+                const { line, text, ruleId, reason, filePath } = message;
+                
+                const relativePath = vscode.workspace.asRelativePath(filePath || '');
+                const prompt = `Trepan detected a Rule ${ruleId} violation in file '${relativePath}' on line ${line}.\nReason: ${reason}\nSuggested fix: ${text}\n\nPlease apply this fix.`;
+                
+                vscode.env.clipboard.writeText(prompt);
+                vscode.window.showInformationMessage(`📋 Fix prompt for '${relativePath}' copied to clipboard! Paste it to your IDE Agent.`);
+            }
         });
     }
     sendMessage(message) {
+        // SILENCED: Do not force focus on every message. User can open sidebar manually.
+        // vscode.commands.executeCommand("trepan.explorer.focus").then(() => {
+        
+        // Attempt to send immediately (works if view was already mounted)
         if (this._view) {
-            this._view.webview.postMessage(message);
-        } else {
-            vscode.commands.executeCommand("trepan.explorer.focus").then(() => {
-                if (this._view) this._view.webview.postMessage(message);
-            });
+            try { this._view.webview.postMessage(message); } catch (e) { console.error(e); }
         }
+        
+        // Fire a delayed duplicate message 500ms later to guarantee it catches freshly mounted Webviews.
+        setTimeout(() => {
+            if (this._view) {
+                try { this._view.webview.postMessage(message); } catch (e) { console.error(e); }
+            }
+        }, 500);
     }
     _getHtmlForWebview() {
         return `<!DOCTYPE html>
@@ -1054,14 +1314,31 @@ class TrepanSidebarProvider {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
     <title>Trepan Architect</title>
     <style>
         body { font-family: var(--vscode-font-family); padding: 10px; color: var(--vscode-editor-foreground); transition: background-color 0.3s; }
         body.compromised { background-color: rgba(255, 0, 0, 0.1); }
         .thought { color: var(--vscode-terminal-ansiBrightBlack); font-style: italic; white-space: pre-wrap; margin-bottom: 10px; font-size: 0.9em; }
+        /* FIX 3: High-density bulletpoint styling */
+        .thought-bullets { margin: 0; padding-left: 20px; line-height: 1.4; list-style-type: disc; }
+        .thought-bullets li { margin: 2px 0; font-size: 0.9em; color: var(--vscode-terminal-ansiBrightBlack); }
+        
+        /* FIX 2: DRIFT METER STYLING (Distance-Based Color Coding) */
+        .drift-meter { margin: 10px 0; padding: 8px; background-color: var(--vscode-editor-inactiveSelectionBackground); border-radius: 4px; font-size: 0.95em; }
+        .drift-label { font-weight: bold; color: var(--vscode-editor-foreground); }
+        .drift-score { font-weight: bold; font-size: 1.1em; padding: 2px 6px; border-radius: 3px; }
+        .drift-status { font-weight: bold; margin-left: 4px; }
+        
+        /* Color coding: 0.0 = Green (Healthy), 0.3-0.6 = Yellow (Warning), 0.6+ = Red (Critical) */
+        .drift-healthy { color: #4ec9b0; background-color: rgba(78, 201, 176, 0.15); }
+        .drift-warning { color: #dcdcaa; background-color: rgba(220, 220, 170, 0.15); }
+        .drift-critical { color: #f48771; background-color: rgba(244, 135, 113, 0.15); }
+        
         .action-accept { color: var(--vscode-testing-iconPassed); font-weight: bold; }
         .action-reject { color: var(--vscode-testing-iconFailed); font-weight: bold; }
         .action-error { color: orange; font-weight: bold; }
+        .action-warn { color: var(--vscode-terminal-ansiYellow); font-weight: bold; }
         .action-compromised { color: #ff4d4d; font-weight: bold; font-size: 1.2em; }
         .log-entry { margin-bottom: 20px; border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 10px; }
         .scanning { display: flex; align-items: center; gap: 8px; color: var(--vscode-terminal-ansiBrightYellow); }
@@ -1076,6 +1353,38 @@ class TrepanSidebarProvider {
         .btn-warn:hover { background-color: #804d00; }
         .btn-revert { background-color: #1a73e8; color: white; }
         .btn-revert:hover { background-color: #1557b0; }
+        
+        /* VIOLATION CARD STYLING */
+        .violation-card {
+            background-color: var(--vscode-editor-inactiveSelectionBackground);
+            border-left: 4px solid #f48771;
+            border-radius: 4px;
+            padding: 12px;
+            margin: 10px 0;
+            font-size: 0.9em;
+        }
+        .violation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        .violation-file { color: #4ec9b0; }
+        .violation-line { color: #ce9178; font-family: var(--vscode-editor-font-family); }
+        .violation-rule { 
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            color: #dcdcaa;
+        }
+        .violation-desc {
+            margin-top: 6px;
+            line-height: 1.4;
+            color: var(--vscode-editor-foreground);
+        }
+        .violation-icon { margin-right: 4px; }
     </style>
 </head>
 <body>
@@ -1098,8 +1407,75 @@ class TrepanSidebarProvider {
             vscode.postMessage({ command: 'resign_vault' });
         });
 
+        function escapeHtml(unsafe) {
+            return (unsafe || '')
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+
+        function renderViolations(violations, filePath) {
+            try {
+                if (!violations) return '';
+                
+                // Ensure array format (LLM might sometimes output object-wrapped array)
+                const list = Array.isArray(violations) ? violations : [];
+                if (list.length === 0) return '';
+                
+                let html = '<div class="violations-container">';
+                html += '<h4 style="margin-bottom: 10px;">⚠️ Architectural Violations</h4>';
+                
+                list.forEach(v => {
+                    if (!v) return;
+                    html += '<div class="violation-card" style="border-left: 3px solid var(--vscode-errorForeground); margin-bottom: 12px; padding: 10px; background: rgba(255, 255, 255, 0.05);">';
+                    html += '    <div class="violation-header" style="margin-bottom: 6px;">';
+                    html += '        <span class="violation-file">📍 Line: ' + (v.line_number || '?') + '</span>';
+                    html += '    </div>';
+                    html += '    <div class="violation-rule" style="font-weight: bold; margin-bottom: 4px;">📋 Rule: ' + escapeHtml(v.rule_id || 'Rule') + '</div>';
+                    html += '    <div class="violation-desc" style="font-style: italic; color: var(--vscode-editor-foreground);">🚫 Reason: ' + escapeHtml(v.violation || 'Check server logs') + '</div>';
+                    if (v.suggested_fix) {
+                        html += '    <div style="margin-top: 8px;">';
+                        html += '        <button class="btn btn-warn apply-fix-btn" data-line="' + (v.line_number || 0) + '" data-rule-id="' + escapeHtml(v.rule_id || 'Rule') + '" data-reason="' + escapeHtml(v.violation || 'Architectural Drift') + '" data-fix="' + escapeHtml(v.suggested_fix) + '" data-file-path="' + (filePath || '') + '">🪄 Apply Fix</button>';
+                        html += '    </div>';
+                    }
+                    html += '</div>';
+                });
+                
+                html += '</div>';
+                return html;
+            } catch (err) {
+                console.error('[WEBVIEW ERROR] renderViolations failed:', err);
+                return '<p style="color: var(--vscode-errorForeground);">⚠️ Error rendering violations. See developer console.</p>';
+            }
+        }
+
         window.addEventListener('message', event => {
             const message = event.data;
+            console.log("WEBVIEW RECEIVED:", message);
+            // ENHANCED DEBUG LOGGING
+            console.log('[WEBVIEW DEBUG] ═══════════════════════════════════════');
+            console.log('[WEBVIEW DEBUG] Message received!');
+            console.log('[WEBVIEW DEBUG] Message type:', message.type);
+            console.log('[WEBVIEW DEBUG] Message keys:', Object.keys(message));
+            console.log('[WEBVIEW DEBUG] Action:', message.action);
+            console.log('[WEBVIEW DEBUG] Score:', message.score);
+            console.log('[WEBVIEW DEBUG] Reasoning exists?', !!message.reasoning);
+            console.log('[WEBVIEW DEBUG] Violations count:', message.violations ? message.violations.length : 0);
+            console.log('[WEBVIEW DEBUG] Reasoning preview:', (message.reasoning || '').substring(0, 150));
+            console.log('[WEBVIEW DEBUG] ═══════════════════════════════════════');
+            
+            // Debug logging: show what webview receives
+            if (message.type === 'log') {
+                console.log('[WEBVIEW DEBUG] Received log message details:', {
+                    action: message.action,
+                    score: message.score,
+                    reasoning_length: (message.reasoning || '').length,
+                    violations_count: message.violations ? message.violations.length : 0
+                });
+            }
             
             if (message.type === 'reset') {
                 document.body.classList.remove('compromised');
@@ -1123,6 +1499,12 @@ class TrepanSidebarProvider {
                 contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2><div class="scanning"><div class="spinner"></div><span>🛡️ Trepan is evaluating architectural drift...</span></div>';
                 return;
             }
+
+            // ERROR: show server failure while evaluating
+            if (message.type === 'error') {
+                contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2><div class="action-card" style="border-left: 4px solid var(--vscode-errorForeground);"><p class="action-error">⚠️ Trepan Error</p><p style="color: var(--vscode-editor-foreground); font-size: 0.9em;">' + message.message + '</p><p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; font-size: 0.85em; margin-top: 8px;">Audit failed — check server logs for details.</p></div>';
+                return;
+            }
             
             if (message.type === 'log') {
                 if (message.action === 'VAULT_COMPROMISED') {
@@ -1133,20 +1515,47 @@ class TrepanSidebarProvider {
                 const entry = document.createElement('div');
                 entry.className = 'log-entry';
                 let html = '<h3>' + message.title + '</h3>';
-                if (message.score) html += '<p>Drift Score: ' + message.score + '</p>';
+                
+                // FIX 2: DRIFT METER WITH COLOR CODING (Distance-Based)
+                // 0.0 = Perfect (Green), 0.3-0.6 = Warning (Yellow), 0.6+ = Critical (Red)
+                if (message.score) {
+                    const score = parseFloat(message.score);
+                    let scoreClass = 'drift-healthy';  // Default green
+                    let scoreLabel = 'Healthy';
+                    
+                    if (score >= 0.6) {
+                        scoreClass = 'drift-critical';
+                        scoreLabel = 'Critical';
+                    } else if (score >= 0.3) {
+                        scoreClass = 'drift-warning';
+                        scoreLabel = 'Warning';
+                    }
+                    
+                    html += '<div class="drift-meter">';
+                    html += '<span class="drift-label">Architectural Distance:</span> ';
+                    html += '<span class="drift-score ' + scoreClass + '">' + message.score + '</span> ';
+                    html += '<span class="drift-status ' + scoreClass + '">(' + scoreLabel + ')</span>';
+                    html += '</div>';
+                }
+
+                const reasoningText = message.reasoning;
+                if (reasoningText) {
+                    html += '<div class="thought">' + escapeHtml(reasoningText) + '</div>';
+                }
 
                 if (message.action === 'ACCEPT') {
                     html += '<p class="action-accept">✅ Verdict: ACCEPT</p>';
-                    if (message.thought) {
-                        html += '<button class="btn btn-revert" id="seeReasoningBtn">💭 See Reasoning</button>';
-                        html += '<div id="reasoningContent" style="display:none; margin-top:10px; padding:10px; background-color:var(--vscode-editor-inactiveSelectionBackground); border-radius:4px;"><div class="thought">' + message.thought + '</div></div>';
+                    // Only show violations on ACCEPT if there is actual drift (score > 0)
+                    if (message.violations && message.violations.length > 0 && parseFloat(message.score || 0) > 0) {
+                        html += renderViolations(message.violations, message.fullPath);
                     }
 
                 } else if (message.action === 'REJECT') {
                     html += '<p class="action-reject">🛑 Verdict: REJECT</p>';
-                    if (message.thought) {
-                        html += '<button class="btn btn-revert" id="seeReasoningBtn">💭 See Reasoning</button>';
-                        html += '<div id="reasoningContent" style="display:none; margin-top:10px; padding:10px; background-color:var(--vscode-editor-inactiveSelectionBackground); border-radius:4px;"><div class="thought">' + message.thought + '</div></div>';
+                    if (message.violations && message.violations.length > 0) {
+                        html += renderViolations(message.violations, message.fullPath);
+                    } else {
+                        html += '<p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; margin-top: 8px;">⚠️ Violation data missing (Check server logs)</p>';
                     }
                     html += '<div style="margin-top:10px;">';
                     html += '<button class="btn btn-revert" id="revertBtn">↩️ Revert Save</button>';
@@ -1155,19 +1564,35 @@ class TrepanSidebarProvider {
 
                 } else if (message.action === 'ERROR') {
                     html += '<p class="action-error">⚠️ Verdict: ERROR (AI hallucinated — no valid output)</p>';
-                    if (message.thought) {
-                        html += '<button class="btn btn-revert" id="seeReasoningBtn">💭 See Reasoning</button>';
-                        html += '<div id="reasoningContent" style="display:none; margin-top:10px; padding:10px; background-color:var(--vscode-editor-inactiveSelectionBackground); border-radius:4px;"><div class="thought">' + message.thought + '</div></div>';
+                    if (message.violations && message.violations.length > 0) {
+                        html += renderViolations(message.violations, message.fullPath);
+                    } else {
+                        html += '<p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; margin-top: 8px;">⚠️ Evaluation failed (AI output malformed)</p>';
                     }
 
                 } else if (message.action === 'VAULT_COMPROMISED') {
                     html += '<p class="action-compromised">🚨 VAULT COMPROMISED</p>';
 
+                } else if (message.action === 'WARN') {
+                    // FIX 4: Handle partial audits (missing [ACTION] tag)
+                    html += '<p class="action-warn">⚠️ Verdict: INCOMPLETE AUDIT</p>';
+                    html += '<p style="color: var(--vscode-terminal-ansiYellow); font-size: 0.9em; margin-top: 4px;">Parser detected truncated output - [ACTION] tag missing</p>';
+                    if (message.violations && message.violations.length > 0) {
+                        html += renderViolations(message.violations, message.fullPath);
+                    } else {
+                         html += '<p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; margin-top: 8px;">⚠️ Truncated output: No violations extracted</p>';
+                    }
+                    // Buttons are disabled for incomplete audits
+                    html += '<div style="margin-top:10px;">';
+                    html += '<button class="btn btn-revert" disabled style="opacity: 0.5; cursor: not-allowed;">↩️ Revert Save (Disabled)</button>';
+                    html += '<button class="btn btn-warn" disabled style="opacity: 0.5; cursor: not-allowed;">⚠️ Force Override (Disabled)</button>';
+                    html += '<p style="color: var(--vscode-terminal-ansiRed); font-size: 0.85em; margin-top: 8px;">⚠️ Accept/Reject buttons disabled - audit incomplete</p>';
+                    html += '</div>';
+
                 } else {
                     if (message.action) html += '<p>Verdict: ' + message.action + '</p>';
-                    if (message.thought) {
-                        html += '<button class="btn btn-revert" id="seeReasoningBtn">💭 See Reasoning</button>';
-                        html += '<div id="reasoningContent" style="display:none; margin-top:10px; padding:10px; background-color:var(--vscode-editor-inactiveSelectionBackground); border-radius:4px;"><div class="thought">' + message.thought + '</div></div>';
+                    if (message.violations && message.violations.length > 0) {
+                        html += renderViolations(message.violations, message.fullPath);
                     }
                 }
 
@@ -1178,17 +1603,17 @@ class TrepanSidebarProvider {
                 // Wire up buttons via event delegation on the entry element
                 entry.addEventListener('click', (e) => {
                     const target = e.target;
-                    if (target.id === 'seeReasoningBtn') {
-                        const reasoningContent = document.getElementById('reasoningContent');
-                        if (reasoningContent) {
-                            const isHidden = reasoningContent.style.display === 'none';
-                            reasoningContent.style.display = isHidden ? 'block' : 'none';
-                            target.innerText = isHidden ? '🙈 Hide Reasoning' : '💭 See Reasoning';
-                        }
-                    } else if (target.id === 'revertBtn') {
+                    if (target.id === 'revertBtn') {
                         vscode.postMessage({ command: 'revert_save', filename: message.filename });
                     } else if (target.id === 'overrideBtn') {
                         vscode.postMessage({ command: 'force_override' });
+                    } else if (target.classList.contains('apply-fix-btn')) {
+                        const line = parseInt(target.getAttribute('data-line'));
+                        const text = target.getAttribute('data-fix');
+                        const ruleId = target.getAttribute('data-rule-id');
+                        const reason = target.getAttribute('data-reason');
+                        const filePath = target.getAttribute('data-file-path');
+                        vscode.postMessage({ command: 'apply_fix', line, text, ruleId, reason, filePath });
                     }
                 });
             }
@@ -1200,8 +1625,17 @@ class TrepanSidebarProvider {
 }
 const trepanSidebarProvider = new TrepanSidebarProvider();
 
+/**
+ * Hands off an AI-suggested fix to the Antigravity IDE Agent.
+ * @param {number} line - The 1-indexed line number
+ * @param {string} text - The replacement text (or whole code)
+ */
+// application logic end
+
 // ─── Exports ─────────────────────────────────────────────────────────────────
 
 function deactivate() { }
 
 module.exports = { activate, deactivate };
+
+

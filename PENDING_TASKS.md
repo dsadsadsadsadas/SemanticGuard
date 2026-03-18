@@ -1,55 +1,32 @@
-# 📋 PENDING_TASKS.md — Trepan Project
+# Pending Tasks
 
-## 🛡️ VS Code Airbag Extension (Updated 2026-02-26)
-
-### Server
-- [ ] Fix model loading — resolve PEFT/transformers version conflict in conda env
-- [ ] Upload `Trepan_Model_V2` to HuggingFace for remote download support
-- [ ] Add `/metrics` endpoint (token latency, request count, hit/reject ratio)
-- [ ] **Cleanup**: `sudo snap remove ollama --purge` (permanently remove broken snap files)
-
-### Extension (VS Code — onWillSaveTextDocument approach)
-- [x] `extension/package.json` — VS Code extension manifest (2026-02-26)
-- [x] `extension/extension.js` — Airbag save interceptor (2026-02-26)
-- [x] Added "Ask Trepan" context menu command to extension (2026-02-26)
-- [x] Registered "Trepan Architect" sidebar in `package.json` (2026-02-26)
-- [x] Implemented Shadow Vault & Meta-Gate `/evaluate_pillar` routing (2026-02-26)
-- [x] Implemented "Trepan Architect" sidebar UI logic in `extension.js` (2026-02-26)
-- [x] Fixed dead "See Reasoning" button — now toggles AI thought hidden/visible in sidebar (2026-02-27)
-- [x] Updated extension connection auto-discovery for dynamic ports and fallback logic (2026-03-04)
-- [x] Implemented Pillar-Sync Split Brain fix, atomic vault rebuilds, and `check_pillar_integrity.py` (2026-03-05)
-- [x] Deep Technical Audit: trace_sync.log, OS error trapping, `/trigger_sync` live-reload endpoint, extension fallback (2026-03-05)
-- [ ] Test install: `Extensions: Install from VSIX` or press F5 in extension dev host
-- [ ] Create `.trepan/problems_and_resolutions.md` pillar file
-- [ ] Implement REJECT history log → `.trepan/drift_log.jsonl`
-- [x] Add an icon set (16x16, 48x48, 128x128 PNG) (2026-02-26)
-
-### Dataset & Model
-- [ ] Expand training dataset with more ACCEPT edge cases (currently biased toward REJECT)
-- [ ] Fine-tune a second epoch with the expanded dataset
-- [ ] Benchmark: measure P50/P95 inference latency on GPU vs CPU fallback
-
-## 🔮 Polyglot Expansion (Phase 5 — Ongoing)
-- [ ] Full AST support for Rust via `tree-sitter`
-- [ ] Full AST support for Go via `tree-sitter`
-- [ ] Full AST support for Java via `tree-sitter`
-
-## 🏢 Enterprise Edition
-- [ ] Centralized policy management server (team-wide golden state)
-- [ ] Fleet Learning: propagate confirmed vulnerability fixes across projects
-
----
-
-## ✅ Recently Completed
-- [x] Generated extension icons via `generate_icons.py` — 4 sizes in `extension/icons/` (2026-02-26)
-- [x] Built `trepan_server/` FastAPI inference backend (2026-02-26)
-- [x] Built `extension/` Antigravity IDE interceptor (2026-02-26)
-- [x] Built `trepan_workspace_init.py` workspace bootstrapper (2026-02-26)
-- [x] Built `start_server.py` convenience launcher (2026-02-26)
-- [x] `.trepan/` Workspace initialized with 4 pillar files (2026-02-26)
-- [x] Made Shadow Vault physically visible at project root (`trepan_vault`) and auto-sync on start (2026-02-26)
-- [x] Trained `Trepan_Model_V2` LoRA adapter (2026-02-25)
-- [x] Implemented `drift_engine.py` architecture drift detector (Phase TR-02)
-- [x] Implemented `taint_engine.py` polyglot taint analysis (Phase 5)
-- [x] Implemented `package_sentinel.py` supply chain security (Phase 9)
-- [x] Built `llm_gateway.py` multi-provider LLM adapter
+- [x] Phase 10-12: Vault Path, README Upgrade, and UI Focus Fixes
+- [x] Phase 15: Vault Pipeline Debug — Fixed stale `sync_and_lock_vault` call on L2475 missing `project_path`
+- [x] Refactored `trepan_server/model_loader.py` to use local Ollama API (`http://localhost:11434/api/generate`) instead of PyTorch.
+- [x] Created `Modelfile` inside `trepan-v2_gguf/` and built local Ollama model `trepan`.
+- [x] Added `temperature: 0.1` and `num_predict: 512` options directly to `model_loader.py` Ollama requests (avoids needing `ollama create` rebuild for parameter changes).
+- [x] Fixed truncation bug in `trepan_server/response_parser.py` caused by overly greedy regex lookahead. Implemented "Round 2" fix using ultra-strict lookahead (ignoring plain "Score:" labels) and "last-block" priority strategy for hallucinated outputs.
+- [x] Refactored `guillotine_parser` inside `trepan_server/response_parser.py` to ensure consistent return keys (`violations`, `raw_output`) in all paths, resolving the 500 `KeyError: 'violations'` in `server.py`.
+- [x] Enhanced `extension/extension.js` with robust error handling and UI feedback.
+- [x] Fixed syntax and lint errors in `renderViolations` function in `extension.js` by transitioning to stable string concatenation.
+- [x] Implemented "Scanning..." and "Error" notification protocol in the VS Code sidebar to prevent UI hangs on model inference or server failures.
+- [x] Standardized naming to `reasoning` across the entire pipeline (Backend, Parser, Frontend).
+- [x] Fixed "Tag-Smashing" regex truncation in `response_parser.py` to ensure full reasoning extraction.
+- [x] Restored and corrected `evaluateSave` logic in `extension.js` for both Meta-Gate and Airbag audit flows.
+- [x] Restored UI feature in `extension.js` webview to render architectural violations with custom styling and a dedicated `renderViolations` helper.
+- [x] Corrected `REJECT`, `ACCEPT`, and `WARN` message listener paths in `extension.js` to properly paint the violations array.
+- [x] Resolved HTTP 422 Unprocessable Entity for `/evaluate` endpoint in `server.py`. Updated Pydantic models to match the nested JSON payload sent by the VS Code extension and simplified "Rule Sanctuary" logic to use the explicit `filename` field.
+- [x] Cured LLM "Parroting" (Prompt Leakage) in system prompts. Replaced specific few-shot examples (`web_sin.ts`, `innerHTML`) with abstract generic templates in `server.py` and `prompt_builder.py` and added explicit constraints against copying the template.
+- [x] Refined System Prompt with **Negative Logic Safeguards** in `server.py` and `prompt_builder.py`. Enforced existence requirements, evidence-based reasoning, and explicit acceptance for empty/comment-only files to stop over-policing and false positives.
+- [x] UI Bugfix: Hidden "Architectural Violations" header and list in the VS Code sidebar for clean audits (score 0.00) in the `ACCEPT` case.
+- [x] Implemented AGENTIC BRIDGE CLIPBOARD HANDOFF: Switched "Apply Fix" from `antigravity.submitPrompt` command to a clipboard handoff strategy to ensure reliability across environments.
+- [x] Enhanced `prompt_builder.py` and `response_parser.py` to generate and extract `[SUGGESTED_FIX]` blocks for architectural violations.
+- [x] AGENTIC BRIDGE CONTEXT INJECTION: Updated `extension.js` to pass `fullPath` to the webview and use `vscode.workspace.asRelativePath` to inclusion of the relative file path in the clipboard prompt. Ensures the IDE Agent has proper file context.
+- [x] UNIVERSAL ANTI-HALLUCINATION GUARD: Hardened `prompt_builder.py` system instructions with a strict rule against flagging keywords (eval, exec, etc.) unless they appear in executable code. Eliminates "Phantom eval" violations from string payloads.
+- [x] Extension Cleanup: Removed redundant `applyQuickFix` function and updated webview render logic for architectural violations.
+- [x] **LLM HALLUCINATION SUPPRESSION (IMPARTIAL JUDGE):** Restructured `prompt_builder.py` system-wide to move from a "Strict Auditor" to an "Impartial Architectural Judge" persona. Implemented 2-Layer Rule Probity in `response_parser.py` and `server.py` to discard violations with non-existent Rule IDs. Verified fix for "eval-in-string" false positives.
+- [x] **SILENT JUDGE & DAEMON DETACH (LATENCY OPTIMIZATION):** Implemented "Silence Mandate" in `prompt_builder.py` to keep LLM thoughts under 3 sentences and ignore compliant lines. Decoupled Ollama process management from `start_server.py` for a more stable boot sequence. Verified full `[ACTION]` tag completion in `model_loader.py`.
+- [x] **PILLAR BIDIRECTIONAL SYNC FIX:** Refactored `sync_and_lock_vault` in `server.py` to perform atomic, bidirectional writes to both the `.trepan/trepan_vault/` snapshot and the live `.trepan/` directory. Ensures the user's workspace rules never drift from the server's ground truth.
+- [x] **SIX PILLARS & VAULT ARCHITECTURE OVERHAUL:** Transitioned from a 5-pillar to a 6-pillar system, introducing `problems_and_resolutions.md`. Overhauled `README.md` and `golden_state.md` to enforce a strict Whitelist/Blacklist philosophy with an agentic self-healing feedback loop. Updated both live files and server templates.
+- [x] 🟢 **UI FOCUS SUPPRESSION**: Removed disruptive `outputChannel.show()` and `sidebar.focus()` triggers to ensure Trepan remains a "silent partner" during development.
+- [x] 🏦 **VAULT SYNC & README UPGRADE**: Eradicated "Rule Sanctuary" bypass, implemented Meta-Gate AI audit for pillar files, and upgraded all documentation to the 6-pillar architecture.

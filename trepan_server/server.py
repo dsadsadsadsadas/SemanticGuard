@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """
 🛡️ Trepan Gatekeeper — FastAPI Server
-POST /evaluate  → drift evaluation using Trepan_Model_V2
+POST /evaluate  → drift evaluation using llama3.1:8b
 GET  /health    → status + model loaded flag
 """
+
+# Force UTF-8 output on Windows to prevent charmap codec crashes with emoji characters
+import sys, io
+if sys.stdout.encoding != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if sys.stderr.encoding != "utf-8":
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 import logging
 import time
@@ -13,6 +20,7 @@ import difflib
 import hashlib
 import re
 import json
+import asyncio
 from datetime import datetime
 from contextlib import asynccontextmanager
 
@@ -20,20 +28,75 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+import os
+import re
+import time
+import json
+import hashlib
+import difflib
+import logging
+import traceback
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+import uvicorn
+
+# Add Rule Sanctuary path detection function
+def is_trepan_path(file_path: str) -> bool:
+    """
+    Robust path analysis to detect .trepan/ folder paths.
+    Uses proper path parsing with os.path.normpath() for cross-platform compatibility.
+
+    Args:
+        file_path: The file path to analyze (can be relative or absolute)
+
+    Returns:
+        bool: True if the path is within a .trepan/ folder, False otherwise
+    """
+    if not file_path:
+        return False
+
+    # Normalize the path for cross-platform compatibility
+    normalized_path = os.path.normpath(file_path)
+
+    # Split the path into components
+    path_parts = normalized_path.split(os.path.sep)
+
+    # Check if any part of the path is ".trepan"
+    return ".trepan" in path_parts
+
 # Handle both relative and absolute imports for flexibility
 try:
-    from .prompt_builder import build_prompt
+    from .prompt_builder import build_prompt, build_meta_gate_prompt, STRUCTURAL_INTEGRITY_SYSTEM, METAGATE_AUDIT_SYSTEM
     from .response_parser import guillotine_parser
+    from .model_loader import get_model, generate
 except ImportError:
     # Fallback for when running directly (not as a package)
-    from prompt_builder import build_prompt
+    from prompt_builder import build_prompt, build_meta_gate_prompt, STRUCTURAL_INTEGRITY_SYSTEM, METAGATE_AUDIT_SYSTEM
     from response_parser import guillotine_parser
+    from model_loader import get_model, generate
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
 )
 logger = logging.getLogger("trepan.server")
+
+# ─── Cross-Platform Path Resolver ─────────────────────────────────────────────
+
+def get_root_dir() -> str:
+    """
+    Returns the absolute path to the project root directory.
+    Dynamically resolved relative to this file so it works across Windows, macOS, Linux, and WSL 
+    without any hardcoded paths.
+    """
+    # This file is in trepan_server/server.py
+    # The project root is one level up.
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ─── Diagnostic Trace Logger (ssart_trace_sync.log) ─────────────────────────
 _trace_sync_logger = logging.getLogger("trepan.trace_sync")
@@ -46,7 +109,7 @@ try:
     _trace_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
     _trace_sync_logger.addHandler(_trace_handler)
 except Exception as e:
-    print(f"⚠️  Failed to initialize trace logger at root: {e}")
+    print(f"WARNING: Failed to initialize trace logger at root: {e}")
     # Fallback to local
     _trace_handler = logging.FileHandler("ssart_trace_sync.log", encoding="utf-8")
     _trace_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
@@ -295,6 +358,11 @@ Trust no one. Assume every input is malicious. Privacy is non-negotiable. Statel
 - Update dependencies regularly
 - Review dependency licenses
 - Minimize dependency count
+
+## Rule 100: DOM_INTEGRITY_PROTECTION
+- Forbidden use of innerHTML, outerHTML, or document.write.
+- Reasoning: These are primary XSS vectors.
+- Action: Use textContent or innerText instead.
 """,
         "llm_prompt": """Generate a 'Perfect Execution' code example for the Secure-Stateless (Fortress) mode.
 
@@ -311,52 +379,24 @@ Output ONLY the code example with a brief introduction. No extra commentary."""
     }
 }
 
-# ─── Cross-Platform Path Resolver ─────────────────────────────────────────────
-
-def get_root_dir() -> str:
-    """
-    Returns the Trepan_Test_Zone path that works on both WSL and native Windows.
-    On WSL (Linux kernel), C:\ maps to /mnt/c/.
-    On Windows, use the Windows path directly.
-    
-    EMERGENCY FIX: If hardcoded path doesn't exist, fall back to current directory.
-    """
-    import platform, sys
-    win_path = r"C:\Users\ethan\Documents\Projects\Trepan_Test_Zone"
-    
-    # Detect WSL: Linux kernel but running under Windows Subsystem
-    if sys.platform.startswith("linux"):
-        wsl_path = "/mnt/c/Users/ethan/Documents/Projects/Trepan_Test_Zone"
-        # EMERGENCY: Check if path exists, fall back to current directory
-        if os.path.exists(wsl_path):
-            return wsl_path
-        else:
-            logger.warning(f"⚠️  Hardcoded WSL path not found: {wsl_path}")
-            logger.warning(f"⚠️  Falling back to current directory: {os.getcwd()}")
-            return os.getcwd()
-    
-    # Windows path
-    if os.path.exists(win_path):
-        return win_path
-    else:
-        logger.warning(f"⚠️  Hardcoded Windows path not found: {win_path}")
-        logger.warning(f"⚠️  Falling back to current directory: {os.getcwd()}")
-        return os.getcwd()
-
 # ─── Cryptographic Vault Security ──────────────────────────────────────────
 
-def calculate_vault_hash(root_dir: str) -> str:
+def calculate_vault_hash(root_dir: str = None) -> str:
     """
     Calculate a SHA-256 hash representing the current Vault disk state.
     
     Args:
-        root_dir: REQUIRED. Absolute path to project root. No defaults allowed.
+        root_dir: Optional. Absolute path to project root. Defaults to get_root_dir().
     """
     if not root_dir:
-        raise ValueError("calculate_vault_hash requires explicit root_dir - no defaults allowed")
+        root_dir = get_root_dir()
+
     hasher = hashlib.sha256()
     vault_dir = os.path.join(root_dir, ".trepan", "trepan_vault")
     
+    if not os.path.exists(vault_dir):
+        return ""
+
     for pillar in sorted(PILLARS):
         dst = os.path.join(vault_dir, pillar)
         if os.path.exists(dst):
@@ -367,9 +407,9 @@ def calculate_vault_hash(root_dir: str) -> str:
             
     return hasher.hexdigest()
 
-def verify_vault_hash() -> bool:
-    """Check if the Vault matches the .trepan.lock signature. For main vault only."""
-    root_dir = get_root_dir()  # Explicitly use hardcoded path for main vault
+def verify_vault_hash(project_path: str = None) -> bool:
+    """Check if the Vault matches the .trepan.lock signature."""
+    root_dir = project_path if project_path else get_root_dir()
     lock_file = os.path.join(root_dir, ".trepan", ".trepan.lock")
     
     if not os.path.exists(lock_file):
@@ -386,15 +426,15 @@ def verify_vault_hash() -> bool:
         
     return calculate_vault_hash(root_dir) == stored_hash  # Pass explicit root_dir
 
-def write_vault_lock(root_dir: str):
+def write_vault_lock(root_dir: str = None):
     """
     Sign the vault by saving its hash to .trepan.lock in JSON format.
     
     Args:
-        root_dir: REQUIRED. Absolute path to project root. No defaults allowed.
+        root_dir: Optional. Absolute path to project root. Defaults to get_root_dir().
     """
     if not root_dir:
-        raise ValueError("write_vault_lock requires explicit root_dir - no defaults allowed")
+        root_dir = get_root_dir()
     lock_file = os.path.join(root_dir, ".trepan", ".trepan.lock")
     
     file_hash = calculate_vault_hash(root_dir)
@@ -409,7 +449,7 @@ def write_vault_lock(root_dir: str):
     with open(lock_file, "w", encoding="utf-8") as f:
         json.dump(lock_payload, f, indent=4)
 
-def sync_and_lock_vault(filename: str, incoming_content: str) -> str:
+def sync_and_lock_vault(filename: str, incoming_content: str, project_path: str = None) -> str:
     """
     Overwrites the vault with accepted code and re-signs the cryptographic lock.
     Includes robust OS-level error trapping for silent failure detection.
@@ -422,7 +462,7 @@ def sync_and_lock_vault(filename: str, incoming_content: str) -> str:
     VAULT_STATE[filename] = incoming_content
     
     # 2. Write the accepted content to the correct vault snapshot file
-    root_dir = get_root_dir()
+    root_dir = project_path if project_path else get_root_dir()
     vault_dir = os.path.join(root_dir, ".trepan", "trepan_vault")
     
     try:
@@ -437,28 +477,32 @@ def sync_and_lock_vault(filename: str, incoming_content: str) -> str:
     vault_file_path = os.path.join(vault_dir, filename)
     tmp_vault_file_path = vault_file_path + ".tmp"
     
-    try:
-        with open(tmp_vault_file_path, "w", encoding="utf-8") as f:
-            f.write(incoming_content)
-        _trace_sync_logger.debug(f"TMP WRITE OK — {tmp_vault_file_path}")
-    except PermissionError as e:
-        _trace_sync_logger.critical(f"PERMISSION DENIED writing tmp file: {tmp_vault_file_path} — errno={e.errno}, msg={e.strerror}")
-        raise
-    except OSError as e:
-        _trace_sync_logger.critical(f"OS ERROR writing tmp file: {tmp_vault_file_path} — errno={e.errno}, msg={e.strerror}")
-        raise
+    # 2.2 Live folder target (e.g. .trepan/system_rules.md)
+    trepan_dir = os.path.join(root_dir, ".trepan")
+    live_file_path = os.path.join(trepan_dir, filename)
+    tmp_live_file_path = live_file_path + ".tmp"
     
     try:
+        # 1. Update Vault Snapshot
+        with open(tmp_vault_file_path, "w", encoding="utf-8") as f:
+            f.write(incoming_content)
         os.replace(tmp_vault_file_path, vault_file_path)
-        _trace_sync_logger.debug(f"ATOMIC RENAME OK — {tmp_vault_file_path} -> {vault_file_path}")
+        _trace_sync_logger.debug(f"VAULT WRITE OK — {vault_file_path}")
+
+        # 2. Update Live Workspace Pillar
+        with open(tmp_live_file_path, "w", encoding="utf-8") as f:
+            f.write(incoming_content)
+        os.replace(tmp_live_file_path, live_file_path)
+        _trace_sync_logger.debug(f"LIVE WRITE OK — {live_file_path}")
+
     except PermissionError as e:
-        _trace_sync_logger.critical(f"PERMISSION DENIED on atomic rename: {tmp_vault_file_path} -> {vault_file_path} — errno={e.errno}, msg={e.strerror}. Lock file may be held by another process.")
+        _trace_sync_logger.critical(f"PERMISSION DENIED during bidirectional sync: {filename} — errno={e.errno}, msg={e.strerror}")
         raise
     except OSError as e:
-        _trace_sync_logger.critical(f"OS ERROR on atomic rename: {tmp_vault_file_path} -> {vault_file_path} — errno={e.errno}, msg={e.strerror}")
+        _trace_sync_logger.critical(f"OS ERROR during bidirectional sync: {filename} — errno={e.errno}, msg={e.strerror}")
         raise
         
-    # 3. Recalculate SHA-256 for the entire vault directory and re-sign .trepan.lock
+    # 3. Cryptographically Lock the Vault
     try:
         write_vault_lock(root_dir)
         _trace_sync_logger.debug(f"LOCK RESIGNED OK — root: {root_dir}")
@@ -483,33 +527,29 @@ def create_default_pillars(trepan_dir: str):
     print("\n[PILLAR CREATION] Checking for missing pillar files...")
     
     default_pillars = {
-        "golden_state.md": """# Golden State
+        "golden_state.md": """# Golden State (The Whitelist)
 
-## Project Architecture
+## 1. Mandatory Tech Stack & Versions
+You MUST strictly use the following libraries. Do NOT introduce alternatives.
+* **Backend Framework:** FastAPI (v0.100+)
+* **Validation:** Pydantic (v2.0+)
+* **Authentication:** python-jose (JWT generation only)
 
-This file defines the architectural foundation of your project. 
+## 2. Approved Structural Boilerplate
+When generating new files, you MUST follow this exact structure.
 
-### Core Principles
+### [Example: API Endpoint Whitelist Structure]
+```python
+from fastapi import APIRouter, Depends
+# ONLY use approved dependencies here
 
-1. **Simplicity**: Keep code readable and maintainable
-2. **Security**: Follow security best practices
-3. **Consistency**: Maintain consistent patterns throughout the codebase
+router = APIRouter()
 
-### Technology Stack
-
-Define your approved technologies here:
-- Programming Language: (e.g., Python, JavaScript, TypeScript)
-- Framework: (e.g., FastAPI, React, Vue)
-- Database: (e.g., PostgreSQL, MongoDB)
-
-### Architectural Patterns
-
-Document your architectural decisions:
-- Code organization
-- Module structure
-- Design patterns used
-
-**Note**: Use `Trepan: Initialize Project` command to generate a complete golden state with templates.
+@router.post("/endpoint")
+async def standard_route(data: dict):
+    # Mandatory flow: Validate -> Process -> Return
+    return {"status": "success"}
+```
 """,
         
         "system_rules.md": """# System Rules
@@ -673,16 +713,22 @@ def init_vault():
                 ("ALL file paths must use `os.path.realpath()`", "ALL file paths must use `os.path.realpath()` + `startswith()` validation"),
                 ("ALL SQL queries must use parameterized statements", "ALL SQL queries must use parameterized statements"),
                 ("YOUR ARE NOT ALLOWED TO TOUCH trepan_vault NOR .trepan.lock", "YOUR ARE NOT ALLOWED TO TOUCH trepan_vault NOR .trepan.lock"),
-                ("Create a Walkthrough File called Walkthrough", "The AI must create a Walkthrough file and call it Walkthrough to document its work and intent for the Validation Engine."),
+                ("Walkthrough", "The AI must create a Walkthrough file and call it Walkthrough to document its work and intent for the Validation Engine."),
             ]
             
             missing_rules = []
             for check_str, full_rule in mandatory_checks:
-                if check_str in sys_content:
+                # FIX: For Walkthrough/Rule 7, check for both "Walkthrough" and "Rule 7" to prevent duplicates
+                if check_str == "Walkthrough":
+                    if "Walkthrough" in sys_content or "Rule 7" in sys_content:
+                        print(f"  [OK]      Walkthrough rule already present")
+                        continue
+                elif check_str in sys_content:
                     print(f"  [OK]      {check_str[:70]}")
-                else:
-                    print(f"  [MISSING] {check_str[:70]}")
-                    missing_rules.append(full_rule)
+                    continue
+                
+                print(f"  [MISSING] {check_str[:70]}")
+                missing_rules.append(full_rule)
                     
             if not missing_rules:
                 print("[RULE GUARDIAN] All mandatory rules are present. No injection needed.")
@@ -704,7 +750,7 @@ def init_vault():
             print("[RULE GUARDIAN] No system_rules.md found — skipping rule audit.")
         
         # Action: Auto-generate the README of Truth
-        initialize_project_readme(trepan_dir)
+        initialize_project_readme(root_dir)
         
         # STRICT CHECK for all pillars existing in the vault (Ghost folder check)
         lock_file = os.path.join(trepan_dir, ".trepan.lock")
@@ -871,12 +917,22 @@ def initialize_audit_ledger(trepan_dir: str):
     else:
         print(f"[LEDGER] {os.path.basename(ledger_path)} exists. Appending allowed.")
 
-def initialize_project_readme(trepan_dir: str):
+def initialize_project_readme(project_path: str):
     """
     Auto-generates the Trepan README.md in the .trepan folder if it doesn't exist.
-    This serves as the "README of Truth" for new users.
+    This serves as the "README of Truth" for users.
     """
+    trepan_dir = os.path.join(project_path, ".trepan")
     readme_path = os.path.join(trepan_dir, "README.md")
+    root_readme_path = os.path.join(project_path, "README.md")
+    # FORCE OVERWRITE check for 6 pillars
+    if os.path.exists(readme_path):
+        with open(readme_path, "r", encoding="utf-8") as f:
+            old_readme = f.read()
+        if "The Six Pillars" not in old_readme:
+            print(f"[README GUARDIAN] Upgrading Trepan README.md to 6-Pillar Architecture...")
+            os.remove(readme_path) # Force re-creation below
+
     if not os.path.exists(readme_path):
         print(f"\n[README GUARDIAN] Initializing Trepan README.md...")
         readme_content = """# Trepan: The Architectural Seatbelt 🛡️
@@ -995,65 +1051,36 @@ When Trepan rejects a change, don't just take its word for it:
 
 ---
 
-## 📋 The Five Pillars
+## 📋 The Six Pillars of the Trepan Vault
 
-Trepan enforces architectural consistency through five core documents in `.trepan/`:
+Trepan enforces architectural consistency and dynamic learning through six core documents in `.trepan/`:
 
-1. **golden_state.md** - Your project's architectural definition
-2. **system_rules.md** - Security and style rules (auto-populated with defaults)
-3. **done_tasks.md** - Completed work log
-4. **pending_tasks.md** - TODO list
-5. **history_phases.md** - Project timeline
+1. **`golden_state.md` (The Whitelist):** Your project's mandatory blueprint.
+2. **`system_rules.md` (The Blacklist):** The security gatekeeper.
+3. **`done_tasks.md`:** A log of successfully completed work.
+4. **`pending_tasks.md`:** The actionable TODO list for the AI or developer.
+5. **`problems_and_resolutions.md`:** A record of technical roadblocks encountered and their exact solutions.
+6. **`history_phases.md`:** The project's evolutionary timeline.
 
-Plus two special files:
-- **Walkthrough.md** - Live audit trail (auto-generated)
-- **.trepan.lock** - Cryptographic vault signature (DO NOT EDIT)
-
----
-
-## 🔍 Key Features
-
-### Cryptographic Vault
-The vault is Trepan's "Ground Truth" system that prevents architectural rules from being silently weakened:
-
-- **Immutable Snapshots**: When you save a pillar file (`.trepan/*.md`), Trepan creates a frozen snapshot in `.trepan/trepan_vault/`
-- **SHA-256 Signature**: All vault files are hashed together and stored in `.trepan.lock`
-- **Tamper Detection**: If anyone manually edits vault files or the lock, Trepan detects it and blocks all pillar saves until you re-sign
-- **Meta-Gate Protection**: Changes to pillar files go through a special "Meta-Gate" that evaluates the diff against the vault snapshot
-- **Cryptographic Integrity**: The vault ensures your architectural rules can't drift without explicit approval
-
-**How it works:**
-1. You edit `.trepan/system_rules.md` (the "live" file)
-2. On save, Trepan compares your changes to `.trepan/trepan_vault/system_rules.md` (the "frozen" snapshot)
-3. If ACCEPT: The vault snapshot is updated and `.trepan.lock` is re-signed
-4. If REJECT: Your changes are blocked and the vault remains unchanged
-
-**Why it matters:**
-Without the vault, an AI could gradually weaken your security rules over time. The vault makes architectural drift cryptographically detectable.
-
-### Meta-Gate for Pillars
-- Special validation for changes to `.trepan/*.md` files
-- Prevents architectural rules from being weakened
-- Diff-based evaluation against vault state
-- Requires explicit approval for rule changes
-
-### Closed-Loop Audit
-- Every decision logged with timestamp
-- Reference Architecture comparison
-- Hallucination detection
-- Drift score tracking
-
-### Side-by-Side Review
-- Split editor view (code + audit trail)
-- Auto-scroll to latest entry
-- Manual verification workflow
+**🔄 The Agentic Feedback Loop:**
+If a problem occurs leading to an architectural Pivot:
+* The failed approach is added to `system_rules.md` (Blacklist).
+* The successful solution is added to `golden_state.md` (Whitelist).
 
 ---
 
-## 🎯 Commands
+## 🏛️ The Cryptographic Vault
+Trepan protects your architectural rules with a cryptographic vault in `.trepan/trepan_vault/`. 
+- **Meta-Gate Validation**: Changes to your rules (`.trepan/*.md`) are reviewed by a specialized Meta-Gate AI to ensure intent is preserved.
+- **SHA-256 Locking**: The entire vault is signed in `.trepan.lock` to prevent unauthorized out-of-band tampering.
 
-| Command | Description |
-|---------|-------------|
+---
+
+## 🎓 Philosophy
+AI should be a skeptical partner, not a yes-man. Trepan optimizes for **architectural integrity**, ensuring your project's soul isn't lost in the "vibe" of rapid AI iteration.
+
+**Your code stays on your machine. Always.**
+
 | `Trepan: Show Server Status` | Check if server is online |
 | `Trepan: Toggle Airbag On/Off` | Enable/disable save blocking |
 | `Trepan: Open Trepan Ledger` | View Walkthrough.md |
@@ -1158,28 +1185,159 @@ Trepan was built by a developer who needed it. No VC funding. No cloud dependenc
 
 **Your code stays on your machine. Always.**
 """
+
+    # Only manage .trepan/README.md — root README is the developer's responsibility
+    if not os.path.exists(readme_path):
+        print(f"\n[README GUARDIAN] Initializing Trepan README.md at {readme_path}...")
         with open(readme_path, "w", encoding="utf-8") as f:
             f.write(readme_content)
-        print(f"[README GUARDIAN] README.md created successfully at {readme_path}")
+        print(f"[README GUARDIAN] .trepan/README.md created successfully.")
     else:
-        print(f"[README GUARDIAN] README.md already exists. Skipping.")
+        with open(readme_path, "r", encoding="utf-8") as f:
+            if "The Six Pillars" not in f.read():
+                print(f"[README GUARDIAN] Upgrading .trepan/README.md to 6-Pillar Architecture...")
+                with open(readme_path, "w", encoding="utf-8") as f:
+                    f.write(readme_content)
+                print(f"[README GUARDIAN] .trepan/README.md upgraded.")
+
+
+def prepend_line_numbers(code: str) -> str:
+    """Prepends line numbers to each line of code in the format 'N | code'."""
+    lines = code.split('\n')
+    numbered_lines = []
+    for i, line in enumerate(lines, 1):
+        numbered_lines.append(f"{i} | {line}")
+    return '\n'.join(numbered_lines)
+
+def parse_violation_details(reasoning: str, system_rules_content: str, code_content: str = "") -> list:
+    """
+    Parse structured violation details from LLM reasoning text.
+    Extracts rule IDs, rule names, locations, and violation descriptions.
+    
+    Returns a list of dicts with: rule_id, rule_name, rule_location, violation, line_number
+    """
+    violations = []
+    
+    # Pattern 1: [source:RULE #N (NAME)] — "code snippet"
+    pattern1 = re.finditer(
+        r'\[source:(?:RULE\s*#?(\d+)\s*(?:\(([^)]+)\))?|SYSTEM_RULES?)\]\s*[—-]\s*["\']?([^"\'\n]+)["\']?',
+        reasoning, re.IGNORECASE
+    )
+    for m in pattern1:
+        rule_num = m.group(1) or ""
+        rule_name_raw = m.group(2) or ""
+        violation_text = m.group(3).strip() if m.group(3) else ""
+        
+        # Find rule location in system_rules.md
+        rule_location = ""
+        if rule_num and system_rules_content:
+            lines = system_rules_content.split('\n')
+            for i, line in enumerate(lines, 1):
+                if f"Rule {rule_num}" in line or f"Rule #{rule_num}" in line:
+                    rule_location = f"system_rules.md:L{i}"
+                    # Try to get rule name from the line if not already found
+                    if not rule_name_raw:
+                        name_match = re.search(r'Rule\s*#?\d+[:\s]+([A-Z_]+)', line)
+                        if name_match:
+                            rule_name_raw = name_match.group(1)
+                    break
+        
+        # Find line number in code where violation occurs
+        line_number = 0
+        if violation_text and code_content:
+            # Extract the actual code from the violation text (strip quotes)
+            code_snippet = violation_text.strip('"\'').strip()
+            # If the snippet starts with "N | ", try to extract N
+            snippet_match = re.match(r'^(\d+)\s*\|\s*(.*)', code_snippet)
+            if snippet_match:
+                line_number = int(snippet_match.group(1))
+                code_snippet = snippet_match.group(2)
+            
+            code_lines = code_content.split('\n')
+            if line_number == 0: # If not found via prefix, try fuzzy match
+                for i, line in enumerate(code_lines, 1):
+                    if code_snippet and code_snippet[:30] in line:
+                        line_number = i
+                        break
+        
+        violations.append({
+            "rule_id": f"#{rule_num}" if rule_num else "SYSTEM_RULES",
+            "rule_name": rule_name_raw.strip(),
+            "rule_location": rule_location,
+            "violation": violation_text,
+            "line_number": line_number
+        })
+    
+    # Pattern 2: Rule #N: NAME or ## Rule N: NAME in reasoning
+    if not violations:
+        pattern2 = re.finditer(
+            r'(?:Rule\s*#?(\d+)[:\s]+([A-Z_]+)|violates?\s+["\']?([^"\'\n.]+)["\']?)',
+            reasoning, re.IGNORECASE
+        )
+        for m in pattern2:
+            rule_num = m.group(1) or ""
+            rule_name_raw = m.group(2) or ""
+            violation_text = m.group(3) or ""
+            
+            rule_location = ""
+            if rule_num and system_rules_content:
+                lines = system_rules_content.split('\n')
+                for i, line in enumerate(lines, 1):
+                    if f"Rule {rule_num}" in line or f"Rule #{rule_num}" in line:
+                        rule_location = f"system_rules.md:L{i}"
+                        break
+            
+            if rule_num or violation_text:
+                violations.append({
+                    "rule_id": f"#{rule_num}" if rule_num else "",
+                    "rule_name": rule_name_raw.strip(),
+                    "rule_location": rule_location,
+                    "violation": violation_text.strip(),
+                    "line_number": 0
+                })
+    
+    # Deduplicate by rule_id + violation
+    seen = set()
+    unique = []
+    for v in violations:
+        key = (v["rule_id"], v["violation"][:40])
+        if key not in seen:
+            seen.add(key)
+            unique.append(v)
+    
+    return unique[:5]  # Cap at 5 violations to keep sidebar clean
+
 
 def append_audit_ledger(action: str, reasoning: str):
     """
     Appends the parsed LLM execution thought process to Walkthrough.md.
     """
-    root_dir = get_root_dir()
-    trepan_dir = os.path.join(root_dir, ".trepan")
-    ledger_path = find_walkthrough_file(trepan_dir)
-    if os.path.exists(ledger_path):
+    try:
+        root_dir = get_root_dir()
+        trepan_dir = os.path.join(root_dir, ".trepan")
+        ledger_path = find_walkthrough_file(trepan_dir)
+        
+        # Ensure file exists
+        if not os.path.exists(ledger_path):
+            logger.warning(f"Walkthrough.md not found at {ledger_path}, creating it...")
+            initialize_audit_ledger(trepan_dir)
+        
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         entry = (
             f"\n## {timestamp} | Result: {action}\n"
             f"**Thought Process:**\n"
             f"> {reasoning.strip()}\n"
         )
+        
         with open(ledger_path, "a", encoding="utf-8") as f:
             f.write(entry)
+        
+        logger.info(f"✅ Appended to Walkthrough.md: {action} ({len(reasoning)} chars)")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to append to Walkthrough.md: {e}")
+        logger.error(f"   Path: {ledger_path if 'ledger_path' in locals() else 'unknown'}")
+        logger.error(f"   Root dir: {root_dir if 'root_dir' in locals() else 'unknown'}")
 
 def verify_ai_walkthrough(ai_generated_explanation: str, golden_rules_path: str):
     """
@@ -1208,7 +1366,7 @@ Output [ACTION] REJECT if the intent violates a rule.
 
 [THOUGHT]"""
     
-    raw = generate_with_ollama(audit_prompt)
+    raw = generate(audit_prompt)
     
     print("\n" + "="*40)
     print("🕵️ TREPAN VALIDATION ENGINE THOUGHTS:")
@@ -1265,7 +1423,7 @@ Output [ACTION] REJECT if the reasoning contradicts the reference or shows drift
 
 [THOUGHT]"""
     
-    raw = generate_with_ollama(audit_prompt)
+    raw = generate(audit_prompt)
     
     print("\n" + "="*40)
     print("🔍 TREPAN CLOSED-LOOP AUDIT:")
@@ -1319,7 +1477,7 @@ def initialize_project_with_template(mode: str, project_path: str) -> dict:
         # Ollama integration - using generate_with_ollama
         
         golden_prompt = template['llm_prompt']
-        golden_example = generate_with_ollama(golden_prompt)
+        golden_example = generate(golden_prompt)
         
         golden_state_content = f"""# Golden State - {template['name']}
 
@@ -1388,7 +1546,7 @@ This project follows the **{mode}** architectural style. All code changes must a
         initialize_audit_ledger(trepan_dir)
         
         # Step 6: Initialize README.md
-        initialize_project_readme(trepan_dir)
+        initialize_project_readme(project_path)
         
         # Step 7: Create vault snapshots and lock
         for pillar in PILLARS:
@@ -1590,8 +1748,8 @@ OUTPUT FORMAT (MANDATORY):
 Begin analysis:
 [RESOLVED_PATTERNS]"""
         
-        # Ollama integration - using generate_with_ollama
-        analysis = generate_with_ollama(analysis_prompt)
+        # Native PyTorch integration - using generate
+        analysis = generate(analysis_prompt)
         
         print("\n" + "="*60)
         print("🧠 TREPAN EVOLUTIONARY MEMORY ANALYSIS:")
@@ -1668,65 +1826,7 @@ Begin analysis:
         traceback.print_exc()
         return {"status": "error", "message": str(e)}
 
-# ─── Ollama Integration ────────────────────────────────────────────────────
-
-def generate_with_ollama(prompt: str, model: str = "llama3.1:8b", endpoint: str = "http://localhost:11434") -> str:
-    """
-    Generate text using Ollama API.
-    
-    Args:
-        prompt: The prompt to send to the model
-        model: The Ollama model to use (default: llama3.1:8b)
-        endpoint: The Ollama API endpoint (default: http://localhost:11434)
-    
-    Returns:
-        Generated text from the model
-    
-    Raises:
-        Exception: If Ollama API call fails (caller should handle this)
-    """
-    import urllib.request
-    import json
-    
-    data = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature": 0.1,
-            "num_predict": 512,
-            "num_gpu": 35,      # Force all layers (33-35 for 8B models) to GPU
-            "num_thread": 1,    # Minimum threads to discourage CPU usage
-        }
-    }
-    
-    api_url = f"{endpoint}/api/generate"
-    logger.info(f"Calling Ollama API at {api_url} with model {model}")
-    
-    req = urllib.request.Request(
-        api_url,
-        data=json.dumps(data).encode(),
-        headers={"Content-Type": "application/json"}
-    )
-    
-    try:
-        with urllib.request.urlopen(req, timeout=60) as response:
-            result = json.loads(response.read().decode())
-            return result.get("response", "").strip()
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode() if e.fp else "No error body"
-        if e.code == 404:
-            logger.error(f"Ollama API HTTP Error 404: Model '{model}' not found or endpoint incorrect. Body: {error_body}")
-            raise Exception(f"Ollama API Error 404: Model '{model}' not found. Please run 'ollama pull {model}'")
-        logger.error(f"Ollama API HTTP Error {e.code}: {e.reason}. Body: {error_body}")
-        raise Exception(f"Ollama API unavailable: HTTP Error {e.code}: {e.reason}")
-    except Exception as e:
-        logger.error(f"Ollama API call failed: {e}")
-        # Don't raise HTTPException here - let the caller handle it
-        raise Exception(f"Ollama API unavailable: {e}")
-
-# ─── Startup: Check Ollama Connection ──────────────────────────────────────
-
+# (Ollama integration completely removed in favor of native PyTorch/Unsloth inference)
 _model_ready = False
 
 
@@ -1747,53 +1847,19 @@ async def lifespan(app: FastAPI):
         logger.error(traceback.format_exc())
         logger.warning("⚠️  Server will start but vault operations may fail")
     
-    # EMERGENCY FIX 2: Check Ollama connection with detailed HTTP diagnostics
+    # INITIALIZE NATIVE INFERENCE ENGINE: Load Trepan_Model_V2 into VRAM
     try:
-        import urllib.request
-        import urllib.error
-        ollama_endpoint = "http://localhost:11434"
-        logger.info(f"🔍 Checking Ollama connection at {ollama_endpoint}...")
-        
-        request = urllib.request.Request(f"{ollama_endpoint}/api/tags")
-        with urllib.request.urlopen(request, timeout=5) as response:
-            status_code = response.getcode()
-            response_body = response.read().decode('utf-8')
-            
-            print(f"🔍 OLLAMA CONNECTION DETAILS:")
-            print(f"   URL: {ollama_endpoint}/api/tags")
-            print(f"   HTTP Status: {status_code}")
-            print(f"   Response Length: {len(response_body)} bytes")
-            print(f"   Response Preview: {response_body[:200]}...")
-            
-            if status_code == 200:
-                _model_ready = True
-                logger.info("✅ Ollama connection verified — server accepting requests")
-                logger.info(f"   Endpoint: {ollama_endpoint}")
-                logger.info("   Model: llama3.1:8b (via Ollama)")
-            else:
-                logger.error(f"❌ Ollama returned HTTP {status_code}")
-                logger.error(f"   Response: {response_body}")
-                
-    except urllib.error.HTTPError as http_error:
-        status_code = http_error.code
-        response_body = http_error.read().decode('utf-8') if http_error.fp else "No response body"
-        logger.error(f"❌ Ollama HTTP Error {status_code}: {http_error.reason}")
-        logger.error(f"   Response body: {response_body}")
-        logger.warning("⚠️  Server will start but /evaluate will return 503 until Ollama is available")
-        
-    except urllib.error.URLError as url_error:
-        logger.error(f"❌ Ollama connection failed (URLError): {url_error}")
-        logger.error(f"   Reason: {url_error.reason}")
-        logger.warning("⚠️  Server will start but /evaluate will return 503 until Ollama is available")
-        logger.warning("   To fix: Start Ollama and ensure llama3.1:8b is installed")
-        logger.warning("   Run: ollama pull llama3.1:8b")
-        
+        logger.info(f"🔍 Loading Native Trepan Model into VRAM...")
+        get_model()  # Loads model and tokenizer into global memory inside model_loader.py
+        _model_ready = True
+        logger.info("✅ Native PyTorch/Transformers model loaded successfully")
+        logger.info("✅ Server accepting requests using local GPU inference")
     except Exception as e:
-        logger.error(f"❌ Ollama connection failed (unexpected error): {e}")
+        logger.error(f"❌ Native model load failed: {e}")
         import traceback
         logger.error("Full traceback:")
         logger.error(traceback.format_exc())
-        logger.warning("⚠️  Server will start but /evaluate will return 503 until Ollama is available")
+        logger.warning("⚠️  Server will start but /evaluate will return 503 until model is ready")
     
     logger.info("✅ Server startup complete - ready to accept requests")
     yield
@@ -1819,14 +1885,19 @@ app.add_middleware(
 
 # ─── Schemas ────────────────────────────────────────────────────────────────
 
-class EvaluateRequest(BaseModel):
+class EvaluatePillars(BaseModel):
     golden_state:             str = Field("", description="Contents of .trepan/golden_state.md")
     done_tasks:               str = Field("", description="Contents of .trepan/done_tasks.md")
     pending_tasks:            str = Field("", description="Contents of .trepan/pending_tasks.md")
     history_phases:           str = Field("", description="Phase history (optional)")
     system_rules:             str = Field("", description="Contents of .trepan/system_rules.md")
     problems_and_resolutions: str = Field("", description="Contents of .trepan/problems_and_resolutions.md (optional)")
-    user_command:             str = Field(...,  description="The user's typed prompt or [SAVE INTERCEPT] payload")
+
+class EvaluateRequest(BaseModel):
+    filename:      str = Field(..., description="Filename being saved")
+    code_snippet:  str = Field(..., description="Content of the file")
+    pillars:       EvaluatePillars = Field(default_factory=EvaluatePillars)
+    project_path:  str = Field("",    description="Absolute path to the project root")
 
 class EvaluatePillarRequest(BaseModel):
     filename:         str = Field(..., description="The name of the pillar, e.g. system_rules.md")
@@ -1844,12 +1915,23 @@ class ResignResponse(BaseModel):
     status: str
     message: str
 
+class ViolationDetail(BaseModel):
+    rule_id:       str = Field("", description="Rule identifier e.g. Rule #100")
+    rule_name:     str = Field("", description="Rule name e.g. DOM_INTEGRITY_PROTECTION")
+    rule_location: str = Field("", description="Where rule is defined e.g. system_rules.md:L156")
+    violation:     str = Field("", description="What was violated e.g. innerHTML usage")
+    line_number:   int = Field(0,  description="Line number in the file where violation occurs")
+    suggested_fix: str = Field("", description="AI-suggested code replacement")
+
 class EvaluateResponse(BaseModel):
     action:        str   = Field(...,  description="ACCEPT, REJECT, or ERROR")
     drift_score:   float = Field(...,  description="0.0 (clean) – 1.0 (high drift)")
-    raw_output:    str   = Field(...,  description="Clean [THOUGHT] reasoning for display")
+    reasoning:     str   = Field(...,  description="Cleaned [THOUGHT] reasoning text")
     vault_updated: bool  = Field(False, description="True if the vault snapshot was updated")
     vault_file:    str   = Field("",    description="Which vault file was updated (on ACCEPT)")
+    # Structured violation details for sidebar display
+    filename:      str   = Field("",    description="File that was audited")
+    violations:    List[ViolationDetail] = Field(default_factory=list, description="Parsed violation details")
 
 
 class HealthResponse(BaseModel):
@@ -1867,7 +1949,7 @@ async def health(request: Request):
     client_ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "unknown")
     
-    print(f"🔍 HEALTH CHECK REQUEST:")
+    print(f"HEALTH CHECK REQUEST:")
     print(f"   Client IP: {client_ip}")
     print(f"   User-Agent: {user_agent}")
     print(f"   Model Ready: {_model_ready}")
@@ -1891,35 +1973,46 @@ async def evaluate(req: EvaluateRequest):
     """
     # ── LOG SIGNAL ──
     # Extra diagnostic log as requested by user
-    print(f"\n--- AUDIT REQUEST RECEIVED: {req.user_command[:100].replace('\n', ' ')} ---")
+    cmd_preview = req.code_snippet[:100].replace('\n', ' ')
+    print(f"\n--- AUDIT REQUEST RECEIVED: {req.filename} ({cmd_preview}) ---")
 
-    # HARDWARE ENFORCEMENT: Ensure we are not pinning the CPU
+    # HARDWARE CHECK: Log GPU status but never block the audit
     gpu_ok, gpu_msg = verify_gpu_loading()
     if not gpu_ok:
-        _trace_sync_logger.critical(f"EVALUATE ABORT — GPU VERIFICATION FAILED: {gpu_msg}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"CRITICAL: GPU acceleration inactive. Audit aborted. Reason: {gpu_msg}"
-        )
+        logger.warning(f"GPU check: {gpu_msg} — continuing audit anyway")
+    else:
+        logger.info(f"GPU check: {gpu_msg}")
 
-    # ── LOGIC GATE (The 'Ignore' Rule) ──
-    # Shield .trepan/ from audits to avoid infinite loops
-    # Payload format: [SAVE INTERCEPT — filename]
-    match = re.search(r"\[SAVE INTERCEPT — (.*?)\]", req.user_command)
-    if match:
-        filename = match.group(1)
-        # We don't have relPath in EvaluateRequest, but we can infer from the filename 
-        # or the intent intercept. Since we only intercept non-hidden files usually, 
-        # we strictly block if the command indicates it's from the .trepan folder.
-        if ".trepan" in filename or ".trepan" in req.user_command[:100]:
-            logger.info(f"🚫 Ignoring audit for file in .trepan/ folder: {filename}")
+    if not is_trepan_path(req.filename):
+        # ── DYNAMIC RULE-AWARE SCANNER (Zero-Baseline Upgrade) ──
+        # Extract keywords directly from system_rules.md
+        system_rules = req.pillars.system_rules or VAULT_STATE.get("system_rules.md", "")
+        
+        # Simple extraction: find words in backticks or common security functions
+        # This allows the scanner to evolve as rules change.
+        dynamic_keywords = set(re.findall(r'`([^`]+)`', system_rules))
+        
+        # Add fundamental baseline keywords if not present
+        baseline_defaults = {"eval", "exec", "innerHTML", "os.system", "subprocess", "os.popen", "pickle.load", "marshal.load"}
+        forbidden_keywords = list(dynamic_keywords.union(baseline_defaults))
+        
+        code_lower = req.code_snippet.lower()
+        line_count = len(req.code_snippet.splitlines())
+        
+        has_forbidden = any(kw.lower() in code_lower for kw in forbidden_keywords)
+        
+        # SMART TRIGGER: Only bypass if ZERO matches AND short code.
+        # If any keyword matches, it MUST go to Ollama for context analysis.
+        if line_count < 15 and not has_forbidden:
+            logger.info(f"✨ Zero-Baseline: Code is clean/simple ({line_count} lines). Bypassing LLM.")
             return EvaluateResponse(
                 action="ACCEPT",
                 drift_score=0.0,
-                raw_output="Skipping audit for .trepan/ internal files.",
-                vault_updated=False
+                reasoning="Trepan: Code verified clean via Dynamic Zero-Baseline (No prohibited keywords from system_rules.md detected).",
+                violations=[],
+                filename=req.filename
             )
-
+        
     if not _model_ready:
         raise HTTPException(
             status_code=503,
@@ -1927,28 +2020,29 @@ async def evaluate(req: EvaluateRequest):
         )
 
     root_dir = get_root_dir()
-    readme_path = os.path.join(root_dir, "README.md")
-    if os.path.exists(readme_path):
-        with open(readme_path, "r", encoding="utf-8") as f:
-            readme_content = f.read()
-        logger.info(f"📄 Loaded Project Context from {readme_path}")
-    else:
-        readme_content = "No project context provided. Enforce strict technical baseline."
-        logger.warning(f"⚠️  No README.md found at {readme_path}. Enforcing strict baseline.")
+    
 
+
+    # Determine file extension from filename
+    file_extension = os.path.splitext(req.filename)[1]
+    
+    # GROUNDING: Prepend line numbers to the code snippet
+    grounded_code = prepend_line_numbers(req.code_snippet)
+    
     prompt = build_prompt(
-        golden_state=req.golden_state,
-        system_rules=req.system_rules,
-        user_command=req.user_command,
-        readme_content=readme_content,
-        history_phases=req.history_phases,
-        problems_and_resolutions=req.problems_and_resolutions,
+        system_rules=req.pillars.system_rules,
+        user_command=grounded_code,
+        file_extension=file_extension,
     )
 
-    # Run inference
+    # Run inference natively — offloaded to thread pool so the async event loop
+    # is NOT blocked during GPU inference. Without this, health checks queue up
+    # and the VS Code client disconnects before inference finishes (silent fail).
+    # STRUCTURAL_INTEGRITY_SYSTEM is passed as the system prompt so it occupies
+    # the Llama 3 <|system|> role instead of eating user token budget.
     t0 = time.perf_counter()
     try:
-        raw = generate_with_ollama(prompt)
+        raw = await asyncio.to_thread(generate, prompt, STRUCTURAL_INTEGRITY_SYSTEM)
 
         print("\n" + "="*40)
         print("🧠 TREPAN RAW THOUGHTS:")
@@ -1956,27 +2050,63 @@ async def evaluate(req: EvaluateRequest):
         print("="*40 + "\n")
         
     except Exception as e:
-        logger.error(f"Inference error: {e}")
+        error_msg = str(e)
+        logger.error(f"Inference error: {error_msg}")
+        
+        # ── ROBUST ERROR HANDLING: Ollama Connection Error (WinError 10061) ──
+        if "10061" in error_msg or "Connection refused" in error_msg or "unreachable" in error_msg:
+             return EvaluateResponse(
+                action="ERROR",
+                drift_score=1.0,
+                reasoning="Ollama service is down. Please start Ollama to perform security audit.",
+                violations=[],
+                filename=req.filename
+            )
+            
         raise HTTPException(status_code=500, detail=f"Model inference failed: {e}")
 
     elapsed = time.perf_counter() - t0
-    logger.info(f"Inference took {elapsed:.2f}s — command: {req.user_command[:80]!r}")
+    logger.info(f"Inference took {elapsed:.2f}s — file: {req.filename}")
+    print(f"\n⏱️ AUDIT TIME (evaluate): {elapsed:.2f}s\n")
 
     # Parse result
-    result = guillotine_parser(raw)
+    result = guillotine_parser(raw, system_rules)
     
+    # ── LINE VALIDATION (Anti-Hallucination) ──
+    # Discard violations pointing to non-existent lines.
+    actual_line_count = len(req.code_snippet.splitlines())
+    valid_violations = []
+    for v in result['violations']:
+        ln = v.get('line_number', 0)
+        if 1 <= ln <= actual_line_count:
+            valid_violations.append(v)
+        else:
+            logger.warning(f"🚫 Removing hallucinated violation on non-existent line {ln} (File has {actual_line_count} lines)")
+    
+    result['violations'] = valid_violations
+
     # Append execution to Walkthrough ledger
     append_audit_ledger(result['verdict'], result['reasoning'])
 
     logger.info(
-        f"Decision: {result['verdict']} | score={result['score']:.2f} | "
-        f"cmd={req.user_command[:60]!r}"
+        f"file={req.filename}"
     )
 
+    # ── DEBUG LOGGING: Track data transmission ──
+    logger.info(
+        f"[TREPAN DEBUG] Returning response: action={result['verdict']}, "
+        f"drift_score={result['score']:.2f}, raw_output_length={len(result['reasoning'])}"
+    )
+
+    # DIAGNOSTIC: expose parser violations and raw output for debugging
+    logger.info(f"[VIOLATION DEBUG] violations={result['violations']}")
+    logger.info(f"[RAW OUTPUT DEBUG] raw_output={result['raw_output']!r}")
     return EvaluateResponse(
         action=result['verdict'],
         drift_score=result['score'],
-        raw_output=result['reasoning'],
+        reasoning=result['reasoning'],
+        violations=result['violations'],
+        filename=req.filename
     )
 
 # ─── Vault Recovery & Resigning Endpoint ───────────────────────────────────
@@ -2152,32 +2282,116 @@ async def evaluate_pillar(req: EvaluatePillarRequest):
     # ── ENTRY-LEVEL TRACE: Log immediately on arrival ──
     _trace_sync_logger.info(f"EVALUATE_PILLAR ENTRY — file: {req.filename}, content_len: {len(req.incoming_content)}, project_path: {req.project_path or 'NOT SET'}")
 
-    # HARDWARE ENFORCEMENT: Ensure we are not pinning the CPU
+    # Rule Sanctuary REMOVED here. We MUST evaluate pillars to trigger vault sync.
+
+    # ═══════════════════════════════════════════════════════════════════
+    # FIX 1: ATOMIC VAULT SNAPSHOTTING (Pre-Flight Sync)
+    # ═══════════════════════════════════════════════════════════════════
+    # Before every audit, sync the latest .md files from .trepan/ to vault
+    # This ensures the AI judges against the ABSOLUTE LATEST architectural laws
+    
+    global VAULT_STATE
+    root_dir = req.project_path if req.project_path else get_root_dir()
+    trepan_dir = os.path.join(root_dir, ".trepan")
+    vault_dir = os.path.join(trepan_dir, "trepan_vault")
+    
+    os.makedirs(vault_dir, exist_ok=True)
+    
+    pre_flight_synced = []
+    for pillar in PILLARS:
+        live_path = os.path.join(trepan_dir, pillar)
+        vault_path = os.path.join(vault_dir, pillar)
+        
+        if os.path.exists(live_path):
+            # Read live content
+            with open(live_path, "r", encoding="utf-8") as f:
+                live_content = f.read()
+            
+            # Check if vault needs update
+            needs_sync = False
+            if not os.path.exists(vault_path):
+                needs_sync = True
+            else:
+                with open(vault_path, "r", encoding="utf-8") as f:
+                    vault_content = f.read()
+                if live_content != vault_content:
+                    needs_sync = True
+            
+            if needs_sync:
+                # Atomic write to vault
+                tmp_path = vault_path + ".tmp"
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    f.write(live_content)
+                os.replace(tmp_path, vault_path)
+                
+                # Update in-memory state
+                VAULT_STATE[pillar] = live_content
+                pre_flight_synced.append(pillar)
+                _trace_sync_logger.info(f"PRE-FLIGHT SYNC — {pillar}: UPDATED from live file")
+            else:
+                # Ensure in-memory state matches vault
+                with open(vault_path, "r", encoding="utf-8") as f:
+                    VAULT_STATE[pillar] = f.read()
+    
+    # FIX 4: METADATA VERIFICATION - Log vault state
+    rule_count = len(VAULT_STATE.get("system_rules.md", "").split("\n"))
+    last_updated = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    logger.info(f"[VAULT] Audit triggered using {rule_count} rule lines from {last_updated}")
+    if pre_flight_synced:
+        logger.info(f"[VAULT] Pre-flight sync updated: {', '.join(pre_flight_synced)}")
+    else:
+        logger.info(f"[VAULT] All pillars already in sync")
+    
+    # HARDWARE CHECK: Log GPU status but never block the audit
     gpu_ok, gpu_msg = verify_gpu_loading()
     if not gpu_ok:
-        _trace_sync_logger.critical(f"EVALUATE_PILLAR ABORT — GPU VERIFICATION FAILED: {gpu_msg}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"CRITICAL: GPU acceleration inactive. Audit aborted to prevent CPU pinning. Reason: {gpu_msg}"
-        )
+        logger.warning(f"GPU check: {gpu_msg} — continuing audit anyway")
+    else:
+        logger.info(f"GPU check: {gpu_msg}")
     
     if not _model_ready:
         _trace_sync_logger.warning(f"EVALUATE_PILLAR ABORT — model not ready for '{req.filename}'")
         raise HTTPException(status_code=503, detail="Trepan model is still loading.")
         
-    # Action 3: Cryptographic Tamper Check
-    if not verify_vault_hash():
-        _trace_sync_logger.warning(f"EVALUATE_PILLAR ABORT — VAULT COMPROMISED (hash mismatch) for '{req.filename}'")
-        logger.warning(f"🚨 VAULT COMPROMISED: Hash mismatch on {req.filename}")
-        return EvaluateResponse(
-            action="VAULT_COMPROMISED",
-            drift_score=1.0,
-            raw_output="Ground-truth files modified."
-        )
+    # Action 3: Cryptographic Tamper Check (Warning only — does not block audit)
+    if not verify_vault_hash(root_dir):
+        _trace_sync_logger.warning(f"VAULT HASH MISMATCH detected for '{req.filename}' in '{root_dir}' — proceeding with audit")
+        logger.warning(f"🚨 VAULT hash mismatch for {req.filename} — audit continues")
+
 
     # Calculate diff
     golden_state = VAULT_STATE.get("golden_state.md", "")
+    system_rules = VAULT_STATE.get("system_rules.md", "")
+    problems_and_resolutions = VAULT_STATE.get("problems_and_resolutions.md", "")
     current_pillar_content = VAULT_STATE.get(req.filename, "")
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # FIX 5: GROUNDED REASONING - Add Line Numbers & History Status
+    # ═══════════════════════════════════════════════════════════════════
+    
+    # Add line numbers to system_rules for citation enforcement
+    def add_line_numbers(content: str, filename: str) -> str:
+        """Add line numbers to content for citation enforcement"""
+        lines = content.split('\n')
+        numbered_lines = []
+        for i, line in enumerate(lines, 1):
+            numbered_lines.append(f"[{filename}:L{i}] {line}")
+        return '\n'.join(numbered_lines)
+    
+    system_rules_numbered = add_line_numbers(system_rules, "system_rules.md")
+    golden_state_numbered = add_line_numbers(golden_state, "golden_state.md")
+    
+    # FIX 3: History-Zero Validation - Detect empty history
+    history_status = "EMPTY"
+    if problems_and_resolutions.strip():
+        # Check if file has actual content (not just headers/templates)
+        content_lines = [line for line in problems_and_resolutions.split('\n') 
+                        if line.strip() and not line.startswith('#') and 'No problems' not in line]
+        if len(content_lines) > 0:
+            history_status = "HAS_ENTRIES"
+    
+    logger.info(f"[GROUNDING] History status: {history_status}")
     
     diff_lines = list(difflib.unified_diff(
         current_pillar_content.splitlines(),
@@ -2188,35 +2402,20 @@ async def evaluate_pillar(req: EvaluatePillarRequest):
     ))
     diff_text = "\n".join(diff_lines)
 
-    root_dir = get_root_dir()
-    readme_path = os.path.join(root_dir, "README.md")
-    if os.path.exists(readme_path):
-        with open(readme_path, "r", encoding="utf-8") as f:
-            readme_content = f.read()
-        logger.info(f"📄 Loaded Project Context from {readme_path}")
-    else:
-        readme_content = "No project context provided. Enforce strict technical baseline."
-        logger.warning(f"⚠️  No README.md found at {readme_path}. Enforcing strict baseline.")
 
-    # The 'Cornered' Prompt — ends exactly at [THOUGHT] to prevent AI roleplay
-    prompt = f"""Evaluate the [DIFF] against the [PROJECT_CONTEXT] and [GOLDEN_STATE].
-You must output exactly three tags: [THOUGHT], [SCORE], and [ACTION].
-Do not generate any fake scenarios or user dialogues.
 
-[PROJECT_CONTEXT]
-{readme_content}
-
-[GOLDEN_STATE]
-{golden_state}
-
-[DIFF]
-{diff_text}
-
-[THOUGHT]"""
+    # ════════════════════════════════════════════════════════════════════════════════
+    # META-GATE EVALUATION FLOW
+    # ════════════════════════════════════════════════════════════════════════════════
+    
+    system_prompt = METAGATE_AUDIT_SYSTEM
+    user_prompt = build_meta_gate_prompt(req.filename, current_pillar_content, req.incoming_content)
 
     t0 = time.perf_counter()
     try:
-        raw = generate_with_ollama(prompt)
+        # FIX 6: Use /api/chat endpoint with system/user separation
+        # OFFLOAD to thread pool to prevent blocking the async event loop during GPU inference
+        raw = await asyncio.to_thread(generate, user_prompt, system_prompt=system_prompt)
 
         print("\n" + "="*40)
         print("🏛️ TREPAN META-GATE RAW THOUGHTS:")
@@ -2230,8 +2429,16 @@ Do not generate any fake scenarios or user dialogues.
 
     elapsed = time.perf_counter() - t0
     logger.info(f"Meta-Gate eval took {elapsed:.2f}s — file: {req.filename}")
+    print(f"\n⏱️ AUDIT TIME (evaluate_pillar): {elapsed:.2f}s\n")
 
     result = guillotine_parser(raw)
+    
+    # ── STRIP VOID VIOLATIONS ──
+    # If verdict is ACCEPT and score is negligible, clear violations list
+    if result['verdict'] == "ACCEPT" and result['score'] < 0.1:
+        logger.info(f"🛡️ Stripping void violations for ACCEPT pillar verdict (score: {result['score']})")
+        result['violations'] = []
+
     vault_updated = False
     
     # Append execution to Walkthrough ledger
@@ -2239,10 +2446,10 @@ Do not generate any fake scenarios or user dialogues.
 
     if result['verdict'] == "ACCEPT":
         _trace_sync_logger.info(f"ACCEPT VERDICT — triggering vault sync for '{req.filename}'")
-        print(f"[VAULT SYNC] ACCEPT verdict for '{req.filename}' — syncing to vault...")
+        print(f"[VAULT SYNC] ACCEPT verdict for '{req.filename}' — syncing to vault at '{root_dir}'...")
         
         try:
-            new_hash = sync_and_lock_vault(req.filename, req.incoming_content)
+            new_hash = sync_and_lock_vault(req.filename, req.incoming_content, root_dir)
             print(f"✅ VAULT SECURED. New Signature: {new_hash}")
             print(f"[VAULT SYNC] Complete ✅ — trepan_vault/{req.filename} is now the new baseline.")
             vault_updated = True
@@ -2253,12 +2460,21 @@ Do not generate any fake scenarios or user dialogues.
     else:
         _trace_sync_logger.info(f"REJECT VERDICT — vault NOT updated for '{req.filename}' (score={result['score']})")
 
+    # ── DEBUG LOGGING: Track data transmission ──
+    logger.info(
+        f"[TREPAN DEBUG] Returning response: action={result['verdict']}, "
+        f"drift_score={result['score']:.2f}, reasoning_length={len(result['reasoning'])}, "
+        f"vault_updated={vault_updated}"
+    )
+
     return EvaluateResponse(
         action=result['verdict'],
         drift_score=result['score'],
-        raw_output=result['reasoning'],
+        reasoning=result['reasoning'],
+        violations=result['violations'],
         vault_updated=vault_updated,
         vault_file=req.filename if vault_updated else "",
+        filename=req.filename
     )
 
 # ─── Verification Engine Endpoint ──────────────────────────────────────────
@@ -2292,7 +2508,7 @@ async def verify_intent(req: VerifyIntentRequest):
     return EvaluateResponse(
         action=result['verdict'],
         drift_score=result['score'],
-        raw_output=result['reasoning'],
+        reasoning=result['reasoning'],
         vault_updated=False,
     )
 
@@ -2319,7 +2535,7 @@ async def audit_reasoning(req: VerifyIntentRequest):
     return EvaluateResponse(
         action=result['verdict'],
         drift_score=result['score'],
-        raw_output=result['reasoning'],
+        reasoning=result['reasoning'],
         vault_updated=False,
     )
 

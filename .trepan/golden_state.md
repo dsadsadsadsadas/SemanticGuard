@@ -1,17 +1,23 @@
-# 🏛️ Golden State — Architecture & Tech Stack
+# Golden State (The Whitelist)
 
-## Core Architecture
-- **Platform**: [Define your platform here, e.g. FastAPI + React]
-- **Database**: [e.g. PostgreSQL + SQLAlchemy]
-- **Auth**: [e.g. JWT + OAuth2]
-- **Deployment**: [e.g. Docker + AWS ECS]
+## 1. Mandatory Tech Stack & Versions
+You MUST strictly use the following libraries. Do NOT introduce alternatives.
+* **Backend Framework:** FastAPI (v0.100+)
+* **Validation:** Pydantic (v2.0+)
+* **Authentication:** python-jose (JWT generation only)
 
-## Invariants (NEVER change without explicit approval)
-- [ ] Invariant 1: [e.g. All API endpoints must require JWT auth]
-- [ ] Invariant 2: [e.g. No direct SQL strings — use ORM only]
-- [ ] Invariant 3: [e.g. All secrets via environment variables]
+## 2. Approved Structural Boilerplate
+When generating new files, you MUST follow this exact structure.
 
-## Tech Stack Constraints
-- Backend language: [e.g. Python 3.11+]
-- Frontend framework: [e.g. React 18 with TypeScript]
-- Test framework: [e.g. pytest + vitest]
+### [Example: API Endpoint Whitelist Structure]
+```python
+from fastapi import APIRouter, Depends
+# ONLY use approved dependencies here
+
+router = APIRouter()
+
+@router.post("/endpoint")
+async def standard_route(data: dict):
+    # Mandatory flow: Validate -> Process -> Return
+    return {"status": "success"}
+```

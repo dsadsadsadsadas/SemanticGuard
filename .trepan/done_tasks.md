@@ -1,8 +1,14 @@
-# ✅ Done Tasks — Completed Milestones
+# Completed Tasks
 
-## Phase 1: Foundation
-- [ ] Project scaffolding
-- [ ] CI/CD pipeline
+No tasks completed yet.
 
-> Add completed milestones here as you ship them.
-> Format: `- [x] Task description (YYYY-MM-DD)`
+## How to Use
+
+When you complete a task from `pending_tasks.md`, move it here with a timestamp.
+
+Example:
+```
+## 2024-01-15 14:30:00
+- Implemented user authentication
+- Added input validation
+```

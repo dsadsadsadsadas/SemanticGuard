@@ -1,11 +1,14 @@
-# 📋 Pending Tasks — Future Milestones
+# Pending Tasks
 
-## Next Up
-- [ ] Task 1: [Description]
-- [ ] Task 2: [Description]
+No pending tasks.
 
-## Backlog
-- [ ] Backlog item 1
+## How to Use
 
-> Keep this up to date. Trepan uses this to detect context drift —
-> if your AI is being asked to do something NOT on this list, it may flag it.
+List your TODO items here. When completed, move them to `done_tasks.md`.
+
+Example:
+```
+- [ ] Implement user authentication
+- [ ] Add rate limiting to API
+- [ ] Write integration tests
+```

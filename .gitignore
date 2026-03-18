@@ -1,12 +1,44 @@
-# Kodkod
-venv/
+# ─── Node / VS Code Extension ────────────────────────────────────────────────
+node_modules/
+extension/out/
+*.vsix
+out/
+
+# ─── Python ──────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
+*.pyo
+.venv/
+venv/
+env/
 .env
+
+# ─── Heavy ML Models & Binaries ──────────────────────────────────────────────
 Trepan_Model_V2/
+trepan-v2/
+trepan-v2_gguf/
+llama.cpp/
+trepan_beta_test/
 unsloth_compiled_cache/
-trepan_vault/
-node_modules/
-out/
+*.gguf
+*.bin
+*.safetensors
+
+# ─── IDE & Agent Directories ─────────────────────────────────────────────────
+.kiro/
+.qodo/
+.agent/
+.vscode/
+
+# ─── Trepan Runtime (Project-specific, user-generated) ───────────────────────
+.trepan/
+*.trepan.lock
+
+# ─── Logs & Temp Files ───────────────────────────────────────────────────────
+ssart_trace_sync.log
+*.log
 output.txt
 output2.txt
+
+# ─── Internal Roadmap (keep locally, not for public) ─────────────────────────
+PENDING_TASKS.md

@@ -2,7 +2,7 @@
   "name": "trepan-gatekeeper",
   "displayName": "Trepan Gatekeeper 🛡️",
   "description": "Architectural airbag — blocks file saves that violate your project's .trepan/ pillar rules.",
-  "version": "2.1.0",
+  "version": "1.0.0",
   "publisher": "trepan",
   "engines": {
     "vscode": "^1.74.0"
@@ -40,6 +40,10 @@
       {
         "command": "trepan.initializeProject",
         "title": "⚡ Trepan: Initialize Project"
+      },
+      {
+        "command": "trepan.toggleProcessor",
+        "title": "🛡️ Trepan: Toggle CPU/GPU Mode"
       }
     ],
     "menus": {
@@ -95,7 +99,7 @@
         },
         "trepan.timeoutMs": {
           "type": "number",
-          "default": 30000,
+          "default": 300000,
           "description": "Max ms to wait for server response before failing open"
         },
         "trepan.excludePatterns": {
@@ -108,11 +112,21 @@
             "**/*.lock"
           ],
           "description": "Glob patterns to skip evaluation (always allowed to save)"
+        },
+        "trepan.enforcementMode": {
+          "type": "string",
+          "default": "Soft",
+          "enum": [
+            "Soft",
+            "Strict"
+          ],
+          "description": "If Strict, network timeouts or server unreachability will rigorously block the save instead of allowing an open-fail."
         }
       }
     }
   },
   "devDependencies": {
-    "@types/vscode": "^1.74.0"
+    "@types/vscode": "^1.74.0",
+    "fast-check": "^3.15.0"
   }
 }

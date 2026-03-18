@@ -1,145 +1,82 @@
-# 🛡️ Trepan - The DevSecOps Cortex
+# Trepan: The Architectural Seatbelt 🛡️
 
-**Trepanning:** *(verb)* From Greek *trypanon* (borer). The surgical intervention of drilling a burr hole into the skull to expose the dura mater.
+**100% Local. Zero Cloud Leakage. Absolute Intent Verification.**
 
-In the context of software security, **Trepan** performs a "deep inspection" of your codebase's brain—the logic and structure—exposing hidden vulnerabilities that surface-level regex scanners miss. It is a local-first security enforcer that prioritizes **Visible Trust** over silent automation.
-
-## 📉 The Problem: AI Context Drift
-
-In the era of **VibeCoding**—where AI generates code faster than humans can review—projects suffer from **Context Drift**. As you iterate rapidly with LLMs, original security constraints and architectural patterns often get "hallucinated away" or subtly rewritten.
-
-Trepan exists to solve this. It acts as a hard anchor, ensuring that while your "vibe" evolves and code flows freely, your security posture remains rigid and uncompromised.
+Most AI tools are "Yes-Men"—they help you write spaghetti code faster. Trepan is the "No-Man." It is a local-first architectural linter designed to stop "Architecture Drift" before it hits your codebase. Built for developers who value integrity over just "vibes."
 
 ---
 
-## 🧠 The Philosophy of Visible Trust
+## 🔒 The 100% Local Promise
 
-Traditional sec-tools often silently block or auto-fix code, leaving developers confused or frustrated. Trepan follows the **Law of Visible Trust**:
+Your code is your most valuable asset. Why send it to the cloud?
 
-1.  **Transparency:** You see exactly what policy is being violated.
-2.  **Consent:** No code is modified without your explicit approval via a Diff View.
-3.  **Context:** Policies are injected as "Context" into your workflow, not just error messages.
-
----
-
-## 🚀 Key Features
-
-### Core Capabilities
-- **🔍 AST Security Engine**: Structural code analysis using Python's `ast` module (no fragile regex).
-- **🛡️ Semantic Firewall (Clipboard Sentinel)**: Analyzes copied code before it enters your editor.
-- **🔗 Polyglot Taint Analysis**: Tracks data flow across Python, JavaScript, and TypeScript.
-- **📦 Supply Chain Sentinel**: Detects typosquatting and vulnerable dependencies in `requirements.txt` & `package.json`.
-- **🖥️ Hardware Sentinel**: Intelligent task routing (CPU vs. GPU) for optimal performance.
-- **🤖 Shadow Red Teamer**: On-demand AI threat modeling (Llama-3-70b via Groq).
+- **Zero Cloud Leakage**: Trepan runs entirely on your hardware. No AWS, no OpenAI, no metadata sent to third parties.
+- **Privacy-First**: Powered by a local Llama 3.1 (8B) model via Ollama.
+- **War-Room Ready**: Designed to work offline. Your security isn't dependent on an internet connection or a corporate API's uptime.
 
 ---
 
-## 📖 Usage Guide
+## 🏎️ The Architectural Seatbelt
 
-### 1. Installation
+Trepan doesn't just check syntax; it enforces **Intent**.
 
-```bash
-pip install -r requirements.txt
-```
+### The Guillotine Parser
+A production-hardened filter (7/7 stress tests passed) that strips away AI hallucinations and "yap," leaving only a raw ACCEPT or REJECT verdict.
 
-### 2. Quick Start (Passive Defense)
-
-Start the Trepan guardian in your project root. It will watch for file changes and clipboard activity.
-
-```bash
-# Basic usage
-python trepan.py
-
-# Watch a specific directory
-python trepan.py --watch /path/to/project
-```
-
-### 3. Active Interventions
-
-Trepan intervenes in two main ways:
-
-#### A. The Semantic Firewall (Clipboard)
-When you copy code (e.g., from StackOverflow or ChatGPT), Trepan scans it.
-- **If Safe:** It lets you paste.
-- **If Risky:** It intercepts the paste and shows a **Policy Dialog**.
-    - You see the *Original* vs. *Proposed* context.
-    - You must click **ACCEPT** to inject the necessary security context or fixes.
-
-#### B. The Red Team Trigger (On-Demand)
-Use specific keywords in your code or clipboard to trigger an AI audit:
-- `!audit`, `!attack`, `hack`, `exploit`, `vulnerability`
-
-*Example:*
-```python
-# FIXME: Is this safe? !audit
-user_input = request.args.get('cmd')
-os.system(user_input)
-```
-*Trepan will detect `!audit`, launch a Red Team scan, and propose a fix.*
+### Closed-Loop Audit
+Every AI decision is logged in `Walkthrough.md`. Trepan "looks back" at your Reference Architecture to verify the AI isn't lying about its reasoning.
 
 ---
 
-## 🔮 Future Purposes & Roadmap
+## 📋 The Six Pillars of the Trepan Vault
 
-Trepan is evolving from a simple linter into a **Self-Healing Security Cortex**. Based on the current codebase, the following phases are in development:
+Trepan enforces architectural consistency and dynamic learning through six core documents in `.trepan/`:
 
--   **Phase 5: Polyglot Expansion**
-    -   Currently supports basic JS/TS taint analysis.
-    -   *Goal:* Full AST support for Rust, Go, and Java.
+1. **`golden_state.md` (The Whitelist):** Your project's mandatory blueprint. It strictly defines the *only* allowed tech stack and approved structural templates.
+2. **`system_rules.md` (The Blacklist):** The security gatekeeper. It strictly defines what is *forbidden* (e.g., vulnerable functions, banned libraries).
+3. **`done_tasks.md`:** A log of successfully completed work.
+4. **`pending_tasks.md`:** The actionable TODO list for the AI or developer.
+5. **`problems_and_resolutions.md`:** A record of technical roadblocks encountered and their exact solutions.
+6. **`history_phases.md`:** The project's evolutionary timeline.
 
--   **TR-01: Hardware Sentinel**
-    -   *Current:* Basic CPU/GPU detection.
-    -   *Goal:* Dynamic load balancing where heavy vector searches run on GPU and lightweight AST parsing runs on CPU.
-
--   **TR-02: Drift Engine**
-    -   *Goal:* Semantic drift detection. Trepan will warn you if your code implementation is "drifting" away from its original architectural intent or safety constraints over time.
-
--   **Enterprise Edition**
-    -   Centralized policy management for teams.
-    -   "Fleet Learning" - if a vulnerability is found in one project, the fix is scrutinized and propagated (as a policy proposal) to other projects.
+**🔄 The Agentic Feedback Loop:**
+If a problem occurs leading to an architectural Pivot:
+* The failed approach is added to `system_rules.md` (Blacklist).
+* The successful solution is added to `golden_state.md` (Whitelist).
 
 ---
 
-## 🏗️ Architecture
+## 🚀 Quick Start
 
-```mermaid
-graph TD
-    A[Developer] -->|Pastes Code| B(Clipboard Sentinel)
-    B -->|Analyzes| C{Risk Detected?}
-    C -->|No| D[Allowed]
-    C -->|Yes| E[Policy Gatekeeper]
-    E -->|Show Diff| F[User Consent UI]
-    F -->|Accept| G[Inject Secure Context]
-    F -->|Reject| H[Block/Undo]
-    
-    I[File Watcher] -->|Modifies Code| J(AST Engine)
-    J -->|Scans| K[Security Report]
-    K -->|Critical| E
-```
-
-## 📁 Project Structure
-
-| Module | Purpose |
-|--------|---------|
-| `trepan.py` | The Cortex (Main Orchestrator & Logic) |
-| `policy_gatekeeper.py` | Enforces rules based on `GEMINI.md` |
-| `clipboard_sentinel.py` | The Semantic Firewall (TR-03) |
-| `taint_engine.py` | Polyglot data flow analysis (Phase 5) |
-| `hardware_sentinel.py` | Compute resource router (TR-01) |
-| `drift_engine.py` | Architecture drift detector (TR-02) |
-| `red_team.py` | AI-driven threat modeling |
+1. **Start the Server**
+   ```bash
+   python start_server.py
+   ```
+2. **Setup Rules**
+   - Edit `.trepan/system_rules.md` to define your project's "No-Go" zones.
+   - Edit `.trepan/golden_state.md` to define your high-level architecture.
+3. **Save and Secure**
+   - Every file save is automatically audited against your pillars.
+   - Use the VS Code extension to review rejections and apply suggested fixes.
 
 ---
 
-## 📜 The Trepan Constitution
-
-1.  **Law of Visible Trust:** User consent must be explicit.
-2.  **Law of Separation:** Logic lives in modules, not the orchestrator.
-3.  **Law of Audit:** Every Red Team action must be logged.
-4.  **Law of Stability:** No feature removal for "simplicity".
+## 🏛️ The Cryptographic Vault
+Trepan protects your architectural rules with a cryptographic vault in `.trepan/trepan_vault/`. 
+- **Meta-Gate Validation**: Changes to your rules (`.trepan/*.md`) are reviewed by a specialized Meta-Gate AI to ensure intent is preserved.
+- **SHA-256 Locking**: The entire vault is signed in `.trepan.lock` to prevent unauthorized out-of-band tampering.
 
 ---
 
-## 📄 License
+## 🎓 Philosophy
+AI should be a skeptical partner, not a yes-man. Trepan optimizes for **architectural integrity**, ensuring your project's soul isn't lost in the "vibe" of rapid AI iteration.
 
-MIT License
+**Your code stays on your machine. Always.**
+
+## ⚖️ License
+This project is licensed under the GNU Affero General Public License v3.0 (AGPLv3).
+
+See the [LICENSE](LICENSE) file for details.
+
+What does this mean?
+You are free to use, modify, and distribute this software. However, if you modify this software and offer it as a service over a network (SaaS), you must make your modified source code publicly available under the same license. This protects the open-source nature of Trepan and prevents predatory corporate enclosure.
