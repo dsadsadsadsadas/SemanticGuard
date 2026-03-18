@@ -15,7 +15,8 @@ Your code is your most valuable asset. Why send it to the cloud?
 - **War-Room Ready**: Designed to work offline. Your security isn't dependent on an internet connection or a corporate API's uptime.
 
 ---
-
+## See Trepan in Action
+![Trepan catching a security violation in VS Code](images/trepan_demo.gif)
 ## 🏎️ The Architectural Seatbelt
 
 Trepan doesn't just check syntax; it enforces **Intent**.
