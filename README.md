@@ -60,6 +60,16 @@ If a problem occurs leading to an architectural Pivot:
    - Every file save is automatically audited against your pillars.
    - Use the VS Code extension to review rejections and apply suggested fixes.
 
+## ⚡ Project Initialization
+
+Starting a new project? Use the VS Code Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`) and run **Trepan: Initialize Project** to quickly set up your architectural pillars.
+
+You can choose from three specialized modes to match your project's needs:
+
+1.  **🚀 Solo-Indie (The Speedster)**: Optimized for rapid development and solo creators. Focuses on function size, nesting depth, and clean naming without over-engineering.
+2.  **🏗️ Clean-Layers (The Architect)**: Designed for long-term scalability. Enforces strict separation of concerns, dependency injection, and interface-driven design.
+3.  **🛡️ Secure-Stateless (The Fortress)**: Built for mission-critical security. Mandates input sanitization, stateless interactions, encryption-at-rest, and rigorous audit logging.
+
 ---
 
 ## 🏛️ The Cryptographic Vault

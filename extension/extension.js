@@ -752,10 +752,14 @@ async function evaluateSave(document) {
         console.log(`[TREPAN META-GATE] Pillar file save detected: ${fileName}`);
 
         setStatus("checking");
-        trepanSidebarProvider.sendMessage({ type: 'scanning', title: 'Meta-Gate Audit: ' + fileName });
+        trepanSidebarProvider.sendMessage({ type: 'scanning', title: 'Meta-Gate Audit: ' + fileName }, true);
         
         try {
-            const projectPath = vscode.workspace.workspaceFolders?.[0]?.fsPath || '';
+            // Resolve the project root for the specific file being saved (multi-root workspace support)
+            const projectPath = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+                ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+                ?? '';
+            console.log(`[TREPAN META-GATE] Resolved project_path: ${projectPath}`);
             const res = await fetchWithTimeout(`${serverUrl}/evaluate_pillar`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -784,7 +788,7 @@ async function evaluateSave(document) {
                 violations: data.violations || [],
             };
             console.log("[TREPAN DEBUG] FINAL MESSAGE", webviewMessage);
-            trepanSidebarProvider.sendMessage(webviewMessage);
+            trepanSidebarProvider.sendMessage(webviewMessage, actionResult === "REJECT");
             await executeAIAssistantActions(reasoning, actionResult, driftScore);
 
             if (actionResult === "REJECT") {
@@ -807,15 +811,19 @@ async function evaluateSave(document) {
         // ============================================
         const fileName = path.basename(document.fileName);
         const codeContent = document.getText();
-        const pillars = readPillars();
+        const pillars = readPillars(document);
 
         console.log(`[TREPAN AIRBAG] Document save detected: ${fileName}`);
 
         setStatus("checking");
-        trepanSidebarProvider.sendMessage({ type: 'scanning', title: 'Airbag Audit: ' + fileName });
+        trepanSidebarProvider.sendMessage({ type: 'scanning', title: 'Airbag Audit: ' + fileName }, true);
 
         try {
-            const projectPath = vscode.workspace.workspaceFolders?.[0]?.fsPath || '';
+            // Resolve the project root for the specific file being saved (multi-root workspace support)
+            const projectPath = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+                ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+                ?? '';
+            console.log(`[TREPAN AIRBAG] Resolved project_path: ${projectPath}`);
             const res = await fetchWithTimeout(`${serverUrl}/evaluate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -849,7 +857,7 @@ async function evaluateSave(document) {
                 violations: data.violations || [],
             };
 
-            trepanSidebarProvider.sendMessage(webviewMessage);
+            trepanSidebarProvider.sendMessage(webviewMessage, actionResult === "REJECT");
             await executeAIAssistantActions(reasoning, actionResult, driftScore);
 
             if (actionResult === "REJECT") {
@@ -871,11 +879,15 @@ async function evaluateSave(document) {
 
 // ─── Pillar Reader ────────────────────────────────────────────────────────────
 
-function readPillars() {
-    const folders = vscode.workspace.workspaceFolders;
-    if (!folders?.length) return emptyPillars();
+function readPillars(document) {
+    // Resolve the correct workspace folder for the given document (multi-root support)
+    const workspaceFolder = document
+        ? vscode.workspace.getWorkspaceFolder(document.uri)
+        : vscode.workspace.workspaceFolders?.[0];
 
-    const trepanDir = path.join(folders[0].uri.fsPath, ".trepan");
+    if (!workspaceFolder) return emptyPillars();
+
+    const trepanDir = path.join(workspaceFolder.uri.fsPath, ".trepan");
     const read = (name) => {
         const filePath = path.join(trepanDir, name);
         return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : "";
@@ -1231,11 +1243,18 @@ function matchGlob(pattern, filePath) {
 // ─── Webview View Provider (Sidebar) ──────────────────────────────────────────
 
 class TrepanSidebarProvider {
-    constructor() { }
+    constructor() {
+        this._lastMessage = null;
+    }
     resolveWebviewView(webviewView) {
         this._view = webviewView;
         webviewView.webview.options = { enableScripts: true };
         webviewView.webview.html = this._getHtmlForWebview();
+
+        // If we have a cached message, send it immediately upon resolution
+        if (this._lastMessage) {
+            this.sendMessage(this._lastMessage);
+        }
 
         // Listen for messages from the Webview (like button clicks)
         webviewView.webview.onDidReceiveMessage(async (message) => {
@@ -1292,15 +1311,19 @@ class TrepanSidebarProvider {
             }
         });
     }
-    sendMessage(message) {
-        // SILENCED: Do not force focus on every message. User can open sidebar manually.
-        // vscode.commands.executeCommand("trepan.explorer.focus").then(() => {
-        
+    sendMessage(message, forceFocus = false) {
+        this._lastMessage = message;
+
+        if (forceFocus) {
+            // Focus the sidebar but PRESERVE focus in the editor so typing isn't interrupted
+            vscode.commands.executeCommand("trepan.explorer.focus", { preserveFocus: true });
+        }
+
         // Attempt to send immediately (works if view was already mounted)
         if (this._view) {
             try { this._view.webview.postMessage(message); } catch (e) { console.error(e); }
         }
-        
+
         // Fire a delayed duplicate message 500ms later to guarantee it catches freshly mounted Webviews.
         setTimeout(() => {
             if (this._view) {
