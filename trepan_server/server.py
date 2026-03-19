@@ -455,6 +455,11 @@ def sync_and_lock_vault(filename: str, incoming_content: str, project_path: str 
     Includes robust OS-level error trapping for silent failure detection.
     """
     global VAULT_STATE
+
+    # Normalize line endings to LF before storing/writing.
+    # This prevents \r\r\n doubling on Windows where text-mode open()
+    # auto-translates \n → \r\n, causing existing \r\n to become \r\r\n.
+    incoming_content = incoming_content.replace("\r\n", "\n").replace("\r", "\n")
     
     _trace_sync_logger.info(f"SYNC START — file: {filename}, content_len: {len(incoming_content)}")
     
@@ -483,14 +488,16 @@ def sync_and_lock_vault(filename: str, incoming_content: str, project_path: str 
     tmp_live_file_path = live_file_path + ".tmp"
     
     try:
+        # Write in binary mode (newline=None equivalent) so Python doesn't
+        # add a second \r on Windows — content is already normalized to LF.
         # 1. Update Vault Snapshot
-        with open(tmp_vault_file_path, "w", encoding="utf-8") as f:
+        with open(tmp_vault_file_path, "w", encoding="utf-8", newline="") as f:
             f.write(incoming_content)
         os.replace(tmp_vault_file_path, vault_file_path)
         _trace_sync_logger.debug(f"VAULT WRITE OK — {vault_file_path}")
 
         # 2. Update Live Workspace Pillar
-        with open(tmp_live_file_path, "w", encoding="utf-8") as f:
+        with open(tmp_live_file_path, "w", encoding="utf-8", newline="") as f:
             f.write(incoming_content)
         os.replace(tmp_live_file_path, live_file_path)
         _trace_sync_logger.debug(f"LIVE WRITE OK — {live_file_path}")
@@ -702,50 +709,57 @@ def init_vault():
         if os.path.exists(sys_rules_src):
             print("\n[RULE GUARDIAN] Scanning system_rules.md for mandatory defaults...")
             with open(sys_rules_src, "r", encoding="utf-8") as f:
-                sys_content = f.read()
-            
-            mandatory_checks = [
-                ("Strict Contextual Synchronization", "Strict Contextual Synchronization. Every architectural change must logically align with the established Project Context (README). If a developer introduces a new feature, rule, or concept, they must simultaneously update all affected pillars to prevent architectural drift. Isolated updates that create a contradiction between pillars or the project's core context are strictly forbidden."),
-                ("create a Detailed And Planned Readme File", "After Understanding With User What the Project is about, create a Detailed And Planned Readme File, that is also Accepted by User."),
-                ("NO hardcoded secrets, API keys, or passwords", "NO hardcoded secrets, API keys, or passwords"),
-                ("NO `eval()` or `exec()`", "NO `eval()` or `exec()` with user input"),
-                ("NO `os.system()` or `subprocess`", "NO `os.system()` or `subprocess` with `shell=True`"),
-                ("ALL file paths must use `os.path.realpath()`", "ALL file paths must use `os.path.realpath()` + `startswith()` validation"),
-                ("ALL SQL queries must use parameterized statements", "ALL SQL queries must use parameterized statements"),
-                ("YOUR ARE NOT ALLOWED TO TOUCH trepan_vault NOR .trepan.lock", "YOUR ARE NOT ALLOWED TO TOUCH trepan_vault NOR .trepan.lock"),
-                ("Walkthrough", "The AI must create a Walkthrough file and call it Walkthrough to document its work and intent for the Validation Engine."),
-            ]
-            
-            missing_rules = []
-            for check_str, full_rule in mandatory_checks:
-                # FIX: For Walkthrough/Rule 7, check for both "Walkthrough" and "Rule 7" to prevent duplicates
-                if check_str == "Walkthrough":
-                    if "Walkthrough" in sys_content or "Rule 7" in sys_content:
-                        print(f"  [OK]      Walkthrough rule already present")
-                        continue
-                elif check_str in sys_content:
-                    print(f"  [OK]      {check_str[:70]}")
-                    continue
-                
-                print(f"  [MISSING] {check_str[:70]}")
-                missing_rules.append(full_rule)
-                    
-            if not missing_rules:
-                print("[RULE GUARDIAN] All mandatory rules are present. No injection needed.")
+                raw = f.read()
+            # Normalize line endings so all checks work on LF-only content
+            sys_content = raw.replace("\r\n", "\n").replace("\r", "\n")
+
+            # FIX: Never inject defaults if the section header already exists.
+            # This prevents the header from being appended multiple times when
+            # rule check-strings no longer match due to user edits.
+            if "## Trepan Mandatory Defaults" in sys_content:
+                print("[RULE GUARDIAN] Mandatory defaults section already present — skipping injection.")
             else:
-                print(f"[RULE GUARDIAN] Injecting {len(missing_rules)} missing mandatory rules into system_rules.md...")
-                
-                # Determine the current highest Rule number safely
-                rule_nums = [int(n) for n in re.findall(r"(?:^|\n)Rule\s+(\d+)\s*:", sys_content, re.IGNORECASE)]
-                max_rule_num = max(rule_nums) if rule_nums else 0
-                
-                with open(sys_rules_src, "a", encoding="utf-8") as f:
-                    f.write("\n\n## Trepan Mandatory Defaults\n")
-                    for rule in missing_rules:
-                        max_rule_num += 1
-                        f.write(f"Rule {max_rule_num} : {rule}\n")
-                        print(f"  [ADDED]   Rule {max_rule_num} : {rule[:70]}")
-                print(f"[RULE GUARDIAN] Done. system_rules.md now has all mandatory defaults.")
+                mandatory_checks = [
+                    ("Strict Contextual Synchronization", "Strict Contextual Synchronization. Every architectural change must logically align with the established Project Context (README). If a developer introduces a new feature, rule, or concept, they must simultaneously update all affected pillars to prevent architectural drift. Isolated updates that create a contradiction between pillars or the project's core context are strictly forbidden."),
+                    ("create a Detailed And Planned Readme File", "After Understanding With User What the Project is about, create a Detailed And Planned Readme File, that is also Accepted by User."),
+                    ("NO hardcoded secrets, API keys, or passwords", "NO hardcoded secrets, API keys, or passwords"),
+                    ("NO `eval()` or `exec()`", "NO `eval()` or `exec()` with user input"),
+                    ("NO `os.system()` or `subprocess`", "NO `os.system()` or `subprocess` with `shell=True`"),
+                    ("ALL file paths must use `os.path.realpath()`", "ALL file paths must use `os.path.realpath()` + `startswith()` validation"),
+                    ("ALL SQL queries must use parameterized statements", "ALL SQL queries must use parameterized statements"),
+                    ("YOUR ARE NOT ALLOWED TO TOUCH trepan_vault NOR .trepan.lock", "YOUR ARE NOT ALLOWED TO TOUCH trepan_vault NOR .trepan.lock"),
+                    ("Walkthrough", "The AI must create a Walkthrough file and call it Walkthrough to document its work and intent for the Validation Engine."),
+                ]
+
+                missing_rules = []
+                for check_str, full_rule in mandatory_checks:
+                    if check_str == "Walkthrough":
+                        if "Walkthrough" in sys_content or "Rule 7" in sys_content:
+                            print(f"  [OK]      Walkthrough rule already present")
+                            continue
+                    elif check_str in sys_content:
+                        print(f"  [OK]      {check_str[:70]}")
+                        continue
+
+                    print(f"  [MISSING] {check_str[:70]}")
+                    missing_rules.append(full_rule)
+
+                if not missing_rules:
+                    print("[RULE GUARDIAN] All mandatory rules are present. No injection needed.")
+                else:
+                    print(f"[RULE GUARDIAN] Injecting {len(missing_rules)} missing mandatory rules into system_rules.md...")
+
+                    rule_nums = [int(n) for n in re.findall(r"(?:^|\n)Rule\s+(\d+)\s*:", sys_content, re.IGNORECASE)]
+                    max_rule_num = max(rule_nums) if rule_nums else 0
+
+                    # Write LF-only so no \r\n is introduced from append mode on Windows
+                    with open(sys_rules_src, "a", encoding="utf-8", newline="") as f:
+                        f.write("\n\n## Trepan Mandatory Defaults\n")
+                        for rule in missing_rules:
+                            max_rule_num += 1
+                            f.write(f"Rule {max_rule_num} : {rule}\n")
+                            print(f"  [ADDED]   Rule {max_rule_num} : {rule[:70]}")
+                    print(f"[RULE GUARDIAN] Done. system_rules.md now has all mandatory defaults.")
         else:
             print("[RULE GUARDIAN] No system_rules.md found — skipping rule audit.")
         
