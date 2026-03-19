@@ -1459,9 +1459,10 @@ def initialize_project_with_template(mode: str, project_path: str) -> dict:
     1. Create .trepan directory structure
     2. Write system_rules.md based on chosen mode
     3. Generate golden_state.md using LLM
-    4. Initialize other pillar files
-    5. Create vault and lock
-    6. Initialize Walkthrough.md
+    3. Initialize other pillar files
+    4. Initialize Walkthrough.md and README.md
+    5. Generate golden_state.md using LLM
+    6. Create vault snapshots and lock
     
     Returns:
         dict with status and message
@@ -1486,13 +1487,37 @@ def initialize_project_with_template(mode: str, project_path: str) -> dict:
             f.write(template['system_rules'])
         print(f"[GOLDEN TEMPLATE] Created system_rules.md for {mode} mode")
         
-        # Step 3: Generate golden_state.md using LLM
-        print(f"[GOLDEN TEMPLATE] Generating Perfect Execution example using Llama 3.1...")
-        # Ollama integration - using generate_with_ollama
+        # Step 3: Initialize other pillar files (MOVED UP before LLM call)
+        pillars_to_create = {
+            "done_tasks.md": "# Completed Tasks\n\nNo tasks completed yet.\n",
+            "pending_tasks.md": "# Pending Tasks\n\nNo pending tasks.\n",
+            "history_phases.md": f"# Project History\n\n## Phase 1: Initialization\n- Project initialized with {template['name']} mode\n- Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+            "problems_and_resolutions.md": "# Problems and Resolutions\n\nNo problems reported yet.\n"
+        }
         
-        golden_prompt = template['llm_prompt']
-        golden_example = generate(golden_prompt)
+        for filename, content in pillars_to_create.items():
+            pillar_path = os.path.join(trepan_dir, filename)
+            if not os.path.exists(pillar_path): # Prevent overwriting if file exists
+                with open(pillar_path, "w", encoding="utf-8") as f:
+                    f.write(content)
         
+        print(f"[GOLDEN TEMPLATE] Created all pillar files")
+
+        # Step 4: Initialize Walkthrough.md and README.md
+        initialize_audit_ledger(trepan_dir)
+        initialize_project_readme(project_path)
+        
+        # Step 5: Generate golden_state.md using LLM (STAY ROBUST)
+        print(f"[GOLDEN TEMPLATE] Generating Perfect Execution example using Llama 3.1 8B...")
+        
+        golden_example = ""
+        try:
+            golden_prompt = template['llm_prompt']
+            golden_example = generate(golden_prompt)
+        except Exception as llm_err:
+            logger.warning(f"LLM generation failed for golden_state.md: {llm_err}")
+            golden_example = f"\n> [!WARNING]\n> **LLM OFFLINE/BUSY:** Perfect Execution example generation failed.\n> Trepan will learn from your first few accepted code changes instead.\n\n_Reason: {str(llm_err)}_"
+
         golden_state_content = f"""# Golden State - {template['name']}
 
 ## Mode Description
@@ -1539,30 +1564,9 @@ This project follows the **{mode}** architectural style. All code changes must a
         golden_state_path = os.path.join(trepan_dir, "golden_state.md")
         with open(golden_state_path, "w", encoding="utf-8") as f:
             f.write(golden_state_content)
-        print(f"[GOLDEN TEMPLATE] Created golden_state.md with LLM-generated example")
+        print(f"[GOLDEN TEMPLATE] Created golden_state.md")
         
-        # Step 4: Initialize other pillar files
-        pillars_to_create = {
-            "done_tasks.md": "# Completed Tasks\n\nNo tasks completed yet.\n",
-            "pending_tasks.md": "# Pending Tasks\n\nNo pending tasks.\n",
-            "history_phases.md": f"# Project History\n\n## Phase 1: Initialization\n- Project initialized with {template['name']} mode\n- Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
-            "problems_and_resolutions.md": "# Problems and Resolutions\n\nNo problems reported yet.\n"
-        }
-        
-        for filename, content in pillars_to_create.items():
-            pillar_path = os.path.join(trepan_dir, filename)
-            with open(pillar_path, "w", encoding="utf-8") as f:
-                f.write(content)
-        
-        print(f"[GOLDEN TEMPLATE] Created all pillar files")
-        
-        # Step 5: Initialize Walkthrough.md
-        initialize_audit_ledger(trepan_dir)
-        
-        # Step 6: Initialize README.md
-        initialize_project_readme(project_path)
-        
-        # Step 7: Create vault snapshots and lock
+        # Step 6: Create vault snapshots and lock
         for pillar in PILLARS:
             src = os.path.join(trepan_dir, pillar)
             dst = os.path.join(vault_dir, pillar)

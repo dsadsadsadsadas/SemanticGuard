@@ -34,22 +34,53 @@ def check_ollama_installed():
     return True
 
 def ensure_ollama_running():
-    """Verify Ollama service is reachable and responding correctly."""
+    """Ensure Ollama service is running, auto-starting it if needed."""
+    # Check if already running
     try:
         resp = requests.get(OLLAMA_URL, timeout=2)
         if resp.status_code == 200 and "Ollama is running" in resp.text:
-            print("✅ Ollama service is running.")
+            print("✅ Ollama service is already running.")
             return True
-        else:
-            print(f"⚠️ Ollama responded with status {resp.status_code}, but expected 'Ollama is running'.")
-            return False
     except requests.exceptions.ConnectionError:
-        print("\n" + "!" * 60)
-        print(" ❌ ERROR: Ollama is not running.")
-        print("   Please start the Ollama desktop app or run 'ollama serve'")
-        print("   in a separate terminal before starting Trepan.")
-        print("!" * 60 + "\n")
+        pass
+
+    # Not running — attempt to start it automatically
+    print("⚙️  Ollama is not running. Attempting to start 'ollama serve' automatically...")
+    try:
+        # Start as a detached background process so it outlives this script
+        kwargs = {}
+        if sys.platform == "win32":
+            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        else:
+            kwargs["start_new_session"] = True
+
+        subprocess.Popen(
+            ["ollama", "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            **kwargs
+        )
+    except FileNotFoundError:
+        print("❌ Error: 'ollama' command not found. Is Ollama installed and in your PATH?")
+        print("   Download it from: https://ollama.com")
         return False
+
+    # Wait up to 10 seconds for Ollama to become ready
+    print("⏳ Waiting for Ollama to start", end="", flush=True)
+    for _ in range(10):
+        time.sleep(1)
+        print(".", end="", flush=True)
+        try:
+            resp = requests.get(OLLAMA_URL, timeout=2)
+            if resp.status_code == 200 and "Ollama is running" in resp.text:
+                print("\n✅ Ollama started successfully.")
+                return True
+        except requests.exceptions.ConnectionError:
+            pass
+
+    print("\n❌ Timed out waiting for Ollama to start.")
+    print("   Try running 'ollama serve' manually in another terminal.")
+    return False
 
 def pull_model():
     """Ensure the required LLM is downloaded by checking the local registry first."""
