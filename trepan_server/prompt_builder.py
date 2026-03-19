@@ -80,8 +80,8 @@ METAGATE_AUDIT_SYSTEM = """
 3. EVALUATION CRITERIA:
    - Does the change IMPROVE or CLARIFY the architectural rules? (ACCEPT)
    - Is the change a valid update to project status/tasks? (ACCEPT)
-   - Is the change an attempt to WEAKEN or BYPASS security rules without justification? (REJECT)
-   - Is it a valid problem/resolution entry? (ACCEPT)
+   - Is it purely a cosmetic, formatting, or numbering change that strictly preserves the original intent and security baseline? (ACCEPT - Do not flag as weakening or bypassing).
+   - Is the change an attempt to WEAKEN, DILUTE, or BYPASS the actual substance of the security rules without justification? (REJECT)
 4. NO CODE AUDIT: Do NOT audit these files for code vulnerabilities. They ARE the rules.
 5. VERDICT:
    - Score 0.0-0.3: Valid update (ACCEPT).

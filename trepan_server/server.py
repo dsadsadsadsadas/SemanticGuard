@@ -98,6 +98,57 @@ def get_root_dir() -> str:
     # The project root is one level up.
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# ─── Configuration Exclusions ──────────────────────────────────────────────────
+# Keys that should never be audited to prevent over-policing of settings/metadata.
+SILENT_EXCLUSIONS = [
+    "trepan.processor_mode", 
+    "trepan.enabled",
+    "trepan.serverUrl",
+    "editor.fontSize", 
+    "editor.fontFamily",
+    "workbench.colorTheme"
+]
+
+def clean_code_snippet(filename: str, code: str) -> str:
+    """
+    Strips 'Silent Exclusions' from JSON content to prevent LLM noise/drift.
+    """
+    if not (filename.endswith(".json") or filename.endswith(".jsonc")):
+        return code
+        
+    try:
+        import json
+        # Handle simple JSON (standard)
+        data = json.loads(code)
+        
+        def recursive_strip(obj):
+            if isinstance(obj, dict):
+                return {k: recursive_strip(v) for k, v in obj.items() if k not in SILENT_EXCLUSIONS}
+            elif isinstance(obj, list):
+                return [recursive_strip(x) for x in obj]
+            return obj
+            
+        cleaned = recursive_strip(data)
+        return json.dumps(cleaned, indent=2)
+    except Exception as e:
+        # If parsing fails (e.g. invalid JSON or JSONC with comments), 
+        # fallback to a simpler regex-based line stripper for the excluded keys.
+        import re
+        lines = code.splitlines()
+        filtered_lines = []
+        for line in lines:
+            # Match "key": value or "key" : value
+            found_exclusion = False
+            for key in SILENT_EXCLUSIONS:
+                if re.search(f'"{re.escape(key)}"\s*:', line):
+                    found_exclusion = True
+                    break
+            if not found_exclusion:
+                filtered_lines.append(line)
+        return "\n".join(filtered_lines)
+
+# ─── Vault Synchronization ─────────────────────────────────────────────────────
+
 # ─── Diagnostic Trace Logger (ssart_trace_sync.log) ─────────────────────────
 _trace_sync_logger = logging.getLogger("trepan.trace_sync")
 _trace_sync_logger.setLevel(logging.DEBUG)
@@ -1451,7 +1502,7 @@ Output [ACTION] REJECT if the reasoning contradicts the reference or shows drift
     
     return result
 
-def initialize_project_with_template(mode: str, project_path: str) -> dict:
+def initialize_project_with_template(mode: str, project_path: str, processor_mode: str = "gpu") -> dict:
     """
     Initializes a Trepan project with a golden template.
     
@@ -1513,7 +1564,8 @@ def initialize_project_with_template(mode: str, project_path: str) -> dict:
         golden_example = ""
         try:
             golden_prompt = template['llm_prompt']
-            golden_example = generate(golden_prompt)
+            # Pass processor_mode to generate()
+            golden_example = generate(golden_prompt, processor_mode=processor_mode)
         except Exception as llm_err:
             logger.warning(f"LLM generation failed for golden_state.md: {llm_err}")
             golden_example = f"\n> [!WARNING]\n> **LLM OFFLINE/BUSY:** Perfect Execution example generation failed.\n> Trepan will learn from your first few accepted code changes instead.\n\n_Reason: {str(llm_err)}_"
@@ -1912,22 +1964,25 @@ class EvaluatePillars(BaseModel):
     problems_and_resolutions: str = Field("", description="Contents of .trepan/problems_and_resolutions.md (optional)")
 
 class EvaluateRequest(BaseModel):
-    filename:      str = Field(..., description="Filename being saved")
-    code_snippet:  str = Field(..., description="Content of the file")
-    pillars:       EvaluatePillars = Field(default_factory=EvaluatePillars)
-    project_path:  str = Field("",    description="Absolute path to the project root")
+    filename:       str = Field(..., description="Filename being saved")
+    code_snippet:   str = Field(..., description="Content of the file")
+    pillars:        EvaluatePillars = Field(default_factory=EvaluatePillars)
+    project_path:   str = Field("",    description="Absolute path to the project root")
+    processor_mode: Optional[str] = Field("gpu", description="CPU or GPU usage for inference")
 
 class EvaluatePillarRequest(BaseModel):
     filename:         str = Field(..., description="The name of the pillar, e.g. system_rules.md")
     incoming_content: str = Field(..., description="The content of the pillar that the user is trying to save")
     project_path:     str = Field("",  description="Optional: Absolute path to the project root (sent by extension)")
+    processor_mode:   Optional[str] = Field("gpu", description="CPU or GPU usage for inference")
 
 class VerifyIntentRequest(BaseModel):
     ai_explanation: str = Field(..., description="The AI's generated walkthrough/explanation of its work.")
 
 class InitializeProjectRequest(BaseModel):
-    mode: str = Field(..., description="The golden template mode: solo-indie, clean-layers, or secure-stateless")
-    project_path: str = Field(..., description="Absolute path to the project root directory")
+    mode:           str = Field(..., description="The golden template mode: solo-indie, clean-layers, or secure-stateless")
+    project_path:   str = Field(..., description="Absolute path to the project root directory")
+    processor_mode: Optional[str] = Field("gpu", description="CPU or GPU usage for inference")
 
 class ResignResponse(BaseModel):
     status: str
@@ -2059,8 +2114,18 @@ async def evaluate(req: EvaluateRequest):
     # STRUCTURAL_INTEGRITY_SYSTEM is passed as the system prompt so it occupies
     # the Llama 3 <|system|> role instead of eating user token budget.
     t0 = time.perf_counter()
+    
+    # Apply Silent Exclusions (Engineering Way)
+    original_len = len(req.code_snippet)
+    cleaned_code = clean_code_snippet(req.filename, req.code_snippet)
+    if len(cleaned_code) < original_len:
+        logger.info(f"🛡️ Silent Exclusion: Stripped internal keys from {req.filename}")
+        # Update the prompt with cleaned code
+        prompt = f"### [FILENAME]: {req.filename}\n\n### [SOURCE CODE]:\n{cleaned_code}\n\n{req.pillars.model_dump_json()}"
+    
     try:
-        raw = await asyncio.to_thread(generate, prompt, STRUCTURAL_INTEGRITY_SYSTEM)
+        # Pass processor_mode to generate()
+        raw = await asyncio.to_thread(generate, prompt, STRUCTURAL_INTEGRITY_SYSTEM, processor_mode=req.processor_mode)
 
         print("\n" + "="*40)
         print("🧠 TREPAN RAW THOUGHTS:")
@@ -2433,7 +2498,8 @@ async def evaluate_pillar(req: EvaluatePillarRequest):
     try:
         # FIX 6: Use /api/chat endpoint with system/user separation
         # OFFLOAD to thread pool to prevent blocking the async event loop during GPU inference
-        raw = await asyncio.to_thread(generate, user_prompt, system_prompt=system_prompt)
+        # Pass processor_mode to generate()
+        raw = await asyncio.to_thread(generate, user_prompt, system_prompt=system_prompt, processor_mode=req.processor_mode)
 
         print("\n" + "="*40)
         print("🏛️ TREPAN META-GATE RAW THOUGHTS:")
@@ -2572,8 +2638,9 @@ async def initialize_project(req: InitializeProjectRequest):
     
     logger.info(f"Initializing project at {req.project_path} with mode: {req.mode}")
     
-    # Call the initialization function - let errors bubble up naturally
-    result = initialize_project_with_template(req.mode, req.project_path)
+    # Call the initialization function - pass processor_mode
+    # Note: we need to update initialize_project_with_template to accept processor_mode
+    result = initialize_project_with_template(req.mode, req.project_path, processor_mode=req.processor_mode)
     
     if result['status'] == 'success':
         return ResignResponse(

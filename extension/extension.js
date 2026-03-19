@@ -561,7 +561,7 @@ function activate(context) {
             try {
                 progress.report({ message: "Generating golden template..." });
 
-                const processorMode = vscode.workspace.getConfiguration("trepan").get("processorMode") || "GPU";
+                const processorMode = vscode.workspace.getConfiguration("trepan").get("processor_mode") || "GPU";
                 const response = await fetchWithTimeout(`${serverUrl}/initialize_project`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -608,7 +608,7 @@ function activate(context) {
 
     let toggleProcessorCommand = vscode.commands.registerCommand('trepan.toggleProcessor', async () => {
         const cfg = vscode.workspace.getConfiguration("trepan");
-        const currentMode = cfg.get("processorMode") ?? "GPU";
+        const currentMode = cfg.get("processor_mode") ?? "GPU";
         
         const selection = await vscode.window.showQuickPick([
             { label: "GPU", description: "Use Ollama/HuggingFace GPU Acceleration (Default)", picked: currentMode === "GPU" },
@@ -620,7 +620,7 @@ function activate(context) {
 
         if (selection) {
             const newMode = selection.label;
-            await cfg.update("processorMode", newMode, vscode.ConfigurationTarget.Workspace);
+            await cfg.update("processor_mode", newMode, vscode.ConfigurationTarget.Global);
             vscode.window.showInformationMessage(
                 `🛡️ Trepan: Switched to ${newMode} mode. This setting will be applied to your next audit.`
             );
@@ -771,7 +771,7 @@ async function evaluateSave(document) {
                 ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
                 ?? '';
             console.log(`[TREPAN META-GATE] Resolved project_path: ${projectPath}`);
-            const processorMode = vscode.workspace.getConfiguration("trepan").get("processorMode") || "GPU";
+            const processorMode = vscode.workspace.getConfiguration("trepan").get("processor_mode") || "GPU";
             const res = await fetchWithTimeout(`${serverUrl}/evaluate_pillar`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -841,7 +841,7 @@ async function evaluateSave(document) {
                 ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
                 ?? '';
             console.log(`[TREPAN AIRBAG] Resolved project_path: ${projectPath}`);
-            const processorMode = vscode.workspace.getConfiguration("trepan").get("processorMode") || "GPU";
+            const processorMode = vscode.workspace.getConfiguration("trepan").get("processor_mode") || "GPU";
             const res = await fetchWithTimeout(`${serverUrl}/evaluate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
