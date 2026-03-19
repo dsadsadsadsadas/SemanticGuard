@@ -561,12 +561,14 @@ function activate(context) {
             try {
                 progress.report({ message: "Generating golden template..." });
 
+                const processorMode = vscode.workspace.getConfiguration("trepan").get("processorMode") || "GPU";
                 const response = await fetchWithTimeout(`${serverUrl}/initialize_project`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         mode: selected.id,
-                        project_path: projectPath
+                        project_path: projectPath,
+                        processor_mode: processorMode
                     })
                 }, 60000); // 60 second timeout for LLM generation
 
@@ -608,12 +610,21 @@ function activate(context) {
         const cfg = vscode.workspace.getConfiguration("trepan");
         const currentMode = cfg.get("processorMode") ?? "GPU";
         
-        const newMode = currentMode === "GPU" ? "CPU" : "GPU";
-        await cfg.update("processorMode", newMode, vscode.ConfigurationTarget.Workspace);
-        
-        vscode.window.showInformationMessage(
-            `🛡️ Trepan: Switched to ${newMode} mode. Restart server for changes to take effect.`
-        );
+        const selection = await vscode.window.showQuickPick([
+            { label: "GPU", description: "Use Ollama/HuggingFace GPU Acceleration (Default)", picked: currentMode === "GPU" },
+            { label: "CPU", description: "Use Local CPU Inference (Lower performance)", picked: currentMode === "CPU" }
+        ], {
+            placeHolder: `Select Trepan Inference Processor (Current: ${currentMode})`,
+            title: "🛡️ Trepan: Processor Configuration"
+        });
+
+        if (selection) {
+            const newMode = selection.label;
+            await cfg.update("processorMode", newMode, vscode.ConfigurationTarget.Workspace);
+            vscode.window.showInformationMessage(
+                `🛡️ Trepan: Switched to ${newMode} mode. This setting will be applied to your next audit.`
+            );
+        }
     });
 
     context.subscriptions.push(askCommand, openLedgerCommand, reviewChangesCommand, initializeProjectCommand, toggleProcessorCommand);
@@ -760,10 +771,16 @@ async function evaluateSave(document) {
                 ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
                 ?? '';
             console.log(`[TREPAN META-GATE] Resolved project_path: ${projectPath}`);
+            const processorMode = vscode.workspace.getConfiguration("trepan").get("processorMode") || "GPU";
             const res = await fetchWithTimeout(`${serverUrl}/evaluate_pillar`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ filename: fileName, incoming_content: incomingContent, project_path: projectPath }),
+                body: JSON.stringify({ 
+                    filename: fileName, 
+                    incoming_content: incomingContent, 
+                    project_path: projectPath,
+                    processor_mode: processorMode
+                }),
             }, timeoutMs);
 
             if (!res.ok) {
@@ -824,6 +841,7 @@ async function evaluateSave(document) {
                 ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
                 ?? '';
             console.log(`[TREPAN AIRBAG] Resolved project_path: ${projectPath}`);
+            const processorMode = vscode.workspace.getConfiguration("trepan").get("processorMode") || "GPU";
             const res = await fetchWithTimeout(`${serverUrl}/evaluate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -831,7 +849,8 @@ async function evaluateSave(document) {
                     filename: fileName,
                     code_snippet: codeContent,
                     pillars: pillars,
-                    project_path: projectPath
+                    project_path: projectPath,
+                    processor_mode: processorMode
                 }),
             }, timeoutMs);
 
