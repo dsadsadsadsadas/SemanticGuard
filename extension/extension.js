@@ -147,6 +147,11 @@ let serverOnline = false;
 let discoveredServerUrl = null; // Cache the working server URL
 let outputChannel; // Global diagnostic output channel
 
+// Diff-based audit cache: stores last audited content per file URI
+const _lastAuditedContent = new Map(); // key: document.uri.toString(), value: string
+const DIFF_CONTEXT_LINES = 10; // lines of context above and below each changed region
+const LARGE_FILE_THRESHOLD = 150; // lines — files above this use diff mode
+
 // ─── Evaluation Queue ────────────────────────────────────────────────────────
 // Serializes saves to prevent shotgun POST requests & Ollama bottlenecking.
 class SaveQueue {
@@ -702,7 +707,12 @@ function activate(context) {
         }
     });
 
-    context.subscriptions.push(saveHook, saveDoneHandler);
+    // Clear snapshot when file is closed to free memory
+    const closeHandler = vscode.workspace.onDidCloseTextDocument((document) => {
+        _lastAuditedContent.delete(document.uri.toString());
+    });
+
+    context.subscriptions.push(saveHook, saveDoneHandler, closeHandler);
 }
 
 // ─── Core Evaluation ─────────────────────────────────────────────────────────
@@ -725,10 +735,8 @@ function isRuleSanctuaryPath(document) {
  * @returns {Promise<vscode.TextEdit[]>}
  */
 async function evaluateSave(document) {
-    /**
-     * RULE SANCTUARY: (REMOVED) - We now send all pillar changes to the Meta-Gate
-     * to ensure the Vault remains synchronized.
-     */
+    const currentContent = document.getText();
+    const fileKey = document.uri.toString();
 
     const cfg = vscode.workspace.getConfiguration("trepan");
     let serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8001";
@@ -758,7 +766,7 @@ async function evaluateSave(document) {
     // ============================================
     if (isPillar) {
         const fileName = path.basename(document.fileName);
-        const incomingContent = document.getText();
+        const incomingContent = currentContent;
 
         console.log(`[TREPAN META-GATE] Pillar file save detected: ${fileName}`);
 
@@ -804,7 +812,6 @@ async function evaluateSave(document) {
                 fullPath: document.uri.fsPath,
                 violations: data.violations || [],
             };
-            console.log("[TREPAN DEBUG] FINAL MESSAGE", webviewMessage);
             trepanSidebarProvider.sendMessage(webviewMessage, actionResult === "REJECT");
             await executeAIAssistantActions(reasoning, actionResult, driftScore);
 
@@ -816,6 +823,7 @@ async function evaluateSave(document) {
 
             setStatus("accepted");
             setTimeout(() => setStatus("online"), 2000);
+            _lastAuditedContent.set(fileKey, currentContent);
             return [];
         } catch (err) {
             console.error("Trepan Meta-Gate error:", err);
@@ -827,7 +835,26 @@ async function evaluateSave(document) {
         // THE AIRBAG: Project File Evaluation
         // ============================================
         const fileName = path.basename(document.fileName);
-        const codeContent = document.getText();
+        const totalLines = currentContent.split('\n').length;
+        const previousContent = _lastAuditedContent.get(fileKey);
+
+        let codeContent;
+        if (!previousContent || totalLines <= LARGE_FILE_THRESHOLD) {
+            // First audit or small file — send full content
+            codeContent = currentContent;
+        } else {
+            // Large file with existing snapshot — send diff chunk only
+            codeContent = extractAuditChunk(currentContent, previousContent, DIFF_CONTEXT_LINES);
+            
+            if (codeContent === "") {
+                // No changes detected — skip audit entirely
+                console.log('[TREPAN] No changes detected since last audit. Skipping.');
+                return [];
+            }
+            
+            console.log(`[TREPAN] Diff mode: sending ${codeContent.split('\n').length} lines of ${totalLines} total`);
+        }
+
         const pillars = readPillars(document);
 
         console.log(`[TREPAN AIRBAG] Document save detected: ${fileName}`);
@@ -887,6 +914,7 @@ async function evaluateSave(document) {
 
             setStatus("accepted");
             setTimeout(() => setStatus("online"), 2000);
+            _lastAuditedContent.set(fileKey, currentContent);
             return [];
         } catch (err) {
             console.error("Trepan Airbag error:", err);
@@ -895,6 +923,7 @@ async function evaluateSave(document) {
         }
     }
 }
+
 
 // ─── Pillar Reader ────────────────────────────────────────────────────────────
 
@@ -1247,6 +1276,39 @@ function fetchWithTimeout(urlStr, options = {}, ms) {
         }
         req.end();
     });
+}
+
+/**
+ * Extracts the changed chunk from a document compared to its last audited snapshot.
+ * Returns the changed lines plus DIFF_CONTEXT_LINES of surrounding context.
+ * If no snapshot exists or the file is small, returns the full content.
+ */
+function extractAuditChunk(currentContent, previousContent, contextLines) {
+    const currentLines = currentContent.split('\n');
+    const previousLines = previousContent.split('\n');
+
+    // Find changed line indices
+    const changedIndices = new Set();
+    const maxLen = Math.max(currentLines.length, previousLines.length);
+
+    for (let i = 0; i < maxLen; i++) {
+        if (currentLines[i] !== previousLines[i]) {
+            // Add the changed line plus context window
+            for (let c = Math.max(0, i - contextLines); c <= Math.min(currentLines.length - 1, i + contextLines); c++) {
+                changedIndices.add(c);
+            }
+        }
+    }
+
+    if (changedIndices.size === 0) {
+        // No changes detected — return empty string to skip audit
+        return "";
+    }
+
+    // Extract the chunk as contiguous numbered lines
+    const sortedIndices = Array.from(changedIndices).sort((a, b) => a - b);
+    const chunkLines = sortedIndices.map(i => `${i + 1} | ${currentLines[i] || ''}`);
+    return chunkLines.join('\n');
 }
 
 /** Minimal glob matcher — supports ** and * wildcards */

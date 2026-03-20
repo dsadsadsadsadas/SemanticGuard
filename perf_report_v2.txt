@@ -1,0 +1,37 @@
+======== TREPAN PERFORMANCE DIAGNOSTIC ========
+
+SAMPLE: SHORT (35 chars, ~8 tokens)
+  Stage 1 - AST Extraction:      0.000s
+  Stage 2 - Prompt Construction: 0.000s
+  Stage 3 - Prompt Size:
+    [SYSTEM_RULES]:              0 chars
+    [STRUCTURAL_SPECIFICATION]:  275 chars
+    [ANALYSIS INSTRUCTIONS]:     1726 chars
+    [CODE TO AUDIT]:             51 chars
+    TOTAL:                       2069 chars (~517 tokens)
+  Stage 4 - Model Inference:     4.262s
+    Model Output Size:           486 chars (~121 tokens)
+  Stage 5 - Parser:              0.000s
+  Stage 6 - End-to-End:          4.263s
+
+SAMPLE: LONG (112044 chars, ~28011 tokens)
+  Stage 1 - AST Extraction:      154.076s
+  Stage 2 - Prompt Construction: 158.445s
+  Stage 3 - Prompt Size:
+    [SYSTEM_RULES]:              0 chars
+    [STRUCTURAL_SPECIFICATION]:  41457 chars
+    [ANALYSIS INSTRUCTIONS]:     1726 chars
+    [CODE TO AUDIT]:             112060 chars
+    TOTAL:                       155260 chars (~38815 tokens)
+  Stage 4 - Model Inference:     16.976s
+    Model Output Size:           3226 chars (~806 tokens)
+  Stage 5 - Parser:              0.001s
+  Stage 6 - End-to-End:          329.499s
+
+BOTTLENECK CANDIDATES (any stage > 0.5s):
+  s1 (154.076s)
+  s2 (158.445s)
+  s4 (16.976s)
+  s4 (4.262s)
+
+================================================

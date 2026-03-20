@@ -1,0 +1,39 @@
+--- SCENARIO A (With Comment) ---
+{
+  "action": "REJECT",
+  "drift_score": 0.85,
+  "reasoning": "CommentInfluence: NO\nCommentEvidence: NONE\nInferenceType: STRICT\nNotes: The code is logging a dummy object, which does not contain sensitive data.",
+  "vault_updated": false,
+  "vault_file": "",
+  "filename": "test.js",
+  "violations": [
+    {
+      "rule_id": "#_01",
+      "rule_name": "",
+      "rule_location": "",
+      "violation": "SENSITIVE DATA LOGGING: PHI or patient info must NOT reach ANY sink.",
+      "line_number": 4,
+      "suggested_fix": "console.log({ /* dummy object */ });"
+    }
+  ]
+}
+
+--- SCENARIO B (Without Comment) ---
+{
+  "action": "REJECT",
+  "drift_score": 0.85,
+  "reasoning": "CommentInfluence: NO\nCommentEvidence: NONE\nInferenceType: STRICT\nNotes: Patient data is being logged to the console, which is a sink.",
+  "vault_updated": false,
+  "vault_file": "",
+  "filename": "test.js",
+  "violations": [
+    {
+      "rule_id": "#_01",
+      "rule_name": "",
+      "rule_location": "",
+      "violation": "SENSITIVE DATA LOGGING",
+      "line_number": 3,
+      "suggested_fix": "console.log(JSON.stringify(patientData));"
+    }
+  ]
+}

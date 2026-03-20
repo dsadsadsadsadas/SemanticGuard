@@ -92,7 +92,7 @@ def generate(prompt: str, system_prompt: str = None, processor_mode: str = "GPU"
         "content": prompt
     })
     # Configure GPU/CPU based on mode
-    num_gpu = 99 if processor_mode == "GPU" else 0
+    num_gpu = 99 if processor_mode.upper() == "GPU" else 0
     
     payload = {
         "model": "llama3.1:8b",  # Stable Llama 3.1 8B model
@@ -116,14 +116,14 @@ def generate(prompt: str, system_prompt: str = None, processor_mode: str = "GPU"
     logger.info(f"   User prompt: {prompt[:100]}...")
     
     try:
-        response = requests.post(url, json=payload, timeout=30)
+        response = requests.post(url, json=payload, timeout=120)
         response.raise_for_status()
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
         logger.warning(f"⚠️ Ollama connection failed: {e}. Attempting self-healing...")
         if ensure_ollama_alive():
             # Retry once after revival
             try:
-                response = requests.post(url, json=payload, timeout=30)
+                response = requests.post(url, json=payload, timeout=120)
                 response.raise_for_status()
             except Exception as retry_e:
                 logger.error(f"❌ Self-healing failed during retry: {retry_e}")
@@ -131,7 +131,7 @@ def generate(prompt: str, system_prompt: str = None, processor_mode: str = "GPU"
         else:
             raise RuntimeError(f"Ollama inference error: {e}")
     except requests.exceptions.Timeout:
-        logger.error("Ollama request timed out after 30 seconds")
+        logger.error("Ollama request timed out after 120 seconds")
         raise RuntimeError("Ollama inference timeout")
     
     try:

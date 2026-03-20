@@ -12,6 +12,11 @@ if sys.stdout.encoding != "utf-8":
 if sys.stderr.encoding != "utf-8":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
+try:
+    from . import sink_registry
+except ImportError:
+    import sink_registry
+
 import logging
 import time
 import os
@@ -1908,6 +1913,10 @@ async def lifespan(app: FastAPI):
     
     # EMERGENCY FIX 1: Wrap init_vault in try/except with full traceback
     try:
+        # Action 3: Wire startup initialization
+        sink_registry.load()
+        logger.info("🛡️ Sink registry initialized. Active sinks: %s", 
+                    sink_registry._current_registry["middleware"])
         init_vault()
         logger.info("✅ Vault initialized successfully")
     except Exception as vault_error:
@@ -1974,7 +1983,7 @@ class EvaluatePillarRequest(BaseModel):
     filename:         str = Field(..., description="The name of the pillar, e.g. system_rules.md")
     incoming_content: str = Field(..., description="The content of the pillar that the user is trying to save")
     project_path:     str = Field("",  description="Optional: Absolute path to the project root (sent by extension)")
-    processor_mode:   Optional[str] = Field("gpu", description="CPU or GPU usage for inference")
+    processor_mode:   Optional[str] = Field("GPU", description="CPU or GPU usage for inference")
 
 class VerifyIntentRequest(BaseModel):
     ai_explanation: str = Field(..., description="The AI's generated walkthrough/explanation of its work.")
@@ -1995,6 +2004,10 @@ class ViolationDetail(BaseModel):
     violation:     str = Field("", description="What was violated e.g. innerHTML usage")
     line_number:   int = Field(0,  description="Line number in the file where violation occurs")
     suggested_fix: str = Field("", description="AI-suggested code replacement")
+    data_flow:     str = Field("", description="Data flow trace (Source -> Sink)")
+    sensitive_var: str = Field("", description="Sensitive variable identified")
+    trigger_type:  str = Field("", description="VARIABLE or STRING trigger")
+    confidence:    str = Field("", description="HIGH or LOW confidence")
 
 class EvaluateResponse(BaseModel):
     action:        str   = Field(...,  description="ACCEPT, REJECT, or ERROR")
@@ -2005,6 +2018,7 @@ class EvaluateResponse(BaseModel):
     # Structured violation details for sidebar display
     filename:      str   = Field("",    description="File that was audited")
     violations:    List[ViolationDetail] = Field(default_factory=list, description="Parsed violation details")
+    raw_output:    str   = Field("",    description="Raw LLM output for diagnostics")
 
 
 class HealthResponse(BaseModel):
@@ -2056,35 +2070,8 @@ async def evaluate(req: EvaluateRequest):
     else:
         logger.info(f"GPU check: {gpu_msg}")
 
-    if not is_trepan_path(req.filename):
-        # ── DYNAMIC RULE-AWARE SCANNER (Zero-Baseline Upgrade) ──
-        # Extract keywords directly from system_rules.md
-        system_rules = req.pillars.system_rules or VAULT_STATE.get("system_rules.md", "")
-        
-        # Simple extraction: find words in backticks or common security functions
-        # This allows the scanner to evolve as rules change.
-        dynamic_keywords = set(re.findall(r'`([^`]+)`', system_rules))
-        
-        # Add fundamental baseline keywords if not present
-        baseline_defaults = {"eval", "exec", "innerHTML", "os.system", "subprocess", "os.popen", "pickle.load", "marshal.load"}
-        forbidden_keywords = list(dynamic_keywords.union(baseline_defaults))
-        
-        code_lower = req.code_snippet.lower()
-        line_count = len(req.code_snippet.splitlines())
-        
-        has_forbidden = any(kw.lower() in code_lower for kw in forbidden_keywords)
-        
-        # SMART TRIGGER: Only bypass if ZERO matches AND short code.
-        # If any keyword matches, it MUST go to Ollama for context analysis.
-        if line_count < 15 and not has_forbidden:
-            logger.info(f"✨ Zero-Baseline: Code is clean/simple ({line_count} lines). Bypassing LLM.")
-            return EvaluateResponse(
-                action="ACCEPT",
-                drift_score=0.0,
-                reasoning="Trepan: Code verified clean via Dynamic Zero-Baseline (No prohibited keywords from system_rules.md detected).",
-                violations=[],
-                filename=req.filename
-            )
+    # RETIRED: keyword_audit_shortcut
+    # (Excision of legacy Zero-Baseline logic to enforce structural analysis)
         
     if not _model_ready:
         raise HTTPException(
@@ -2099,11 +2086,18 @@ async def evaluate(req: EvaluateRequest):
     # Determine file extension from filename
     file_extension = os.path.splitext(req.filename)[1]
     
+    # ── PIPELINE PIPING ──
+    # Task 4: build_prompt call with system_rules=""
+    # Apply Silent Exclusions (Engineering Way) first
+    cleaned_code = clean_code_snippet(req.filename, req.code_snippet)
+    if len(cleaned_code) < len(req.code_snippet):
+        logger.info(f"🛡️ Silent Exclusion: Stripped internal keys from {req.filename}")
+
     # GROUNDING: Prepend line numbers to the code snippet
-    grounded_code = prepend_line_numbers(req.code_snippet)
+    grounded_code = prepend_line_numbers(cleaned_code)
     
     prompt = build_prompt(
-        system_rules=req.pillars.system_rules,
+        system_rules="",        # empty — STRUCTURAL_INTEGRITY_SYSTEM carries all analysis rules
         user_command=grounded_code,
         file_extension=file_extension,
     )
@@ -2115,13 +2109,8 @@ async def evaluate(req: EvaluateRequest):
     # the Llama 3 <|system|> role instead of eating user token budget.
     t0 = time.perf_counter()
     
-    # Apply Silent Exclusions (Engineering Way)
-    original_len = len(req.code_snippet)
-    cleaned_code = clean_code_snippet(req.filename, req.code_snippet)
-    if len(cleaned_code) < original_len:
-        logger.info(f"🛡️ Silent Exclusion: Stripped internal keys from {req.filename}")
-        # Update the prompt with cleaned code
-        prompt = f"### [FILENAME]: {req.filename}\n\n### [SOURCE CODE]:\n{cleaned_code}\n\n{req.pillars.model_dump_json()}"
+    # RETIRED: keyword_audit_shortcut
+    # (Excision of legacy prompt overwrite logic)
     
     try:
         # Pass processor_mode to generate()
@@ -2153,7 +2142,11 @@ async def evaluate(req: EvaluateRequest):
     print(f"\n⏱️ AUDIT TIME (evaluate): {elapsed:.2f}s\n")
 
     # Parse result
-    result = guillotine_parser(raw, system_rules)
+    # Task 3: Wire guillotine_parser into the response path
+    result = guillotine_parser(
+        raw_output=raw,
+        user_command=cleaned_code
+    )
     
     # ── LINE VALIDATION (Anti-Hallucination) ──
     # Discard violations pointing to non-existent lines.
@@ -2189,7 +2182,8 @@ async def evaluate(req: EvaluateRequest):
         drift_score=result['score'],
         reasoning=result['reasoning'],
         violations=result['violations'],
-        filename=req.filename
+        filename=req.filename,
+        raw_output=result['raw_output']
     )
 
 # ─── Vault Recovery & Resigning Endpoint ───────────────────────────────────

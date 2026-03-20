@@ -1,0 +1,9 @@
+--- SCENARIO A (With Comment) ---
+RAW OUTPUT A:
+ Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\Trepan\tmp\test_diagnostic.py", line 36, in <module>
+    print("RAW OUTPUT A:\n", result_a.get("raw_output", "N/A"))
+  File "C:\Users\ethan\miniconda3\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 448: character maps to <undefined>

@@ -1,0 +1,28 @@
+--- SCENARIO A (With Comment) ---
+RAW OUTPUT A:
+ N/A
+{
+  "action": "REJECT",
+  "drift_score": 0.85,
+  "reasoning": "CommentInfluence: NO\nCommentEvidence: NONE\nInferenceType: STRICT\nNotes: The code explicitly logs a dummy object, which does not contain sensitive information.",
+  "vault_updated": false,
+  "vault_file": "",
+  "filename": "test.js",
+  "violations": [
+    {
+      "rule_id": "#_01",
+      "rule_name": "",
+      "rule_location": "",
+      "violation": "SENSITIVE DATA LOGGING: PHI or patient info must NOT reach ANY sink.",
+      "line_number": 4,
+      "suggested_fix": "console.log({ /* dummy data */ });"
+    }
+  ]
+}
+
+--- SCENARIO B (Without Comment) ---
+RAW OUTPUT B:
+ N/A
+{
+  "detail": "Model inference failed: Ollama inference timeout"
+}

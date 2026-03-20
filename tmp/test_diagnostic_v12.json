@@ -1,0 +1,55 @@
+--- SCENARIO A (With Comment) ---
+Traceback (most recent call last):
+  File "C:\Users\ethan\miniconda3\Lib\site-packages\urllib3\util\connection.py", line 73, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\Trepan\tmp\test_diagnostic.py", line 47, in <module>
+    result_a = audit(code_a)
+               ^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\Trepan\tmp\test_diagnostic.py", line 24, in audit
+    response = requests.post(URL, json=payload, timeout=300)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\miniconda3\Lib\site-packages\requests\api.py", line 115, in post
+    return request("post", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\miniconda3\Lib\site-packages\requests\api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\miniconda3\Lib\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\miniconda3\Lib\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\miniconda3\Lib\site-packages\requests\adapters.py", line 644, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "C:\Users\ethan\miniconda3\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\miniconda3\Lib\site-packages\urllib3\connectionpool.py", line 493, in _make_request
+    conn.request(
+  File "C:\Users\ethan\miniconda3\Lib\site-packages\urllib3\connection.py", line 500, in request
+    self.endheaders()
+  File "C:\Users\ethan\miniconda3\Lib\http\client.py", line 1298, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "C:\Users\ethan\miniconda3\Lib\http\client.py", line 1058, in _send_output
+    self.send(msg)
+  File "C:\Users\ethan\miniconda3\Lib\http\client.py", line 996, in send
+    self.connect()
+  File "C:\Users\ethan\miniconda3\Lib\site-packages\urllib3\connection.py", line 331, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\miniconda3\Lib\site-packages\urllib3\connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\miniconda3\Lib\site-packages\urllib3\util\connection.py", line 81, in create_connection
+    sock.close()
+  File "C:\Users\ethan\miniconda3\Lib\socket.py", line 499, in close
+    def close(self):
+
+KeyboardInterrupt

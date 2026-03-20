@@ -1,0 +1,125 @@
+--- SCENARIO A (With Comment) ---
+RAW OUTPUT A:
+ [THOUGHT]
+CommentInfluence: NO
+CommentEvidence: NONE
+InferenceType: STRICT
+Notes: Patient data is being logged to the console, which matches rule RULE_03.
+
+[VIOLATION]
+File: <filename>
+Line: 4
+Rule: #100
+Description: SENSITIVE DATA LOGGING
+
+[SUGGESTED_FIX]
+console.log({ name: "John Doe", id: "12345" });
+[/SUGGESTED_FIX]
+
+DataFlow: patientData -> console.log
+SensitiveVar: patientData
+TriggerType: VARIABLE
+Confidence: HIGH
+
+[SCORE]
+0.85
+[ACTION]
+REJECT
+{
+  "action": "ACCEPT",
+  "drift_score": 0.0,
+  "reasoning": "CommentInfluence: NO\nCommentEvidence: NONE\nInferenceType: STRICT\nNotes: Patient data is being logged to the console, which matches rule RULE_03.",
+  "vault_updated": false,
+  "vault_file": "",
+  "filename": "test.js",
+  "violations": []
+}
+
+--- SCENARIO B (Without Comment) ---
+RAW OUTPUT B:
+ [THOUGHT]
+CommentInfluence: YES
+CommentEvidence: NONE
+InferenceType: STRICT
+Notes: Patient data is being logged to the console, which matches rule RULE_03.
+
+[VIOLATION]
+File: code.js
+Line: 3
+Rule: #100
+Description: SENSITIVE DATA LOGGING
+
+[SUGGESTED_FIX]
+console.log({ ...patientData }); // Log a copy of patientData instead of the original object.
+[/SUGGESTED_FIX]
+
+DataFlow: patientData -> console.log (VARIABLE)
+SensitiveVar: patientData
+TriggerType: VARIABLE
+Confidence: HIGH
+
+[SCORE]
+0.85
+[ACTION]
+REJECT
+{
+  "action": "ACCEPT",
+  "drift_score": 0.0,
+  "reasoning": "CommentInfluence: YES\nCommentEvidence: NONE\nInferenceType: STRICT\nNotes: Patient data is being logged to the console, which matches rule RULE_03.",
+  "vault_updated": false,
+  "vault_file": "",
+  "filename": "test.js",
+  "violations": []
+}
+
+--- SCENARIO C (Variable Integrity) ---
+RAW OUTPUT C:
+ Here is the output for the given code:
+
+[THOUGHT]
+CommentInfluence: NO
+CommentEvidence: NONE
+InferenceType: STRICT
+Notes: Sensitive data logging rule triggered.
+
+[VIOLATION]
+File: <filename>.js
+Line: 3
+Rule: RULE_03
+Description: SENSITIVE DATA LOGGING: `console.log` reached with sensitive variable `u_id`.
+
+[SUGGESTED_FIX]
+const u_id = "user_123";
+// console.log(u_id); // Commented out to prevent logging
+
+[/SUGGESTED_FIX]
+DataFlow: u_id -> console.log
+SensitiveVar: u_id
+TriggerType: VARIABLE
+Confidence: HIGH
+[SCORE]
+0.85
+[ACTION]
+REJECT
+{
+  "action": "REJECT",
+  "drift_score": 0.85,
+  "reasoning": "CommentInfluence: NO\nCommentEvidence: NONE\nInferenceType: STRICT\nNotes: Sensitive data logging rule triggered.",
+  "vault_updated": false,
+  "vault_file": "",
+  "filename": "test.js",
+  "violations": [
+    {
+      "rule_id": "#_01",
+      "rule_name": "",
+      "rule_location": "",
+      "violation": "SENSITIVE DATA LOGGING: `console.log` reached with sensitive variable `u_id`.",
+      "line_number": 3,
+      "suggested_fix": "const u_id = \"user_123\";\n// console.log(u_id); // Commented out to prevent logging",
+      "data_flow": "u_id -> console.log",
+      "sensitive_var": "u_id",
+      "trigger_type": "VARIABLE",
+      "confidence": "HIGH"
+    }
+  ]
+}

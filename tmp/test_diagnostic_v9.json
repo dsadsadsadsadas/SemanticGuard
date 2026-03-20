@@ -1,0 +1,146 @@
+--- SCENARIO A (With Comment) ---
+RAW OUTPUT A:
+ [THOUGHT]
+CommentInfluence: NO
+CommentEvidence: NONE
+InferenceType: STRICT
+Notes: The code explicitly logs a dummy object, which does not contain sensitive data.
+
+[VIOLATION]
+File: <filename>.js
+Line: 4
+Rule: RULE_03
+Description: SENSITIVE DATA LOGGING: PHI or patient info must NOT reach ANY sink.
+[SUGGESTED_FIX]
+console.log({ dummy: true });
+[/SUGGESTED_FIX]
+DataFlow: patientData -> console.log
+SensitiveVar: patientData
+TriggerType: VARIABLE
+Confidence: HIGH
+[SCORE]
+0.85
+[ACTION]
+REJECT
+{
+  "action": "REJECT",
+  "drift_score": 0.85,
+  "reasoning": "CommentInfluence: NO\nCommentEvidence: NONE\nInferenceType: STRICT\nNotes: The code explicitly logs a dummy object, which does not contain sensitive data.",
+  "vault_updated": false,
+  "vault_file": "",
+  "filename": "test.js",
+  "violations": [
+    {
+      "rule_id": "#_01",
+      "rule_name": "",
+      "rule_location": "",
+      "violation": "SENSITIVE DATA LOGGING: PHI or patient info must NOT reach ANY sink.",
+      "line_number": 4,
+      "suggested_fix": "console.log({ dummy: true });",
+      "data_flow": "patientData -> console.log",
+      "sensitive_var": "patientData",
+      "trigger_type": "VARIABLE",
+      "confidence": "HIGH"
+    }
+  ]
+}
+
+--- SCENARIO B (Without Comment) ---
+RAW OUTPUT B:
+ [THOUGHT]
+CommentInfluence: NO
+CommentEvidence: NONE
+InferenceType: STRICT
+Notes: The code directly logs sensitive patient data to the console, violating a strict rule.
+
+[VIOLATION]
+File: CODE_TO_AUDIT.js
+Line: 3
+Rule: RULE_03
+Description: SENSITIVE DATA LOGGING
+
+[SUGGESTED_FIX]
+console.log({ ...patientData }); // Log a copy of the object instead of the original sensitive data.
+[/SUGGESTED_FIX]
+
+DataFlow: patientData -> console.log
+SensitiveVar: patientData
+TriggerType: VARIABLE
+Confidence: HIGH
+
+[SCORE]
+0.85
+
+[ACTION]
+REJECT
+{
+  "action": "REJECT",
+  "drift_score": 0.85,
+  "reasoning": "CommentInfluence: NO\nCommentEvidence: NONE\nInferenceType: STRICT\nNotes: The code directly logs sensitive patient data to the console, violating a strict rule.",
+  "vault_updated": false,
+  "vault_file": "",
+  "filename": "test.js",
+  "violations": [
+    {
+      "rule_id": "#_01",
+      "rule_name": "",
+      "rule_location": "",
+      "violation": "SENSITIVE DATA LOGGING",
+      "line_number": 3,
+      "suggested_fix": "console.log({ ...patientData }); // Log a copy of the object instead of the original sensitive data.",
+      "data_flow": "patientData -> console.log",
+      "sensitive_var": "patientData",
+      "trigger_type": "VARIABLE",
+      "confidence": "HIGH"
+    }
+  ]
+}
+
+--- SCENARIO C (Variable Integrity) ---
+RAW OUTPUT C:
+ Here is the output for the given code:
+
+[THOUGHT]
+CommentInfluence: NO
+CommentEvidence: NONE
+InferenceType: STRICT
+Notes: Sensitive data logging rule triggered.
+
+[VIOLATION]
+File: <filename>.js
+Line: 3
+Rule: RULE_03
+Description: PHI or patient info must NOT reach ANY sink.
+[SUGGESTED_FIX]
+console.log(u_id); // Remove this line or use a secure logging mechanism.
+[/SUGGESTED_FIX]
+DataFlow: u_id -> console.log
+SensitiveVar: u_id
+TriggerType: VARIABLE
+Confidence: HIGH
+[SCORE]
+0.85
+[ACTION]
+REJECT
+{
+  "action": "REJECT",
+  "drift_score": 0.85,
+  "reasoning": "CommentInfluence: NO\nCommentEvidence: NONE\nInferenceType: STRICT\nNotes: Sensitive data logging rule triggered.",
+  "vault_updated": false,
+  "vault_file": "",
+  "filename": "test.js",
+  "violations": [
+    {
+      "rule_id": "#_01",
+      "rule_name": "",
+      "rule_location": "",
+      "violation": "PHI or patient info must NOT reach ANY sink.",
+      "line_number": 3,
+      "suggested_fix": "console.log(u_id); // Remove this line or use a secure logging mechanism.",
+      "data_flow": "u_id -> console.log",
+      "sensitive_var": "u_id",
+      "trigger_type": "VARIABLE",
+      "confidence": "HIGH"
+    }
+  ]
+}
