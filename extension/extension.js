@@ -810,7 +810,7 @@ async function evaluateSave(document) {
 
             if (actionResult === "REJECT") {
                 const scoreDisplay = driftScore.toFixed(2);
-                vscode.window.showErrorMessage(`🛑 Trepan Blocked Save — Drift Score: ${scoreDisplay}`, { modal: true });
+                vscode.window.showErrorMessage(`🛑 Trepan Blocked Save — Context Drift detected (Score: ${scoreDisplay})`, { modal: true });
                 throw new Error(`Trepan Gatekeeper: architectural drift detected (score ${scoreDisplay})`);
             }
 
@@ -881,7 +881,7 @@ async function evaluateSave(document) {
 
             if (actionResult === "REJECT") {
                 const scoreDisplay = driftScore.toFixed(2);
-                vscode.window.showErrorMessage(`🛑 Trepan Blocked Save — Drift Score: ${scoreDisplay}`, { modal: true });
+                vscode.window.showErrorMessage(`🛑 Trepan Blocked Save — Context Drift detected (Score: ${scoreDisplay})`, { modal: true });
                 throw new Error(`Trepan Airbag: architectural drift detected (score ${scoreDisplay})`);
             }
 
@@ -1377,6 +1377,26 @@ class TrepanSidebarProvider {
         .drift-warning { color: #dcdcaa; background-color: rgba(220, 220, 170, 0.15); }
         .drift-critical { color: #f48771; background-color: rgba(244, 135, 113, 0.15); }
         
+        /* Confidence Badges */
+        .confidence-high { 
+            color: #f48771; 
+            background: rgba(244, 135, 113, 0.1);
+            border: 1px solid rgba(244, 135, 113, 0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .confidence-low { 
+            color: #dcdcaa; 
+            background: rgba(220, 220, 170, 0.1);
+            border: 1px solid rgba(220, 220, 170, 0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        
         .action-accept { color: var(--vscode-testing-iconPassed); font-weight: bold; }
         .action-reject { color: var(--vscode-testing-iconFailed); font-weight: bold; }
         .action-error { color: orange; font-weight: bold; }
@@ -1472,14 +1492,24 @@ class TrepanSidebarProvider {
                 
                 list.forEach(v => {
                     if (!v) return;
+                    const confClass = (v.confidence || '').toUpperCase() === 'LOW' ? 'confidence-low' : 'confidence-high';
+                    
                     html += '<div class="violation-card" style="border-left: 3px solid var(--vscode-errorForeground); margin-bottom: 12px; padding: 10px; background: rgba(255, 255, 255, 0.05);">';
-                    html += '    <div class="violation-header" style="margin-bottom: 6px;">';
+                    html += '    <div class="violation-header" style="margin-bottom: 6px; display: flex; justify-content: space-between;">';
                     html += '        <span class="violation-file">📍 Line: ' + (v.line_number || '?') + '</span>';
+                    html += '        <span class="' + confClass + '">' + (v.confidence || 'HIGH') + ' CONFIDENCE</span>';
                     html += '    </div>';
-                    html += '    <div class="violation-rule" style="font-weight: bold; margin-bottom: 4px;">📋 Rule: ' + escapeHtml(v.rule_id || 'Rule') + '</div>';
-                    html += '    <div class="violation-desc" style="font-style: italic; color: var(--vscode-editor-foreground);">🚫 Reason: ' + escapeHtml(v.violation || 'Check server logs') + '</div>';
+                    html += '    <div class="violation-rule" style="font-weight: bold; margin-bottom: 4px; color: #dcdcaa;">📋 Rule: ' + escapeHtml(v.rule_id || 'Rule') + '</div>';
+                    html += '    <div class="violation-desc" style="font-style: italic; color: var(--vscode-editor-foreground); margin-bottom: 8px;">🚫 Reason: ' + escapeHtml(v.violation || 'Check server logs') + '</div>';
+                    
+                    if (v.data_flow) {
+                        html += '    <div style="font-size: 0.85em; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 4px; margin: 8px 0; font-family: monospace;">';
+                        html += '        <span style="color: #569cd6;">Flow:</span> ' + escapeHtml(v.data_flow);
+                        html += '    </div>';
+                    }
+                    
                     if (v.suggested_fix) {
-                        html += '    <div style="margin-top: 8px;">';
+                        html += '    <div style="margin-top: 10px;">';
                         html += '        <button class="btn btn-warn apply-fix-btn" data-line="' + (v.line_number || 0) + '" data-rule-id="' + escapeHtml(v.rule_id || 'Rule') + '" data-reason="' + escapeHtml(v.violation || 'Architectural Drift') + '" data-fix="' + escapeHtml(v.suggested_fix) + '" data-file-path="' + (filePath || '') + '">🪄 Apply Fix</button>';
                         html += '    </div>';
                     }
@@ -1576,14 +1606,19 @@ class TrepanSidebarProvider {
                     html += '<div class="drift-meter">';
                     html += '<span class="drift-label">Architectural Distance:</span> ';
                     html += '<span class="drift-score ' + scoreClass + '">' + message.score + '</span> ';
-                    html += '<span class="drift-status ' + scoreClass + '">(' + scoreLabel + ')</span>';
+                    html += '<div style="margin-top: 5px; font-size: 0.85em; opacity: 0.8;">';
+                    html += 'Violation occurred after rule was previously satisfied → <b>Context Drift detected</b>';
+                    html += '</div>';
                     html += '</div>';
                 }
 
+                // THOUGHT sequestered for terminal review (UI remains lean)
+/*
                 const reasoningText = message.reasoning;
                 if (reasoningText) {
                     html += '<div class="thought">' + escapeHtml(reasoningText) + '</div>';
                 }
+*/
 
                 if (message.action === 'ACCEPT') {
                     html += '<p class="action-accept">✅ Verdict: ACCEPT</p>';
