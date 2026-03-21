@@ -71,6 +71,22 @@ Then install the **Trepan VS Code Extension** from the Marketplace (or from the 
 
 ---
 
+## 🎯 Switching Audit Models
+
+Trepan supports multiple models for different use cases:
+
+- **⚡ Fast Mode (Llama 3.1:8b)**: ~5-7s per audit. Best for active coding sessions.
+- **🧠 Smart Mode (DeepSeek-R1:7b)**: ~12-18s per audit. Better reasoning for security reviews.
+
+To switch models:
+1. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
+2. Type `Trepan: Select Audit Model`
+3. Choose your preferred mode
+
+The selected model persists across VS Code sessions.
+
+---
+
 ## ⚡ Project Initialization
 
 Starting a new project? Open the VS Code Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **`Trepan: Initialize Project`**.
