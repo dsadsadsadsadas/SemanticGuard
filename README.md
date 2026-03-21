@@ -144,8 +144,9 @@ Your architectural decisions are as immutable as you want them to be.
 > **Your code stays on your machine. Always.**
 
 ---
-
-## 📞 Are You One of the First 30 Cloners?
+## IMPORTANT !
+Trepan uses a local 7-8B parameter model. It catches the majority of common violations but is not perfect. It is a seatbelt, not an autopilot. Your judgment still matters.
+## 📞 Are You One of the First 100 Users?
 
 I'd love to hear if Trepan caught a drift for you. Open an issue or reach out directly:
 
