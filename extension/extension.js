@@ -149,8 +149,25 @@ let outputChannel; // Global diagnostic output channel
 
 // Diff-based audit cache: stores last audited content per file URI
 const _lastAuditedContent = new Map(); // key: document.uri.toString(), value: string
+const _lastSentContent = new Map(); // key: document.uri.toString(), value: string
 const DIFF_CONTEXT_LINES = 10; // lines of context above and below each changed region
 const LARGE_FILE_THRESHOLD = 150; // lines — files above this use diff mode
+const FIRST_AUDIT_LINE_LIMIT = 120; // Files above this skip first-save audit
+
+// Model selection state
+let _selectedModel = "deepseek-r1:7b"; // Default to Smart mode
+const MODEL_OPTIONS = [
+    {
+        label: "⚡ Fast Mode — Llama 3.1:8b",
+        description: "~5 seconds per audit. Good accuracy. Best for active coding.",
+        model: "llama3.1:8b"
+    },
+    {
+        label: "🧠 Smart Mode — DeepSeek-R1:7b",
+        description: "~11 seconds per audit. Better reasoning. Best for security review.",
+        model: "deepseek-r1:7b"
+    }
+];
 
 // ─── Evaluation Queue ────────────────────────────────────────────────────────
 // Serializes saves to prevent shotgun POST requests & Ollama bottlenecking.
@@ -632,7 +649,42 @@ function activate(context) {
         }
     });
 
-    context.subscriptions.push(askCommand, openLedgerCommand, reviewChangesCommand, initializeProjectCommand, toggleProcessorCommand);
+    const selectModelCmd = vscode.commands.registerCommand(
+        "trepan.selectModel",
+        async () => {
+            const picked = await vscode.window.showQuickPick(
+                MODEL_OPTIONS.map(opt => ({
+                    label: opt.label,
+                    description: opt.description,
+                    model: opt.model
+                })),
+                {
+                    placeHolder: `Current model: ${_selectedModel}. Choose your audit mode.`,
+                    title: "Trepan: Select Audit Model"
+                }
+            );
+
+            if (picked) {
+                _selectedModel = picked.model;
+                const modeName = picked.model === "llama3.1:8b" ? "Fast Mode ⚡" : "Smart Mode 🧠";
+                vscode.window.showInformationMessage(
+                    `Trepan switched to ${modeName} (${picked.model})`
+                );
+                console.log(`[TREPAN] Model switched to: ${_selectedModel}`);
+            }
+        }
+    );
+
+    const fullAuditCmd = vscode.commands.registerCommand(
+        "trepan.auditEntireFile",
+        async () => {
+            vscode.window.showInformationMessage(
+                "🛡️ Trepan: Full file audit coming in version 2.0. Use Save to audit changes."
+            );
+        }
+    );
+
+    context.subscriptions.push(askCommand, openLedgerCommand, reviewChangesCommand, initializeProjectCommand, toggleProcessorCommand, selectModelCmd, fullAuditCmd);
 
     // Periodic server health check
     checkServerHealth();
@@ -709,7 +761,9 @@ function activate(context) {
 
     // Clear snapshot when file is closed to free memory
     const closeHandler = vscode.workspace.onDidCloseTextDocument((document) => {
-        _lastAuditedContent.delete(document.uri.toString());
+        const key = document.uri.toString();
+        _lastAuditedContent.delete(key);
+        _lastSentContent.delete(key);
     });
 
     context.subscriptions.push(saveHook, saveDoneHandler, closeHandler);
@@ -737,6 +791,23 @@ function isRuleSanctuaryPath(document) {
 async function evaluateSave(document) {
     const currentContent = document.getText();
     const fileKey = document.uri.toString();
+
+    // Skip if this exact content was already sent in a previous audit
+    if (_lastSentContent.get(fileKey) === currentContent) {
+        console.log('[TREPAN] No changes since last audit. Skipping.');
+        return [];
+    }
+
+    // Trivial change filter — skip if entire content change is just whitespace/comments/newlines
+    // This is more reliable as it catches all cosmetic changes regardless of diff mode
+    const lastSent = _lastSentContent.get(fileKey);
+    if (lastSent) {
+        const normalize = (text) => text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0).join('');
+        if (normalize(currentContent) === normalize(lastSent)) {
+            console.log('[TREPAN] Trivial cosmetic change detected (indentation/newlines only). Skipping audit.');
+            return [];
+        }
+    }
 
     const cfg = vscode.workspace.getConfiguration("trepan");
     let serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8001";
@@ -780,6 +851,10 @@ async function evaluateSave(document) {
                 ?? '';
             console.log(`[TREPAN META-GATE] Resolved project_path: ${projectPath}`);
             const processorMode = vscode.workspace.getConfiguration("trepan").get("processor_mode") || "GPU";
+            
+            // Record what we are about to send, regardless of verdict
+            _lastSentContent.set(fileKey, currentContent);
+
             const res = await fetchWithTimeout(`${serverUrl}/evaluate_pillar`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -839,11 +914,30 @@ async function evaluateSave(document) {
         const previousContent = _lastAuditedContent.get(fileKey);
 
         let codeContent;
-        if (!previousContent || totalLines <= LARGE_FILE_THRESHOLD) {
-            // First audit or small file — send full content
+        if (!previousContent) {
+            // FIRST SAVE — no snapshot exists yet
+            if (totalLines > FIRST_AUDIT_LINE_LIMIT) {
+                // Large file on first save — index silently, skip audit
+                _lastAuditedContent.set(fileKey, currentContent);
+                _lastSentContent.set(fileKey, currentContent);
+                
+                // Show status bar message
+                const indexMsg = vscode.window.setStatusBarMessage(
+                    `🛡️ Trepan: Indexed ${totalLines} lines — auditing changes from next save`,
+                    8000
+                );
+                
+                console.log(`[TREPAN] First save of large file (${totalLines} lines). Indexing silently, skipping audit.`);
+                return [];
+            } else {
+                // Small file on first save — audit normally
+                codeContent = currentContent;
+            }
+        } else if (totalLines <= LARGE_FILE_THRESHOLD) {
+            // Small file with existing snapshot — always full audit
             codeContent = currentContent;
         } else {
-            // Large file with existing snapshot — send diff chunk only
+            // Large file with existing snapshot — use diff engine
             codeContent = extractAuditChunk(currentContent, previousContent, DIFF_CONTEXT_LINES);
             
             if (codeContent === "") {
@@ -857,6 +951,7 @@ async function evaluateSave(document) {
 
         const pillars = readPillars(document);
 
+
         console.log(`[TREPAN AIRBAG] Document save detected: ${fileName}`);
 
         setStatus("checking");
@@ -869,6 +964,10 @@ async function evaluateSave(document) {
                 ?? '';
             console.log(`[TREPAN AIRBAG] Resolved project_path: ${projectPath}`);
             const processorMode = vscode.workspace.getConfiguration("trepan").get("processor_mode") || "GPU";
+            
+            // Record what we are about to send, regardless of verdict
+            _lastSentContent.set(fileKey, currentContent);
+
             const res = await fetchWithTimeout(`${serverUrl}/evaluate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -877,7 +976,8 @@ async function evaluateSave(document) {
                     code_snippet: codeContent,
                     pillars: pillars,
                     project_path: projectPath,
-                    processor_mode: processorMode
+                    processor_mode: processorMode,
+                    model_name: _selectedModel
                 }),
             }, timeoutMs);
 

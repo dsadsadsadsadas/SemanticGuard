@@ -76,12 +76,12 @@ def is_trepan_path(file_path: str) -> bool:
 
 # Handle both relative and absolute imports for flexibility
 try:
-    from .prompt_builder import build_prompt, build_meta_gate_prompt, STRUCTURAL_INTEGRITY_SYSTEM, METAGATE_AUDIT_SYSTEM
+    from .prompt_builder import build_prompt, build_meta_gate_prompt, STRUCTURAL_INTEGRITY_SYSTEM, STRUCTURAL_INTEGRITY_SYSTEM_LLAMA, METAGATE_AUDIT_SYSTEM
     from .response_parser import guillotine_parser
     from .model_loader import get_model, generate
 except ImportError:
     # Fallback for when running directly (not as a package)
-    from prompt_builder import build_prompt, build_meta_gate_prompt, STRUCTURAL_INTEGRITY_SYSTEM, METAGATE_AUDIT_SYSTEM
+    from prompt_builder import build_prompt, build_meta_gate_prompt, STRUCTURAL_INTEGRITY_SYSTEM, STRUCTURAL_INTEGRITY_SYSTEM_LLAMA, METAGATE_AUDIT_SYSTEM
     from response_parser import guillotine_parser
     from model_loader import get_model, generate
 
@@ -1911,6 +1911,16 @@ async def lifespan(app: FastAPI):
     global _model_ready
     logger.info("🔄 Starting Trepan Gatekeeper server…")
     
+    # ── GPU Contention Prevention ─────────────────────────────────────────
+    # Set Ollama optimization flags before any inference calls.
+    # OLLAMA_NUM_PARALLEL=1 dedicates 100% GPU to one request at a time.
+    # This eliminates CUDA scheduling overhead between concurrent contexts.
+    import os as _os
+    _os.environ.setdefault("OLLAMA_NUM_PARALLEL", "1")
+    _os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
+    _os.environ.setdefault("OLLAMA_GPU_OVERHEAD", "0")
+    logger.info("🎮 GPU optimization flags set: OLLAMA_NUM_PARALLEL=1, CUDA_VISIBLE_DEVICES=0")
+    
     # EMERGENCY FIX 1: Wrap init_vault in try/except with full traceback
     try:
         # Action 3: Wire startup initialization
@@ -1978,12 +1988,14 @@ class EvaluateRequest(BaseModel):
     pillars:        EvaluatePillars = Field(default_factory=EvaluatePillars)
     project_path:   str = Field("",    description="Absolute path to the project root")
     processor_mode: Optional[str] = Field("gpu", description="CPU or GPU usage for inference")
+    model_name:     str = Field("deepseek-r1:7b", description="Model to use for inference")
 
 class EvaluatePillarRequest(BaseModel):
     filename:         str = Field(..., description="The name of the pillar, e.g. system_rules.md")
     incoming_content: str = Field(..., description="The content of the pillar that the user is trying to save")
     project_path:     str = Field("",  description="Optional: Absolute path to the project root (sent by extension)")
     processor_mode:   Optional[str] = Field("GPU", description="CPU or GPU usage for inference")
+    model_name:       str = Field("deepseek-r1:7b", description="Model to use for inference")
 
 class VerifyIntentRequest(BaseModel):
     ai_explanation: str = Field(..., description="The AI's generated walkthrough/explanation of its work.")
@@ -2060,8 +2072,8 @@ async def evaluate(req: EvaluateRequest):
     """
     # ── LOG SIGNAL ──
     # Extra diagnostic log as requested by user
-    cmd_preview = req.code_snippet[:100].replace('\n', ' ')
-    print(f"\n--- AUDIT REQUEST RECEIVED: {req.filename} ({cmd_preview}) ---")
+    # cmd_preview = req.code_snippet[:100].replace('\n', ' ')
+    # print(f"\n--- AUDIT REQUEST RECEIVED: {req.filename} ({cmd_preview}) ---")
 
     # HARDWARE CHECK: Log GPU status but never block the audit
     gpu_ok, gpu_msg = verify_gpu_loading()
@@ -2100,6 +2112,7 @@ async def evaluate(req: EvaluateRequest):
         system_rules="",        # empty — STRUCTURAL_INTEGRITY_SYSTEM carries all analysis rules
         user_command=grounded_code,
         file_extension=file_extension,
+        model_name=req.model_name
     )
 
     # Run inference natively — offloaded to thread pool so the async event loop
@@ -2113,8 +2126,11 @@ async def evaluate(req: EvaluateRequest):
     # (Excision of legacy prompt overwrite logic)
     
     try:
-        # Pass processor_mode to generate()
-        raw = await asyncio.to_thread(generate, prompt, STRUCTURAL_INTEGRITY_SYSTEM, processor_mode=req.processor_mode)
+        # Choose system prompt based on model
+        system_prompt = STRUCTURAL_INTEGRITY_SYSTEM_LLAMA if "llama" in req.model_name.lower() else STRUCTURAL_INTEGRITY_SYSTEM
+        
+        # Pass processor_mode and model_name to generate()
+        raw = await asyncio.to_thread(generate, prompt, system_prompt, processor_mode=req.processor_mode, model_name=req.model_name)
 
         print("\n" + "="*40)
         print("🧠 TREPAN RAW THOUGHTS:")
@@ -2492,8 +2508,8 @@ async def evaluate_pillar(req: EvaluatePillarRequest):
     try:
         # FIX 6: Use /api/chat endpoint with system/user separation
         # OFFLOAD to thread pool to prevent blocking the async event loop during GPU inference
-        # Pass processor_mode to generate()
-        raw = await asyncio.to_thread(generate, user_prompt, system_prompt=system_prompt, processor_mode=req.processor_mode)
+        # Pass processor_mode and model_name to generate()
+        raw = await asyncio.to_thread(generate, user_prompt, system_prompt=system_prompt, processor_mode=req.processor_mode, model_name=req.model_name)
 
         print("\n" + "="*40)
         print("🏛️ TREPAN META-GATE RAW THOUGHTS:")

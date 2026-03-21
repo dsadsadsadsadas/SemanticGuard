@@ -52,12 +52,39 @@ console.log(v2)
         # Let's verify propagation steps count.
         self.assertEqual(len(spec["propagation_steps"]), 0)
 
+    def test_javascript_source_extraction(self):
+        code = "const name = req.body.name;\nconsole.log(name);"
+        spec = prompt_builder.extract_data_flow_spec(code, file_extension=".js")
+        self.assertEqual(len(spec["pii_sources"]), 1)
+        self.assertEqual(spec["pii_sources"][0]["node_type"], "EXTERNAL_INPUT")
+
+    def test_javascript_literal_not_flagged(self):
+        code = 'const name = "John Doe";\nconsole.log(name);'
+        spec = prompt_builder.extract_data_flow_spec(code, file_extension=".js")
+        self.assertEqual(len(spec["pii_sources"]), 0)
+
+    def test_python_routing_unchanged(self):
+        code = "name = req.body['name']\nprint(name)"
+        spec = prompt_builder.extract_data_flow_spec(code, file_extension=".py")
+        self.assertEqual(len(spec["pii_sources"]), 1)
+        self.assertEqual(spec["pii_sources"][0]["node_type"], "EXTERNAL_INPUT")
+
+    def test_unsupported_extension_returns_empty(self):
+        code = "SELECT * FROM users WHERE id = input();"
+        spec = prompt_builder.extract_data_flow_spec(code, file_extension=".sql")
+        self.assertEqual(spec["pii_sources"], [])
+        self.assertEqual(spec["propagation_steps"], [])
+
     def test_prompt_construction_smoking_gun(self):
         code = "name = req.body['name']\nprint(name)"
-        prompt = prompt_builder.build_prompt("Rule: 1", code, "py")
-        self.assertIn("[SMOKING GUN REQUIREMENT]", prompt)
-        self.assertIn("PII SOURCES:", prompt)
-        self.assertIn("Variable name", prompt)
+        prompt = prompt_builder.build_prompt("Rule: 1", code, ".py")
+        # After removing duplicate system prompt, check for core sections only
+        self.assertIn("[SYSTEM_RULES]", prompt)
+        self.assertIn("--- SOURCE 1 ---", prompt)
+        self.assertIn("Variable :", prompt)
+        self.assertIn("CODE TO AUDIT:", prompt)
+        # Ensure ANALYSIS INSTRUCTIONS is NOT present (duplicate removed)
+        self.assertNotIn("ANALYSIS INSTRUCTIONS:", prompt)
 
 if __name__ == "__main__":
     unittest.main()
