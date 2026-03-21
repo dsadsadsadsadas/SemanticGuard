@@ -149,7 +149,7 @@ Trepan uses a local 7-8B parameter model. It catches the majority of common viol
 ## 📞 Are You One of the First 100 Users?
 
 I'd love to hear if Trepan caught a drift for you. Open an issue or reach out directly:
-
+- **Gmail**: jayjaygamingbaron@gmail.com
 - **LinkedIn**: [Ethan Baron](https://www.linkedin.com/in/ethan-baron-b77965374/)
 - **X (Twitter)**: [@Jsaaaron91633](https://x.com/Jsaaaron91633)
 
