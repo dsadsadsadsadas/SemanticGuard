@@ -140,8 +140,9 @@ Every file save is now audited in real-time with Layer 1 + Layer 2 defense!
 
 Trepan supports multiple models for different use cases:
 
-- **⚡ Fast Mode (Llama 3.1:8b)**: ~2-5s per audit (after Layer 1). Best for active coding sessions. **Default.**
-- **🧠 Smart Mode (DeepSeek R1:7b)**: ~5-10s per audit (after Layer 1). Better reasoning for complex security reviews.
+- **⚡ Fast Mode (Llama 3.1:8b)**: ~4-6s per audit (after Layer 1). Best for active coding sessions. **Default.**
+- **🧠 Smart Mode (DeepSeek R1:7b)**: ~10-15s per audit (after Layer 1). Better reasoning for complex security reviews.
+- **🚀 Power Mode (BYOK - Cloud)**: ~1.5s average per audit. Use flagship models like Claude 3.5 Sonnet or GPT-4o via your own cloud API key. **3-4x faster than local!**
 
 **To switch models:**
 1. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
@@ -149,6 +150,67 @@ Trepan supports multiple models for different use cases:
 3. Choose your preferred mode
 
 The selected model persists across VS Code sessions.
+
+### 🚀 Power Mode (BYOK) - NEW!
+
+Want maximum speed without sacrificing accuracy? Configure Power Mode with your own cloud API key:
+
+**Supported Providers:**
+- **OpenRouter**: Access to Claude 3.5 Sonnet, GPT-4o, and 100+ models
+- **Groq**: Ultra-fast inference with Llama models (up to 10x faster)
+
+**Setup:**
+1. Click the ⚙️ gear icon in the Trepan Vault panel (VS Code sidebar)
+2. Select your provider (OpenRouter or Groq)
+3. Enter your API key:
+   - OpenRouter: Get one at [openrouter.ai](https://openrouter.ai)
+   - Groq: Get one at [groq.com](https://groq.com)
+4. Choose a model:
+   - OpenRouter: `anthropic/claude-3.5-sonnet`, `openai/gpt-4o-mini`, etc.
+   - Groq: `llama3-70b-8192`, `mixtral-8x7b-32768`, etc.
+5. Trepan tests the connection and saves your credentials securely
+
+**Toggle Power Mode:**
+- Click the "Local" button in the Trepan Vault panel to switch to "Power ⚡"
+- Or use Command Palette: `Trepan: Toggle Power Mode`
+- Status bar shows: `🛡️ Trepan: Power Mode ⚡ [OpenRouter]` or `[Groq]`
+
+**Performance Tracking:**
+After each audit, you'll see:
+- **Cloud Audit**: `☁️ Cloud Audit: OpenRouter | ⚡ Latency: 1.45s`
+- **Local Audit**: `💻 Local Audit: Layer 1 + Layer 2`
+
+**Performance Comparison:**
+- **⚡ Cloud Average**: ~1.5 seconds per audit (3-4x faster than local!)
+- **OpenRouter (Claude 3.5)**: ~1-2 seconds per audit
+- **Groq (Llama 70B)**: ~0.5-1 second per audit (fastest!)
+- **Local (Llama 3.1:8b)**: ~4-6 seconds per audit
+
+**Benefits:**
+- ⚡ **Blazing fast**: ~1.5s average (3-4x faster than local models)
+- 🧠 **Better accuracy**: Flagship models outperform local 8B models
+- 💰 **Pay-as-you-go**: Only pay for what you use (~$0.01-0.05 per audit)
+- 📊 **Performance tracking**: See provider name and latency in audit results
+- 🔄 **Easy switching**: Toggle between Local and Power Mode anytime
+
+**Security Note:**
+- ⚠️ Your code is sent to the cloud provider's API
+- 🔒 API keys stored securely in VS Code's encrypted SecretStorage
+- 🚫 Keys NEVER touch the Python server
+- ✅ All API calls happen directly from the extension
+- 🛡️ Layer 1 still runs locally (catches obvious violations before cloud)
+
+**When to use Power Mode:**
+- Prototyping and experimentation
+- Non-sensitive codebases
+- When speed matters more than privacy
+- When you need the best possible accuracy
+
+**When NOT to use Power Mode:**
+- Proprietary/confidential code
+- Regulated industries (healthcare, finance)
+- Air-gapped environments
+- When 100% local is required
 
 ### ⚙️ CPU/GPU Mode
 

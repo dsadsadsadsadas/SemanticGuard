@@ -24,6 +24,7 @@ wheels/
 venv/
 ENV/
 env/
+trepan_beta_test/
 
 # IDE
 .vscode/
@@ -31,6 +32,8 @@ env/
 *.swp
 *.swo
 *~
+.agent/
+.qodo/
 
 # OS
 .DS_Store
@@ -40,6 +43,21 @@ Thumbs.db
 *.log
 logs/
 *.jsonl
+
+# Node modules
+node_modules/
+extension/node_modules/
+
+# Model files and training artifacts
+Trepan_Model_V2/
+trepan-v2/
+trepan-v2_gguf/
+unsloth_compiled_cache/
+llama.cpp/
+
+# Test directories
+test_init_pillars/
+tmp/
 
 # Test files and outputs
 test_*.py
@@ -66,6 +84,9 @@ deepseek_results.txt
 *_RESULTS.md
 *_NOTES.md
 check_*.md
+BYOK_*.md
+MULTI_PROVIDER_*.md
+PERFORMANCE_TRACKING_*.md
 
 # Benchmark files (keep trepan_benchmark.py)
 trepan_*_benchmark.py

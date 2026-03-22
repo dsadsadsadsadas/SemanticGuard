@@ -388,6 +388,11 @@ async function triggerEvolution(projectRoot, tech) {
 function activate(context) {
     console.log("🛡️ Trepan Gatekeeper: Airbag active");
 
+    // Export context for use in other functions
+    if (!global.trepanContext) {
+        global.trepanContext = context;
+    }
+
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider("trepan.explorer", trepanSidebarProvider)
     );
@@ -399,7 +404,7 @@ function activate(context) {
     // Status bar pill
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBarItem.command = "trepan.status";
-    setStatus("checking");
+    updateStatusBar(context);
     statusBarItem.show();
     context.subscriptions.push(statusBarItem);
 
@@ -684,7 +689,367 @@ function activate(context) {
         }
     );
 
-    context.subscriptions.push(askCommand, openLedgerCommand, reviewChangesCommand, initializeProjectCommand, toggleProcessorCommand, selectModelCmd, fullAuditCmd);
+    const configureBYOKCmd = vscode.commands.registerCommand(
+        "trepan.configureBYOK",
+        async () => {
+            try {
+                console.log("[TREPAN BYOK] Starting configuration flow...");
+                
+                // Step 1: Select Provider
+                const providerChoice = await vscode.window.showQuickPick([
+                    {
+                        label: "$(cloud) OpenRouter",
+                        description: "Access to Claude, GPT-4, and 100+ models",
+                        detail: "Best for variety and cutting-edge models",
+                        provider: "openrouter"
+                    },
+                    {
+                        label: "$(zap) Groq",
+                        description: "Ultra-fast inference with Llama models",
+                        detail: "Best for speed (up to 10x faster)",
+                        provider: "groq"
+                    }
+                ], {
+                    placeHolder: "Select your cloud provider",
+                    title: "🔧 Trepan Power Mode - Choose Provider"
+                });
+                
+                if (!providerChoice) {
+                    console.log("[TREPAN BYOK] Provider selection cancelled");
+                    return;
+                }
+                
+                const provider = providerChoice.provider;
+                console.log(`[TREPAN BYOK] Provider selected: ${provider}`);
+                
+                // Save provider selection
+                await context.globalState.update('trepan.provider', provider);
+                
+                // Provider-specific configuration
+                const providerConfig = {
+                    openrouter: {
+                        keyName: "openrouter_api_key",
+                        modelKey: "openrouter_model",
+                        defaultModel: "anthropic/claude-3.5-sonnet",
+                        keyPlaceholder: "sk-or-v1-...",
+                        displayName: "OpenRouter"
+                    },
+                    groq: {
+                        keyName: "groq_api_key",
+                        modelKey: "groq_model",
+                        defaultModel: "llama3-70b-8192",
+                        keyPlaceholder: "gsk_...",
+                        displayName: "Groq"
+                    }
+                };
+                
+                const config = providerConfig[provider];
+                
+                // Check for existing credentials
+                const existingKey = await context.secrets.get(config.keyName);
+                const existingModel = context.globalState.get(config.modelKey) || config.defaultModel;
+                
+                console.log(`[TREPAN BYOK] Existing credentials for ${provider}: key=${existingKey ? 'EXISTS' : 'NONE'}, model=${existingModel}`);
+                
+                // If credentials exist, show settings menu
+                if (existingKey) {
+                    const maskedKey = '•'.repeat(Math.min(existingKey.length, 32));
+                    
+                    const action = await vscode.window.showQuickPick([
+                        {
+                            label: "$(key) API Key",
+                            description: maskedKey,
+                            detail: `Click to update your ${config.displayName} API key`,
+                            action: "editKey"
+                        },
+                        {
+                            label: "$(symbol-namespace) Model",
+                            description: existingModel,
+                            detail: "Click to change the model",
+                            action: "editModel"
+                        },
+                        {
+                            label: "$(testing-passed-icon) Test Connection",
+                            description: "Verify your credentials work",
+                            detail: `Send a test request to ${config.displayName}`,
+                            action: "test"
+                        },
+                        {
+                            label: "$(arrow-left) Change Provider",
+                            description: `Currently using ${config.displayName}`,
+                            detail: "Switch to a different cloud provider",
+                            action: "changeProvider"
+                        }
+                    ], {
+                        placeHolder: `${config.displayName} Settings - Select what to edit`,
+                        title: `🔧 Trepan Power Mode - ${config.displayName}`
+                    });
+                    
+                    if (!action) {
+                        console.log("[TREPAN BYOK] Settings menu cancelled");
+                        return;
+                    }
+                    
+                    if (action.action === "changeProvider") {
+                        // Recursively call configureBYOK to start over
+                        await vscode.commands.executeCommand('trepan.configureBYOK');
+                        return;
+                    }
+                    
+                    if (action.action === "editKey") {
+                        // Edit API Key
+                        const newKey = await vscode.window.showInputBox({
+                            prompt: `Enter new ${config.displayName} API Key (or press Escape to cancel)`,
+                            placeHolder: config.keyPlaceholder,
+                            password: true,
+                            ignoreFocusOut: true,
+                            validateInput: (value) => {
+                                if (!value || value.trim().length === 0) {
+                                    return "API Key cannot be empty";
+                                }
+                                return null;
+                            }
+                        });
+                        
+                        if (!newKey) {
+                            console.log("[TREPAN BYOK] API key update cancelled");
+                            return;
+                        }
+                        
+                        // Test new key
+                        console.log(`[TREPAN BYOK] Testing new ${provider} API key...`);
+                        vscode.window.showInformationMessage(`🔄 Testing ${config.displayName} connection...`);
+                        
+                        await testProviderConnection(provider, newKey, existingModel);
+                        
+                        await context.secrets.store(config.keyName, newKey);
+                        vscode.window.showInformationMessage(`✅ ${config.displayName} API key updated successfully!`);
+                        console.log(`[TREPAN BYOK] ${provider} API key updated`);
+                        
+                    } else if (action.action === "editModel") {
+                        // Edit Model
+                        const newModel = await vscode.window.showInputBox({
+                            prompt: `Enter ${config.displayName} Model ID`,
+                            placeHolder: config.defaultModel,
+                            value: existingModel,
+                            ignoreFocusOut: true,
+                            validateInput: (value) => {
+                                if (!value || value.trim().length === 0) {
+                                    return "Model ID cannot be empty";
+                                }
+                                return null;
+                            }
+                        });
+                        
+                        if (!newModel) {
+                            console.log("[TREPAN BYOK] Model update cancelled");
+                            return;
+                        }
+                        
+                        await context.globalState.update(config.modelKey, newModel);
+                        vscode.window.showInformationMessage(`✅ Model updated to: ${newModel}`);
+                        console.log(`[TREPAN BYOK] ${provider} model updated to:`, newModel);
+                        
+                    } else if (action.action === "test") {
+                        // Test Connection
+                        console.log(`[TREPAN BYOK] Testing ${provider} connection...`);
+                        vscode.window.showInformationMessage(`🔄 Testing ${config.displayName} connection...`);
+                        
+                        await testProviderConnection(provider, existingKey, existingModel);
+                        
+                        vscode.window.showInformationMessage(`✅ Connection successful! Model: ${existingModel}`);
+                        console.log(`[TREPAN BYOK] ${provider} connection test passed`);
+                    }
+                    
+                    return;
+                }
+                
+                // First-time setup flow (no existing credentials)
+                console.log(`[TREPAN BYOK] First-time setup for ${provider}`);
+                
+                // Step 2: Prompt for API Key
+                const apiKey = await vscode.window.showInputBox({
+                    prompt: `Enter your ${config.displayName} API Key`,
+                    placeHolder: config.keyPlaceholder,
+                    password: true,
+                    ignoreFocusOut: true,
+                    validateInput: (value) => {
+                        if (!value || value.trim().length === 0) {
+                            return "API Key cannot be empty";
+                        }
+                        return null;
+                    }
+                });
+
+                if (!apiKey) {
+                    console.log("[TREPAN BYOK] API key input cancelled");
+                    vscode.window.showInformationMessage("BYOK configuration cancelled.");
+                    return;
+                }
+                
+                console.log(`[TREPAN BYOK] ${provider} API key received, length:`, apiKey.length);
+
+                // Step 3: Prompt for Model ID
+                const modelId = await vscode.window.showInputBox({
+                    prompt: `Enter ${config.displayName} Model ID`,
+                    placeHolder: config.defaultModel,
+                    value: config.defaultModel,
+                    ignoreFocusOut: true,
+                    validateInput: (value) => {
+                        if (!value || value.trim().length === 0) {
+                            return "Model ID cannot be empty";
+                        }
+                        return null;
+                    }
+                });
+
+                if (!modelId) {
+                    console.log("[TREPAN BYOK] Model ID input cancelled");
+                    vscode.window.showInformationMessage("BYOK configuration cancelled.");
+                    return;
+                }
+                
+                console.log(`[TREPAN BYOK] ${provider} model ID received:`, modelId);
+
+                // Step 4: Test the connection
+                console.log(`[TREPAN BYOK] Testing ${provider} connection...`);
+                vscode.window.showInformationMessage(`🔄 Testing ${config.displayName} connection...`);
+
+                await testProviderConnection(provider, apiKey, modelId);
+
+                console.log(`[TREPAN BYOK] ${provider} connection test successful`);
+
+                // Step 5: Save credentials securely
+                console.log(`[TREPAN BYOK] Saving ${provider} credentials...`);
+                await context.secrets.store(config.keyName, apiKey);
+                await context.globalState.update(config.modelKey, modelId);
+                console.log(`[TREPAN BYOK] ${provider} credentials saved successfully`);
+
+                // Step 6: Show success message
+                vscode.window.showInformationMessage(
+                    `✅ ${config.displayName} configured successfully! Model: ${modelId}`
+                );
+
+                console.log(`[TREPAN BYOK] Configuration complete. Provider: ${provider}, Model: ${modelId}`);
+
+            } catch (error) {
+                console.error("[TREPAN BYOK] Configuration error:", error);
+                vscode.window.showErrorMessage(
+                    `❌ BYOK configuration failed: ${error.message}`
+                );
+            }
+        }
+    );
+    
+    // Helper function to test provider connections
+    async function testProviderConnection(provider, apiKey, model) {
+        const endpoints = {
+            openrouter: "https://openrouter.ai/api/v1/chat/completions",
+            groq: "https://api.groq.com/openai/v1/chat/completions"
+        };
+        
+        const testResponse = await fetchWithTimeout(endpoints[provider], {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${apiKey}`,
+                ...(provider === "openrouter" && {
+                    "HTTP-Referer": "https://github.com/dsadsadsadsadas/Trepan",
+                    "X-Title": "Trepan Gatekeeper"
+                })
+            },
+            body: JSON.stringify({
+                model: model,
+                messages: [{ role: "user", content: "ACK" }],
+                max_tokens: 10
+            })
+        }, 15000);
+        
+        if (!testResponse.ok) {
+            const errorText = await testResponse.text();
+            throw new Error(`${provider} API test failed: ${testResponse.status} - ${errorText}`);
+        }
+        
+        return await testResponse.json();
+    }
+
+    const togglePowerModeCmd = vscode.commands.registerCommand(
+        "trepan.togglePowerMode",
+        async () => {
+            try {
+                console.log("[TREPAN POWER MODE] Toggle requested");
+                
+                // Get current provider (default to openrouter)
+                const provider = context.globalState.get('trepan.provider') || 'openrouter';
+                
+                // Provider-specific key names
+                const keyNames = {
+                    openrouter: "openrouter_api_key",
+                    groq: "groq_api_key"
+                };
+                
+                const modelKeys = {
+                    openrouter: "openrouter_model",
+                    groq: "groq_model"
+                };
+                
+                const displayNames = {
+                    openrouter: "OpenRouter",
+                    groq: "Groq"
+                };
+                
+                // Check if API key exists for current provider
+                const existingKey = await context.secrets.get(keyNames[provider]);
+                
+                if (existingKey) {
+                    // Key exists, just toggle the mode
+                    const currentMode = context.globalState.get('trepan.mode') || 'local';
+                    const newMode = currentMode === 'cloud' ? 'local' : 'cloud';
+                    
+                    console.log(`[TREPAN POWER MODE] Toggling from ${currentMode} to ${newMode}`);
+                    
+                    await context.globalState.update('trepan.mode', newMode);
+                    updateStatusBar(context);
+                    
+                    if (newMode === 'cloud') {
+                        const model = context.globalState.get(modelKeys[provider]) || 
+                                     (provider === 'openrouter' ? 'anthropic/claude-3.5-sonnet' : 'llama3-70b-8192');
+                        vscode.window.showInformationMessage(
+                            `✅ Trepan: Power Mode Activated (${displayNames[provider]} - ${model})`
+                        );
+                        console.log(`[TREPAN POWER MODE] ✅ Activated Power Mode with ${displayNames[provider]}, model: ${model}`);
+                        outputChannel.appendLine(`[${new Date().toISOString()}] ✅ Power Mode Activated - Provider: ${displayNames[provider]}, Model: ${model}`);
+                    } else {
+                        vscode.window.showInformationMessage(
+                            `✅ Trepan: Local Mode Activated`
+                        );
+                        console.log("[TREPAN POWER MODE] ✅ Activated Local Mode");
+                        outputChannel.appendLine(`[${new Date().toISOString()}] ✅ Local Mode Activated`);
+                    }
+                } else {
+                    // No key exists, trigger configuration flow
+                    console.log("[TREPAN POWER MODE] No API key found, triggering configuration");
+                    await vscode.commands.executeCommand('trepan.configureBYOK');
+                    
+                    // After configuration, check if key was added and activate power mode
+                    const keyAfterConfig = await context.secrets.get(keyNames[provider]);
+                    if (keyAfterConfig) {
+                        await context.globalState.update('trepan.mode', 'cloud');
+                        updateStatusBar(context);
+                        console.log("[TREPAN POWER MODE] ✅ Activated Power Mode after configuration");
+                        outputChannel.appendLine(`[${new Date().toISOString()}] ✅ Power Mode Activated after initial configuration`);
+                    }
+                }
+            } catch (error) {
+                console.error("[TREPAN POWER MODE] Toggle error:", error);
+                vscode.window.showErrorMessage(
+                    `❌ Power Mode toggle failed: ${error.message}`
+                );
+            }
+        }
+    );
+
+    context.subscriptions.push(askCommand, openLedgerCommand, reviewChangesCommand, initializeProjectCommand, toggleProcessorCommand, selectModelCmd, fullAuditCmd, configureBYOKCmd, togglePowerModeCmd);
 
     // Periodic server health check
     checkServerHealth();
@@ -971,26 +1336,116 @@ async function evaluateSave(document) {
             // Record what we are about to send, regardless of verdict
             _lastSentContent.set(fileKey, currentContent);
 
-            const res = await fetchWithTimeout(`${serverUrl}/evaluate`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    filename: fileName,
-                    code_snippet: codeContent,
-                    pillars: pillars,
-                    project_path: projectPath,
-                    processor_mode: processorMode,
-                    model_name: _selectedModel
-                }),
-            }, timeoutMs);
+            // ── TRAFFIC COP: Route based on mode ──────────────────────────────
+            const context = global.trepanContext;
+            const isPowerMode = context?.globalState.get('trepan.mode') === 'cloud';
+            
+            let data;
+            
+            if (isPowerMode) {
+                console.log("[TREPAN TRAFFIC COP] Power Mode detected — routing through Layer 1 + Cloud");
+                
+                // Step 1: Run Layer 1 on Python server
+                const layer1Response = await fetchWithTimeout(`${serverUrl}/evaluate`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        filename: fileName,
+                        code_snippet: codeContent,
+                        pillars: pillars,
+                        project_path: projectPath,
+                        processor_mode: processorMode,
+                        model_name: _selectedModel,
+                        power_mode: true  // Signal to run Layer 1 only
+                    }),
+                }, timeoutMs);
 
-            if (!res.ok) {
-                console.warn(`Trepan: Airbag server returned ${res.status} — failing open`);
-                setStatus("online");
-                return [];
+                if (!layer1Response.ok) {
+                    console.warn(`Trepan: Layer 1 server returned ${layer1Response.status} — failing open`);
+                    setStatus("online");
+                    return [];
+                }
+
+                const layer1Data = await layer1Response.json();
+                
+                // Step 2: Check Layer 1 result
+                if (layer1Data.action === "REJECT") {
+                    // Layer 1 caught it — block immediately
+                    console.log("[TREPAN TRAFFIC COP] Layer 1 REJECT — blocking save");
+                    data = layer1Data;
+                } else if (layer1Data.action === "L1_PASS") {
+                    // Layer 1 passed — call Cloud API for Layer 2
+                    console.log("[TREPAN TRAFFIC COP] Layer 1 passed — calling Cloud API");
+                    
+                    try {
+                        const cloudResult = await callCloudAPI(context, {
+                            filename: fileName,
+                            code_snippet: codeContent,
+                            pillars: pillars
+                        });
+                        
+                        data = cloudResult;
+                        console.log("[TREPAN TRAFFIC COP] Cloud API result:", data.action);
+                    } catch (cloudError) {
+                        console.error("[TREPAN TRAFFIC COP] Cloud API failed:", cloudError);
+                        vscode.window.showErrorMessage(`⚠️ Power Mode failed: ${cloudError.message}. Falling back to local.`);
+                        
+                        // Fallback: run full local audit
+                        const fallbackResponse = await fetchWithTimeout(`${serverUrl}/evaluate`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                filename: fileName,
+                                code_snippet: codeContent,
+                                pillars: pillars,
+                                project_path: projectPath,
+                                processor_mode: processorMode,
+                                model_name: _selectedModel,
+                                power_mode: false
+                            }),
+                        }, timeoutMs);
+                        
+                        if (fallbackResponse.ok) {
+                            data = await fallbackResponse.json();
+                        } else {
+                            setStatus("online");
+                            return [];
+                        }
+                    }
+                } else {
+                    // Unexpected response
+                    data = layer1Data;
+                }
+            } else {
+                // Local Mode: Standard full audit
+                console.log("[TREPAN TRAFFIC COP] Local Mode — running full local audit");
+                
+                const res = await fetchWithTimeout(`${serverUrl}/evaluate`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        filename: fileName,
+                        code_snippet: codeContent,
+                        pillars: pillars,
+                        project_path: projectPath,
+                        processor_mode: processorMode,
+                        model_name: _selectedModel,
+                        power_mode: false
+                    }),
+                }, timeoutMs);
+
+                if (!res.ok) {
+                    console.warn(`Trepan: Airbag server returned ${res.status} — failing open`);
+                    setStatus("online");
+                    return [];
+                }
+
+                data = await res.json();
+                
+                // Add local audit metadata
+                data.audit_mode = 'local';
             }
-
-            const data = await res.json();
+            // ── End Traffic Cop ────────────────────────────────────────────────
             const driftScore = data.drift_score ?? 0;
             const actionResult = data.action;
             const reasoning = data.reasoning || "[No reasoning provided by server]";
@@ -1004,6 +1459,10 @@ async function evaluateSave(document) {
                 filename: fileName,
                 fullPath: document.uri.fsPath,
                 violations: data.violations || [],
+                // Performance tracking metadata
+                audit_mode: data.audit_mode || 'local',
+                cloud_provider: data.cloud_provider || null,
+                cloud_latency: data.cloud_latency || null,
             };
 
             trepanSidebarProvider.sendMessage(webviewMessage, actionResult === "REJECT");
@@ -1028,6 +1487,150 @@ async function evaluateSave(document) {
     }
 }
 
+
+// ─── Cloud API Call (Power Mode - Multi-Provider) ────────────────────────────
+
+async function callCloudAPI(context, payload) {
+    const startTime = Date.now(); // High-resolution performance timer
+    
+    try {
+        // Get current provider
+        const provider = context.globalState.get('trepan.provider') || 'openrouter';
+        
+        // Provider-specific configuration
+        const providerConfig = {
+            openrouter: {
+                keyName: "openrouter_api_key",
+                modelKey: "openrouter_model",
+                endpoint: "https://openrouter.ai/api/v1/chat/completions",
+                displayName: "OpenRouter"
+            },
+            groq: {
+                keyName: "groq_api_key",
+                modelKey: "groq_model",
+                endpoint: "https://api.groq.com/openai/v1/chat/completions",
+                displayName: "Groq"
+            }
+        };
+        
+        const config = providerConfig[provider];
+        if (!config) {
+            throw new Error(`Unknown provider: ${provider}`);
+        }
+        
+        // Get API key and model
+        const apiKey = await context.secrets.get(config.keyName);
+        const modelId = context.globalState.get(config.modelKey) || 
+                       (provider === 'openrouter' ? 'anthropic/claude-3.5-sonnet' : 'llama3-70b-8192');
+        
+        if (!apiKey) {
+            throw new Error(`${config.displayName} API key not found. Please configure Power Mode first.`);
+        }
+        
+        console.log(`[TREPAN POWER MODE] Calling ${config.displayName} with model: ${modelId}`);
+        
+        // Build the prompt
+        const systemPrompt = `You are Trepan, a security-focused code auditor. Analyze the provided code for security violations and architectural drift.
+
+Return ONLY valid JSON in this exact format:
+{
+    "action": "ACCEPT or REJECT",
+    "drift_score": 0.0 to 1.0,
+    "reasoning": "Brief explanation",
+    "violations": [
+        {
+            "rule_id": "string",
+            "line_number": number,
+            "violation": "description",
+            "confidence": "HIGH or LOW"
+        }
+    ]
+}
+
+CRITICAL SECURITY RULES:
+- REJECT if hardcoded secrets, API keys, or passwords are found
+- REJECT if eval() or exec() is used with user input
+- REJECT if subprocess/os.system is used with shell=True
+- REJECT if SQL queries use string concatenation
+- REJECT if sensitive data reaches print/console.log without sanitization`;
+
+        const userPrompt = `Analyze this code for security violations:
+
+Filename: ${payload.filename}
+
+Code:
+\`\`\`
+${payload.code_snippet}
+\`\`\`
+
+Provide your analysis in JSON format.`;
+
+        // Build headers based on provider
+        const headers = {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`
+        };
+        
+        // OpenRouter requires additional headers
+        if (provider === 'openrouter') {
+            headers["HTTP-Referer"] = "https://github.com/dsadsadsadsadas/Trepan";
+            headers["X-Title"] = "Trepan Gatekeeper";
+        }
+
+        const response = await fetchWithTimeout(config.endpoint, {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify({
+                model: modelId,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature: 0.1,
+                max_tokens: 2000
+            })
+        }, 30000);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`${config.displayName} API failed: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content;
+        
+        if (!content) {
+            throw new Error(`No response content from ${config.displayName}`);
+        }
+        
+        console.log(`[TREPAN POWER MODE] Raw response from ${config.displayName}:`, content);
+        
+        // Parse JSON response
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            throw new Error(`Could not extract JSON from ${config.displayName} response`);
+        }
+        
+        const result = JSON.parse(jsonMatch[0]);
+        
+        // Calculate performance metrics
+        const duration = (Date.now() - startTime) / 1000; // Convert to seconds
+        
+        // Add performance metadata to result
+        result.cloud_provider = config.displayName;
+        result.cloud_latency = duration.toFixed(2);
+        result.audit_mode = 'cloud';
+        
+        console.log(`[TREPAN POWER MODE] Parsed result from ${config.displayName}:`, result);
+        console.log(`[TREPAN POWER MODE] ⚡ Performance: ${duration.toFixed(2)}s latency`);
+        
+        return result;
+        
+    } catch (error) {
+        console.error("[TREPAN POWER MODE] Cloud API error:", error);
+        throw error;
+    }
+}
 
 // ─── Pillar Reader ────────────────────────────────────────────────────────────
 
@@ -1073,7 +1676,7 @@ async function checkServerHealth() {
     if (!discoveredUrl) {
         console.log(`[TREPAN HEALTH] ❌ No server found via auto-discovery`);
         serverOnline = false;
-        setStatus("offline");
+        updateStatusBar(global.trepanContext);
 
         // Output detailed diagnostics to VS Code channel
         outputChannel.appendLine(`[${new Date().toISOString()}] Health Check Status: Failed (Auto-Discovery)`);
@@ -1097,7 +1700,7 @@ async function checkServerHealth() {
         }
 
         serverOnline = data.status === "ok";
-        setStatus(serverOnline ? (data.model_loaded ? "online" : "loading") : "offline");
+        updateStatusBar(global.trepanContext);
 
     } catch (error) {
         console.log(`[TREPAN HEALTH] ❌ Health check failed: ${error.message}`);
@@ -1122,7 +1725,7 @@ async function checkServerHealth() {
         }
         
         serverOnline = false;
-        setStatus("offline");
+        updateStatusBar(global.trepanContext);
     }
 }
 
@@ -1136,12 +1739,47 @@ const STATUS_MAP = {
     offline: { text: "$(shield) Trepan ⚫", tooltip: "Trepan offline — saves pass through", bg: undefined },
 };
 
-function setStatus(key) {
+function setStatus(key, customText = null, customTooltip = null) {
     if (!statusBarItem) return;
     const s = STATUS_MAP[key] ?? STATUS_MAP.offline;
-    statusBarItem.text = s.text;
-    statusBarItem.tooltip = s.tooltip;
+    statusBarItem.text = customText || s.text;
+    statusBarItem.tooltip = customTooltip || s.tooltip;
     statusBarItem.backgroundColor = s.bg;
+}
+
+function updateStatusBar(context) {
+    if (!statusBarItem) return;
+    const mode = context?.globalState.get('trepan.mode');
+    const provider = context?.globalState.get('trepan.provider') || 'openrouter';
+    
+    const providerDisplayNames = {
+        openrouter: "OpenRouter",
+        groq: "Groq"
+    };
+    
+    console.log(`[TREPAN STATUS] Updating status bar - mode: ${mode}, provider: ${provider}, serverOnline: ${serverOnline}`);
+    
+    // Priority 1: If server is offline, always show offline (regardless of mode)
+    if (!serverOnline) {
+        setStatus('offline');
+        console.log(`[TREPAN STATUS] ✅ Status bar set to offline (server down)`);
+        return;
+    }
+    
+    // Priority 2: If server is online and Power Mode is active, show Power Mode with provider
+    if (mode === 'cloud') {
+        const displayName = providerDisplayNames[provider];
+        setStatus(
+            'online',
+            `🛡️ Trepan: Power Mode ⚡ [${displayName}]`,
+            `Trepan Power Mode — using ${displayName} cloud AI`
+        );
+        console.log(`[TREPAN STATUS] ✅ Status bar set to Power Mode with ${displayName}`);
+    } else {
+        // Priority 3: Server online, Local Mode
+        setStatus('online');
+        console.log(`[TREPAN STATUS] ✅ Status bar set to online (local mode)`);
+    }
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -1443,6 +2081,34 @@ class TrepanSidebarProvider {
 
         // Listen for messages from the Webview (like button clicks)
         webviewView.webview.onDidReceiveMessage(async (message) => {
+            console.log('[TREPAN WEBVIEW] Received message:', message);
+            
+            // Handle BYOK configuration request
+            if (message.command === 'configure_byok') {
+                console.log('[TREPAN WEBVIEW] Executing trepan.configureBYOK command');
+                try {
+                    await vscode.commands.executeCommand('trepan.configureBYOK');
+                    console.log('[TREPAN WEBVIEW] Command executed successfully');
+                } catch (error) {
+                    console.error('[TREPAN WEBVIEW] Command execution failed:', error);
+                    vscode.window.showErrorMessage(`Failed to open BYOK config: ${error.message}`);
+                }
+                return;
+            }
+            
+            // Handle Power Mode toggle request
+            if (message.command === 'toggle_power_mode') {
+                console.log('[TREPAN WEBVIEW] Executing trepan.togglePowerMode command');
+                try {
+                    await vscode.commands.executeCommand('trepan.togglePowerMode');
+                    console.log('[TREPAN WEBVIEW] Power mode toggled successfully');
+                } catch (error) {
+                    console.error('[TREPAN WEBVIEW] Power mode toggle failed:', error);
+                    vscode.window.showErrorMessage(`Failed to toggle power mode: ${error.message}`);
+                }
+                return;
+            }
+
             if (message.command === 'resign_vault') {
                 const cfg = vscode.workspace.getConfiguration("trepan");
                 const serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8000";
@@ -1613,6 +2279,30 @@ class TrepanSidebarProvider {
             color: var(--vscode-editor-foreground);
         }
         .violation-icon { margin-right: 4px; }
+        
+        /* BYOK Settings Gear Styling */
+        .settings-gear {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            padding: 4px 8px;
+            opacity: 0.7;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+        .settings-gear:hover {
+            opacity: 1;
+            transform: rotate(30deg);
+        }
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .header-container h2 {
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -1623,13 +2313,45 @@ class TrepanSidebarProvider {
     </div>
 
     <div id="content">
-        <h2>🏛️ Trepan Vault Access</h2>
+        <div class="header-container">
+            <h2>🏛️ Trepan Vault Access</h2>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()">
+                    <span id="mode-text">Local</span>
+                </button>
+                <button id="settings-gear" class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button>
+            </div>
+        </div>
         <p>Awaiting architectural changes...</p>
     </div>
     <script>
-        const vscode = acquireVsCodeApi();
+        // Make vscode global so inline onclick handlers can access it
+        window.vscode = acquireVsCodeApi();
+        const vscode = window.vscode;
         const contentDiv = document.getElementById('content');
         const compromiseBanner = document.getElementById('compromise-banner');
+        
+        // Global function for BYOK configuration
+        window.configureBYOK = function() {
+            console.log('configureBYOK called');
+            vscode.postMessage({ command: 'configure_byok' });
+        };
+        
+        // Global function for mode toggle
+        window.toggleMode = function() {
+            console.log('toggleMode called');
+            const btn = document.getElementById('mode-toggle');
+            const modeText = document.getElementById('mode-text');
+            if (btn && modeText) {
+                vscode.postMessage({ command: 'toggle_power_mode' });
+                // Toggle button text (will be updated by extension message)
+                if (modeText.textContent === 'Local') {
+                    modeText.textContent = 'Power ⚡';
+                } else {
+                    modeText.textContent = 'Local';
+                }
+            }
+        };
         
         document.getElementById('resign-btn').addEventListener('click', () => {
             vscode.postMessage({ command: 'resign_vault' });
@@ -1718,29 +2440,29 @@ class TrepanSidebarProvider {
             if (message.type === 'reset') {
                 document.body.classList.remove('compromised');
                 compromiseBanner.classList.remove('active');
-                contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2><p>Awaiting architectural changes...</p>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ Trepan Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p>Awaiting architectural changes...</p>';
                 return;
             }
             
             if (message.type === 'resign_success') {
                 document.body.classList.remove('compromised');
                 compromiseBanner.classList.remove('active');
-                contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2><p style="color: var(--vscode-testing-iconPassed); font-weight: bold;">✅ Successfully Re-Signed Vault!</p>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ Trepan Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p style="color: var(--vscode-testing-iconPassed); font-weight: bold;">✅ Successfully Re-Signed Vault!</p>';
                 setTimeout(() => {
-                    contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2><p>Awaiting architectural changes...</p>';
+                    contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ Trepan Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p>Awaiting architectural changes...</p>';
                 }, 3000);
                 return;
             }
 
             // SCANNING: show loading spinner while AI is thinking
             if (message.type === 'scanning') {
-                contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2><div class="scanning"><div class="spinner"></div><span>🛡️ Trepan is evaluating architectural drift...</span></div>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ Trepan Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><div class="scanning"><div class="spinner"></div><span>🛡️ Trepan is evaluating architectural drift...</span></div>';
                 return;
             }
 
             // ERROR: show server failure while evaluating
             if (message.type === 'error') {
-                contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2><div class="action-card" style="border-left: 4px solid var(--vscode-errorForeground);"><p class="action-error">⚠️ Trepan Error</p><p style="color: var(--vscode-editor-foreground); font-size: 0.9em;">' + message.message + '</p><p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; font-size: 0.85em; margin-top: 8px;">Audit failed — check server logs for details.</p></div>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ Trepan Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><div class="action-card" style="border-left: 4px solid var(--vscode-errorForeground);"><p class="action-error">⚠️ Trepan Error</p><p style="color: var(--vscode-editor-foreground); font-size: 0.9em;">' + message.message + '</p><p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; font-size: 0.85em; margin-top: 8px;">Audit failed — check server logs for details.</p></div>';
                 return;
             }
             
@@ -1785,6 +2507,24 @@ class TrepanSidebarProvider {
                     html += '<div class="thought">' + escapeHtml(reasoningText) + '</div>';
                 }
 */
+
+                // ═══════════════════════════════════════════════════════════════════
+                // PERFORMANCE TRACKING: "Bragging" UI
+                // ═══════════════════════════════════════════════════════════════════
+                if (message.audit_mode === 'cloud' && message.cloud_provider && message.cloud_latency) {
+                    html += '<div style="background: rgba(100, 200, 255, 0.1); border-left: 3px solid #64c8ff; padding: 8px 12px; margin: 10px 0; border-radius: 4px; font-size: 0.9em;">';
+                    html += '<span style="color: #64c8ff;">☁️ Cloud Audit:</span> ';
+                    html += '<span style="font-weight: bold; color: var(--vscode-editor-foreground);">' + escapeHtml(message.cloud_provider) + '</span>';
+                    html += ' | ';
+                    html += '<span style="color: #dcdcaa;">⚡ Latency:</span> ';
+                    html += '<span style="font-weight: bold; color: #4ec9b0;">' + escapeHtml(message.cloud_latency) + 's</span>';
+                    html += '</div>';
+                } else if (message.audit_mode === 'local') {
+                    html += '<div style="background: rgba(78, 201, 176, 0.1); border-left: 3px solid #4ec9b0; padding: 8px 12px; margin: 10px 0; border-radius: 4px; font-size: 0.9em;">';
+                    html += '<span style="color: #4ec9b0;">💻 Local Audit:</span> ';
+                    html += '<span style="font-weight: bold; color: var(--vscode-editor-foreground);">Layer 1 + Layer 2</span>';
+                    html += '</div>';
+                }
 
                 if (message.action === 'ACCEPT') {
                     html += '<p class="action-accept">✅ Verdict: ACCEPT</p>';
@@ -1840,7 +2580,7 @@ class TrepanSidebarProvider {
                 }
 
                 entry.innerHTML = html;
-                contentDiv.innerHTML = '<h2>🏛️ Trepan Vault Access</h2>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ Trepan Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div>';
                 contentDiv.appendChild(entry);
 
                 // Wire up buttons via event delegation on the entry element
