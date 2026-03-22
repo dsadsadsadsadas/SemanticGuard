@@ -1281,40 +1281,58 @@ async function evaluateSave(document) {
         const totalLines = currentContent.split('\n').length;
         const previousContent = _lastAuditedContent.get(fileKey);
 
+        // ── CHECK MODE EARLY: Power Mode needs full context ───────────────
+        const context = global.trepanContext;
+        const isPowerMode = context?.globalState.get('trepan.mode') === 'cloud';
+
         let codeContent;
-        if (!previousContent) {
-            // FIRST SAVE — no snapshot exists yet
-            if (totalLines > FIRST_AUDIT_LINE_LIMIT) {
-                // Large file on first save — index silently, skip audit
-                _lastAuditedContent.set(fileKey, currentContent);
-                _lastSentContent.set(fileKey, currentContent);
-                
-                // Show status bar message
-                const indexMsg = vscode.window.setStatusBarMessage(
-                    `🛡️ Trepan: Indexed ${totalLines} lines — auditing changes from next save`,
-                    8000
-                );
-                
-                console.log(`[TREPAN] First save of large file (${totalLines} lines). Indexing silently, skipping audit.`);
-                return [];
-            } else {
-                // Small file on first save — audit normally
-                codeContent = currentContent;
-            }
-        } else if (totalLines <= LARGE_FILE_THRESHOLD) {
-            // Small file with existing snapshot — always full audit
+        
+        // ── POWER MODE: Always send full file (no snapshot restrictions) ──
+        if (isPowerMode) {
+            console.log(`[TREPAN POWER MODE] Sending full file (${totalLines} lines) for deep taint analysis`);
             codeContent = currentContent;
-        } else {
-            // Large file with existing snapshot — use diff engine
-            codeContent = extractAuditChunk(currentContent, previousContent, DIFF_CONTEXT_LINES);
             
-            if (codeContent === "") {
-                // No changes detected — skip audit entirely
-                console.log('[TREPAN] No changes detected since last audit. Skipping.');
-                return [];
+            // Still update snapshots for future reference
+            if (!previousContent) {
+                _lastAuditedContent.set(fileKey, currentContent);
             }
-            
-            console.log(`[TREPAN] Diff mode: sending ${codeContent.split('\n').length} lines of ${totalLines} total`);
+        }
+        // ── LOCAL MODE: Use snapshot logic to save GPU resources ──────────
+        else {
+            if (!previousContent) {
+                // FIRST SAVE — no snapshot exists yet
+                if (totalLines > FIRST_AUDIT_LINE_LIMIT) {
+                    // Large file on first save — index silently, skip audit
+                    _lastAuditedContent.set(fileKey, currentContent);
+                    _lastSentContent.set(fileKey, currentContent);
+                    
+                    // Show status bar message
+                    const indexMsg = vscode.window.setStatusBarMessage(
+                        `🛡️ Trepan: Indexed ${totalLines} lines — auditing changes from next save`,
+                        8000
+                    );
+                    
+                    console.log(`[TREPAN] First save of large file (${totalLines} lines). Indexing silently, skipping audit.`);
+                    return [];
+                } else {
+                    // Small file on first save — audit normally
+                    codeContent = currentContent;
+                }
+            } else if (totalLines <= LARGE_FILE_THRESHOLD) {
+                // Small file with existing snapshot — always full audit
+                codeContent = currentContent;
+            } else {
+                // Large file with existing snapshot — use diff engine
+                codeContent = extractAuditChunk(currentContent, previousContent, DIFF_CONTEXT_LINES);
+                
+                if (codeContent === "") {
+                    // No changes detected — skip audit entirely
+                    console.log('[TREPAN] No changes detected since last audit. Skipping.');
+                    return [];
+                }
+                
+                console.log(`[TREPAN] Diff mode: sending ${codeContent.split('\n').length} lines of ${totalLines} total`);
+            }
         }
 
         const pillars = readPillars(document);
@@ -1337,13 +1355,13 @@ async function evaluateSave(document) {
             _lastSentContent.set(fileKey, currentContent);
 
             // ── TRAFFIC COP: Route based on mode ──────────────────────────────
-            const context = global.trepanContext;
-            const isPowerMode = context?.globalState.get('trepan.mode') === 'cloud';
+            // Note: isPowerMode already checked above for snapshot logic
             
             let data;
             
             if (isPowerMode) {
                 console.log("[TREPAN TRAFFIC COP] Power Mode detected — routing through Layer 1 + Cloud");
+                console.log(`[TREPAN TRAFFIC COP] Sending full file: ${totalLines} lines for deep analysis`);
                 
                 // Step 1: Run Layer 1 on Python server
                 const layer1Response = await fetchWithTimeout(`${serverUrl}/evaluate`, {
