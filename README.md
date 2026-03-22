@@ -79,6 +79,7 @@ Trepan supports multiple models for different use cases:
 
 - **⚡ Fast Mode (Llama 3.1:8b)**: ~5-7s per audit. Best for active coding sessions.
 - **🧠 Smart Mode (DeepSeek-R1:7b)**: ~12-18s per audit. Better reasoning for security reviews.
+- **🚀 Power Mode (BYOK - Cloud)**: ~1-3s per audit. Use your own OpenRouter API key for maximum speed with flagship models like Claude 3.5 Sonnet or GPT-4o. **Best for speed when security isn't critical.**
 
 To switch models:
 1. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
@@ -86,6 +87,27 @@ To switch models:
 3. Choose your preferred mode
 
 The selected model persists across VS Code sessions.
+
+**🚀 Power Mode (BYOK) - Bring Your Own Key**
+
+Want maximum speed and don't mind sending code to the cloud? Configure Power Mode with your own OpenRouter API key:
+
+**Setup:**
+1. Click the ⚙️ gear icon in the Trepan Vault panel
+2. Enter your OpenRouter API key (get one at [openrouter.ai](https://openrouter.ai))
+3. Choose a model (e.g., `anthropic/claude-3.5-sonnet` or `openai/gpt-4o-mini`)
+4. Trepan tests the connection and saves your credentials securely
+
+**Benefits:**
+- ⚡ **Faster audits**: ~1-3 seconds with flagship models
+- 🧠 **Better accuracy**: Claude 3.5 Sonnet and GPT-4o outperform local models
+- 💰 **Pay-as-you-go**: Only pay for what you use (~$0.01-0.05 per audit)
+
+**Security Note:**
+- ⚠️ Your code is sent to OpenRouter's cloud API
+- 🔒 API keys stored securely in VS Code's encrypted SecretStorage
+- 🚫 Keys NEVER touch the Python server
+- ✅ All API calls happen directly from the extension
 
 **Switch CPU/GPU**
 
