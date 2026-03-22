@@ -13,7 +13,8 @@ Built for developers suffering from the **Vibe Coding Hangover**: that moment yo
 
 ![Trepan catching a security violation in VS Code](images/trepan_demo.gif)
 
-![Trepan catching a security violation in VS Code](images\Screen Recording 2026-03-22 051920.mp4)
+[🎥 Watch: Trepan catching a security violation](images/Screen%20Recording%202026-03-22%20051920.mp4)
+
 ---
 
 ## 🧠 The Technical "Why" — Semgrep Isn't Enough
