@@ -85,9 +85,26 @@ def ensure_ollama_running():
 def pull_model():
     """Ensure the required LLM is downloaded by checking the local registry first."""
     print(f"📦 Checking local registry for model: {MODEL_NAME}...")
+    
+    # First, verify Ollama is still responsive
+    try:
+        print("🔍 Verifying Ollama service is responsive...")
+        resp = requests.get(OLLAMA_URL, timeout=5)
+        if resp.status_code != 200:
+            print(f"⚠️  Warning: Ollama returned status {resp.status_code}")
+    except Exception as e:
+        print(f"\n❌ Error: Ollama service is not responding!")
+        print(f"   Details: {e}")
+        print("\n   Solution:")
+        print("   1. Open a new terminal")
+        print("   2. Run: ollama serve")
+        print("   3. Keep that terminal open")
+        print("   4. Re-run this script")
+        return False
+    
     try:
         # Check local registry using subprocess for speed and reliability
-        res = subprocess.run(["ollama", "list"], capture_output=True, text=True, check=True)
+        res = subprocess.run(["ollama", "list"], capture_output=True, text=True, check=True, timeout=10)
         
         # Parse output properly to match model names (first column)
         installed_models = []
@@ -107,10 +124,39 @@ def pull_model():
         print(f"⚠️ Note: You may need to build the custom '{MODEL_NAME}' model. Using base model for now.")
         return True
     except FileNotFoundError:
-        print("❌ Error: 'ollama' command not found. Is it in your PATH?")
+        print("\n❌ Error: 'ollama' command not found.")
+        print("   Solution:")
+        print("   1. Install Ollama from: https://ollama.com/download")
+        print("   2. Make sure Ollama is in your PATH")
+        print("   3. Restart your terminal after installation")
+        return False
+    except subprocess.TimeoutExpired:
+        print("\n❌ Error: 'ollama list' command timed out (10s)")
+        print("   This usually means Ollama is stuck or crashed.")
+        print("\n   Solution:")
+        print("   1. Kill any existing Ollama processes")
+        print("   2. Open a new terminal")
+        print("   3. Run: ollama serve")
+        print("   4. Re-run this script")
         return False
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error checking/pulling model: {e}")
+        print(f"\n❌ Error: Ollama command failed (exit code {e.returncode})")
+        if e.stderr:
+            print(f"   Error output: {e.stderr.strip()}")
+        if e.stdout:
+            print(f"   Standard output: {e.stdout.strip()}")
+        print("\n   Common causes:")
+        print("   1. Ollama service crashed after starting")
+        print("      → Check if 'ollama serve' is still running")
+        print("   2. Ollama is stuck or unresponsive")
+        print("      → Kill Ollama processes and restart")
+        print("   3. Permission issues")
+        print("      → Try running as administrator/sudo")
+        print("\n   Quick fix:")
+        print("   1. Open Task Manager (Windows) or Activity Monitor (Mac)")
+        print("   2. Kill all 'ollama' processes")
+        print("   3. Open a new terminal and run: ollama serve")
+        print("   4. Re-run this script")
         return False
     except Exception as e:
         print(f"❌ Unexpected error during model check: {e}")
