@@ -2043,24 +2043,36 @@ class HealthResponse(BaseModel):
 
 @app.get("/health", response_model=HealthResponse, tags=["Status"])
 async def health(request: Request):
-    """Quick liveness + readiness check for the IDE extension with detailed logging."""
-    # TRANSPARENCY FIX: Log every health check request with client info
-    client_ip = request.client.host if request.client else "unknown"
-    user_agent = request.headers.get("user-agent", "unknown")
+    """Quick liveness + readiness check for the IDE extension with rate-limited logging."""
+    # Rate limit health check logs to once per minute
+    global _last_health_log_time
+    current_time = time.time()
     
-    print(f"HEALTH CHECK REQUEST:")
-    print(f"   Client IP: {client_ip}")
-    print(f"   User-Agent: {user_agent}")
-    print(f"   Model Ready: {_model_ready}")
-    print(f"   Timestamp: {datetime.now().isoformat()}")
+    should_log = False
+    if not hasattr(health, '_last_log_time'):
+        health._last_log_time = 0
     
-    logger.info(f"Health check from {client_ip} - Model ready: {_model_ready}")
+    if current_time - health._last_log_time >= 60:
+        should_log = True
+        health._last_log_time = current_time
     
-    response = HealthResponse(status="ok", model_loaded=_model_ready)
-    print(f"   Response: {response.dict()}")
-    print("=" * 50)
+    if should_log:
+        client_ip = request.client.host if request.client else "unknown"
+        user_agent = request.headers.get("user-agent", "unknown")
+        
+        print(f"HEALTH CHECK REQUEST:")
+        print(f"   Client IP: {client_ip}")
+        print(f"   User-Agent: {user_agent}")
+        print(f"   Model Ready: {_model_ready}")
+        print(f"   Timestamp: {datetime.now().isoformat()}")
+        
+        logger.info(f"Health check from {client_ip} - Model ready: {_model_ready}")
+        
+        response = HealthResponse(status="ok", model_loaded=_model_ready)
+        print(f"   Response: {response.dict()}")
+        print("=" * 50)
     
-    return response
+    return HealthResponse(status="ok", model_loaded=_model_ready)
 
 
 @app.post("/evaluate", response_model=EvaluateResponse, tags=["Gatekeeper"])
@@ -2133,7 +2145,7 @@ async def evaluate(req: EvaluateRequest):
         raw = await asyncio.to_thread(generate, prompt, system_prompt, processor_mode=req.processor_mode, model_name=req.model_name)
 
         print("\n" + "="*40)
-        print("🧠 TREPAN RAW THOUGHTS:")
+        print(f"🧠 TREPAN RAW THOUGHTS [{req.model_name}]:")
         print(raw)
         print("="*40 + "\n")
         

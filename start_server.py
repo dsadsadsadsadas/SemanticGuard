@@ -41,7 +41,7 @@ def ensure_ollama_running():
         if resp.status_code == 200 and "Ollama is running" in resp.text:
             print("✅ Ollama service is already running.")
             return True
-    except requests.exceptions.ConnectionError:
+    except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
         pass
 
     # Not running — attempt to start it automatically
@@ -58,16 +58,16 @@ def ensure_ollama_running():
             ["ollama", "serve"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=os.environ.copy(),  # Pass the optimized env to Ollama process
             **kwargs
         )
     except FileNotFoundError:
         print("❌ Error: 'ollama' command not found. Is Ollama installed and in your PATH?")
         print("   Download it from: https://ollama.com")
         return False
-
-    # Wait up to 10 seconds for Ollama to become ready
+    # Wait up to 30 seconds for Ollama to become ready
     print("⏳ Waiting for Ollama to start", end="", flush=True)
-    for _ in range(10):
+    for _ in range(30):
         time.sleep(1)
         print(".", end="", flush=True)
         try:
@@ -75,11 +75,11 @@ def ensure_ollama_running():
             if resp.status_code == 200 and "Ollama is running" in resp.text:
                 print("\n✅ Ollama started successfully.")
                 return True
-        except requests.exceptions.ConnectionError:
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
             pass
 
-    print("\n❌ Timed out waiting for Ollama to start.")
-    print("   Try running 'ollama serve' manually in another terminal.")
+    print("\n❌ Timed out waiting for Ollama to start (30s).")
+    print("   Try running 'ollama serve' manually in another terminal, then re-run start_server.py.")
     return False
 
 def pull_model():
@@ -140,6 +140,12 @@ def start_server():
 
 def main():
     print_header("🛡️  TREPAN BACKEND BOOTSTRAPPER")
+    
+    # GPU optimization — must be set before Ollama starts
+    os.environ["OLLAMA_NUM_PARALLEL"] = "1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    os.environ["OLLAMA_GPU_OVERHEAD"] = "0"
+    print("🎮 GPU optimization flags set")
     
     if not check_ollama_installed():
         sys.exit(1)

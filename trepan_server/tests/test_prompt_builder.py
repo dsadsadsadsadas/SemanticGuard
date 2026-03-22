@@ -86,5 +86,32 @@ console.log(v2)
         # Ensure ANALYSIS INSTRUCTIONS is NOT present (duplicate removed)
         self.assertNotIn("ANALYSIS INSTRUCTIONS:", prompt)
 
+    def test_llama_prompt_contains_json_instruction(self):
+        """Llama system prompt must start with JSON-only instruction."""
+        from trepan_server.prompt_builder import STRUCTURAL_INTEGRITY_SYSTEM_LLAMA
+        self.assertIn("Output ONLY valid JSON", STRUCTURAL_INTEGRITY_SYSTEM_LLAMA)
+        self.assertIn("No prose", STRUCTURAL_INTEGRITY_SYSTEM_LLAMA)
+
+    def test_llama_prompt_does_not_contain_sinks_scanned(self):
+        """sinks_scanned must not be in Llama prompt — it causes schema confusion."""
+        from trepan_server.prompt_builder import STRUCTURAL_INTEGRITY_SYSTEM_LLAMA
+        self.assertNotIn("sinks_scanned", STRUCTURAL_INTEGRITY_SYSTEM_LLAMA)
+
+    def test_llama_prompt_schema_has_required_fields(self):
+        """Llama prompt schema must contain all four required parser fields."""
+        from trepan_server.prompt_builder import STRUCTURAL_INTEGRITY_SYSTEM_LLAMA
+        for field in ["data_flow_logic", "chain_complete", "verdict", "confidence"]:
+            self.assertIn(field, STRUCTURAL_INTEGRITY_SYSTEM_LLAMA)
+
+    def test_llama_prompt_contains_console_log_rule(self):
+        """Llama must be explicitly told that console.log is unsafe."""
+        from trepan_server.prompt_builder import STRUCTURAL_INTEGRITY_SYSTEM_LLAMA
+        self.assertIn("console.log", STRUCTURAL_INTEGRITY_SYSTEM_LLAMA)
+
+    def test_llama_prompt_contains_literal_safe_rule(self):
+        """Llama must know literal strings are safe to prevent false positives."""
+        from trepan_server.prompt_builder import STRUCTURAL_INTEGRITY_SYSTEM_LLAMA
+        self.assertIn("Literal strings", STRUCTURAL_INTEGRITY_SYSTEM_LLAMA)
+
 if __name__ == "__main__":
     unittest.main()

@@ -67,7 +67,7 @@ def ensure_ollama_alive():
     return False
 
 
-def generate(prompt: str, system_prompt: str = None, processor_mode: str = "GPU", model_name: str = None) -> str:
+def generate(prompt: str, system_prompt: str = None, processor_mode: str = "CPU", model_name: str = None) -> str:
     """
     Run inference using local Ollama API with /api/chat endpoint.
     Uses Alpaca-compatible chat format for fine-tuned models.
@@ -98,43 +98,86 @@ def generate(prompt: str, system_prompt: str = None, processor_mode: str = "GPU"
     
     # Model-specific stop tokens — critical for correct generation termination
     llama_stops = ["<|eot_id|>", "<|start_header_id|>"]
-    deepseek_stops = ["<|end_of_sentence|>"]
+    deepseek_stops = []
     
-    active_model = model_name or "deepseek-r1:7b"
+    active_model = model_name or "llama3.1:8b"
     stop_tokens = llama_stops if "llama" in active_model.lower() else deepseek_stops
     
-    # DeepSeek needs more tokens — think block consumes ~300 before JSON starts
-    num_predict = 800 if "deepseek" in active_model.lower() else 512
+    # DeepSeek R1 needs MUCH more tokens — thinking block is separate and consumes 3000+ chars
+    num_predict = 4000 if "deepseek" in active_model.lower() else 512
     
+    # PRODUCTION — Model-specific configuration
+    # STEP 1 — Minimal options
     options = {
         "temperature": 0.1,
-        "num_ctx": 2048,
-        "num_predict": num_predict,
-        "num_thread": 8,
-        "num_gpu": num_gpu,
-        "stop": stop_tokens
+        "num_ctx": 512,
+        "num_gpu": 999,
     }
     
     payload = {
-        "model": model_name or "deepseek-r1:7b",
+        "model": model_name or "llama3.1:8b",
         "messages": messages,
         "stream": False,
+        "format": {
+            "type": "object",
+            "properties": {
+                "data_flow_logic": {
+                    "type": "object",
+                    "properties": {
+                        "step_1_source": {
+                            "type": "object",
+                            "properties": {
+                                "line": {"type": "integer"},
+                                "expression": {"type": "string"}
+                            },
+                            "required": ["line", "expression"]
+                        },
+                        "step_2_propagation": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "line": {"type": "integer"},
+                                    "to": {"type": "string"}
+                                }
+                            }
+                        },
+                        "step_3_sink_check": {
+                            "type": "object",
+                            "properties": {
+                                "sink_name": {"type": "string"},
+                                "line": {"type": "integer"}
+                            }
+                        }
+                    },
+                    "required": ["step_1_source"]
+                },
+                "chain_complete": {"type": "boolean"},
+                "verdict": {"type": "string", "enum": ["ACCEPT", "REJECT"]},
+                "confidence": {"type": "string", "enum": ["HIGH", "LOW"]},
+                "rejection_reason": {"type": "string"}
+            },
+            "required": ["data_flow_logic", "chain_complete", "verdict", "confidence", "rejection_reason"]
+        },
         "options": options
     }
+    
+    if stop_tokens:
+        payload["stop"] = stop_tokens
 
     logger.info(f"   Sending request to Ollama ({url}) [Mode: {processor_mode}]...")
     logger.info(f"   System prompt: {system_prompt[:100] if system_prompt else 'None'}...")
     logger.info(f"   User prompt: {prompt[:100]}...")
     
     try:
-        response = requests.post(url, json=payload, timeout=120)
+        response = requests.post(url, json=payload, timeout=180)
         response.raise_for_status()
     except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
         logger.warning(f"⚠️ Ollama connection failed: {e}. Attempting self-healing...")
         if ensure_ollama_alive():
             # Retry once after revival
             try:
-                response = requests.post(url, json=payload, timeout=120)
+                response = requests.post(url, json=payload, timeout=180)
                 response.raise_for_status()
             except Exception as retry_e:
                 logger.error(f"❌ Self-healing failed during retry: {retry_e}")
@@ -150,20 +193,33 @@ def generate(prompt: str, system_prompt: str = None, processor_mode: str = "GPU"
         data = response.json()
         content = data["message"]["content"]
         
+        logger.debug(f"[PIPE-1] RAW MODEL OUTPUT ({len(content)} chars):\n{content}")
+        
         logger.info(f"   Generated {len(content)} characters from Ollama: {content[:80]!r}")
         import re as _re
 
-        # Find the LAST occurrence of { that is followed by one of the Trepan schema fields
-        # This ignores any prose reasoning or earlier malformed JSON blocks
-        target_fields = r'"(?:verdict|data_flow_logic|chain_complete)"'
-        matches = list(_re.finditer(r'\{[^{}]*' + target_fields, content))
-        
+        # Strip think block first using re.sub
+        content_no_think = _re.sub(r"<think>.*?</think>", "", content, flags=_re.DOTALL).strip()
+        search_target = content_no_think if content_no_think else content
+
+        target_fields = r'"(?:verdict|data_flow_logic|chain_complete|sinks_scanned)"'
+        # Allow nested objects — use a broader search that finds { followed by schema fields anywhere after it
+        matches = list(_re.finditer(target_fields, search_target))
         if matches:
-            # Take the last match start index as our JSON object beginning
-            start_pos = matches[-1].start()
-            candidate = content[start_pos:]
-            
-            # Simple brace balancer to extract the full JSON object
+            # Walk backward from the first schema field match to find the opening {
+            first_match_pos = matches[0].start()
+            # Find the last { before the first schema field
+            search_region = search_target[:first_match_pos]
+            last_brace = search_region.rfind('{')
+            if last_brace != -1:
+                start_pos = last_brace
+            else:
+                start_pos = 0
+        else:
+            start_pos = -1
+
+        if start_pos != -1:
+            candidate = search_target[start_pos:]
             brace_count = 0
             end_pos = 0
             for i, char in enumerate(candidate):
@@ -174,14 +230,20 @@ def generate(prompt: str, system_prompt: str = None, processor_mode: str = "GPU"
                     if brace_count == 0:
                         end_pos = i + 1
                         break
-            
             if end_pos > 0:
-                content_no_think = candidate[:end_pos].strip()
-                return content_no_think
+                result = candidate[:end_pos].strip()
+                # Strip markdown code fences if present
+                result = _re.sub(r'^```(?:json)?\s*', '', result)
+                result = _re.sub(r'\s*```$', '', result)
+                logger.debug(f"FINAL EXTRACTED ({len(result)} chars): {repr(result[:300])}")
+                logger.debug(f"[PIPE-2] AFTER EXTRACTION ({len(result)} chars):\n{result}")
+                return result.strip()
 
-        # Fallback to standard cleaning if no structured JSON was found via the pattern
-        content_no_think = _re.sub(r"<think>.*?</think>", "", content, flags=_re.DOTALL).strip()
-        return content_no_think if content_no_think else content
+        final = search_target
+        final = _re.sub(r'^```(?:json)?\s*', '', final)
+        final = _re.sub(r'\s*```$', '', final)
+        logger.debug(f"[PIPE-2] AFTER EXTRACTION ({len(final)} chars):\n{final}")
+        return final.strip()
 
     except KeyError as e:
         logger.error(f"Unexpected Ollama response format: {e}")

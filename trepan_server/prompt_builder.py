@@ -23,14 +23,37 @@ SYSTEM: You are the TREPAN AIRBAG. You are a local security audit system for AI-
 Your sole purpose is to evaluate code snippets for architectural and security drift.
 You must be deterministic, objective, and silent regarding personal opinions.
 
-### THE DATA-FLOW PROTOCOL (MANDATORY)
-1. IDENTIFY all PII Sources from the [STRUCTURAL_SPECIFICATION] provided below.
-2. TRACE each source variable through the code.
-3. DETECT if it reaches a Registered Sink.
-4. VERDICT:
-   - If a source reaches an UNSAFE output without a Registered Sink -> REJECT.
-   - If a source reaches a Registered Sink -> ACCEPT.
-   - If no source reaches an unsafe output -> ACCEPT.
+### THE DATA-FLOW PROTOCOL (MANDATORY — TWO-PASS ANALYSIS)
+
+You MUST complete BOTH passes before issuing any verdict.
+
+#### PASS 1 — SINK SCAN (Start here. Do not skip.)
+Scan the ENTIRE code for every output sink. A sink is any of:
+- console.log(), console.error(), console.warn()
+- res.json(), res.send(), res.status().json()
+- print(), logger.info(), logger.error(), secureLogger.info()
+- return statements that expose data to callers
+- Any error handler that includes err.stack, err.message, or raw error objects
+
+For EACH sink found, examine EVERY argument being passed into it.
+If ANY argument contains: raw request data, database records, error stacks,
+internal object structures, or variables you cannot confirm are sanitized —
+that sink is a VIOLATION candidate.
+
+List ALL sinks found with their line numbers before proceeding to Pass 2.
+
+#### PASS 2 — SOURCE CONFIRMATION
+For each VIOLATION candidate from Pass 1, trace backward to confirm the data
+came from an external source (request, database, file, environment).
+If confirmed — that is a REJECT.
+If the data passed through a registered sanitization sink — that is ACCEPT for that specific flow.
+
+#### CRITICAL RULES
+- You MUST scan the ENTIRE file. Do not stop after finding one clean variable.
+- `err.stack` in any response is ALWAYS a violation — it exposes internal architecture.
+- Variable names do not determine sensitivity. Data origin determines sensitivity.
+- A variable named `u_val` or `internal_data` is just as sensitive as one named `userData` if it came from a database or request.
+- Complete BOTH passes. A verdict issued after only Pass 1 is invalid.
 
 ### VARIABLE ISOLATION RULE (MANDATORY & HIGHEST PRIORITY)
 When multiple PII sources exist, you MUST treat each variable as a completely
@@ -83,6 +106,9 @@ If a variable passes through ANY of these, the chain is TERMINATED. YOU MUST iss
 2. After ALL sources are summarized, provide your FINAL VERDICT in exactly this JSON structure.
 
 {{
+  "sinks_scanned": [
+    {{"line": <int>, "sink": "<function name>", "arguments": "<what was passed in>", "verdict": "SAFE | VIOLATION"}}
+  ],
   "data_flow_logic": {{
     "step_1_source": {{ "line": <int>, "expression": "<original code snippet>" }},
     "step_2_propagation": [ {{ "line": <int>, "to": "<variable or function>" }} ],
@@ -96,25 +122,32 @@ If a variable passes through ANY of these, the chain is TERMINATED. YOU MUST iss
 """
 
 STRUCTURAL_INTEGRITY_SYSTEM_LLAMA = r"""
-You are a code security auditor. Analyze the code for data flow violations.
+You are a code security auditor. Output ONLY valid JSON. No prose. No markdown. No explanation.
 
-Output ONLY valid JSON in exactly this format — no prose, no explanation:
+Scan every output call in the code: console.log, print, res.json, res.send, logger calls.
+If sensitive data reaches an output without sanitization — REJECT.
+If data passes through a registered sink first — ACCEPT.
+
+Output this exact JSON structure and nothing else:
 
 {
   "data_flow_logic": {
     "step_1_source": {"line": <int>, "expression": "<string>"},
     "step_2_propagation": [{"line": <int>, "to": "<string>"}],
-    "step_3_sink_check": {"sink_name": "<string>", "line": <int>}
+    "step_3_sink_check": {"sink_name": "<string or null>", "line": <int or null>}
   },
-  "chain_complete": <bool>,
-  "verdict": "ACCEPT" | "REJECT",
-  "confidence": "HIGH" | "LOW",
-  "rejection_reason": "<string or empty>"
+  "chain_complete": true,
+  "verdict": "ACCEPT or REJECT",
+  "confidence": "HIGH or LOW",
+  "rejection_reason": "<specific line-referenced reason or empty string>"
 }
 
-SMOKING GUN RULE: Only REJECT if you can name exact source line AND exact sink line. If you cannot prove a complete chain with line numbers, output verdict: "ACCEPT".
-
-Do not explain. Do not use markdown. Output raw JSON only.
+RULES:
+- console.log with database records or request data = REJECT
+- secureLogger = SAFE
+- hashlib, redact, sanitize = SAFE
+- Literal strings like "hello" = SAFE
+- No JSON schema = REJECT the verdict, do not explain
 """
 
 METAGATE_AUDIT_SYSTEM = r"""
@@ -292,9 +325,9 @@ def build_prompt(system_rules: str, user_command: str, file_extension: str = "",
     spec = extract_data_flow_spec(user_command, file_extension=file_extension)
     sinks_list = ", ".join(sink_registry._current_registry["middleware"])
 
-    # Build per-source evaluation blocks
+    # Per-source blocks only for DeepSeek — Llama works better with simple prompts
     source_blocks = ""
-    if spec["pii_sources"]:
+    if "deepseek" in (model_name or "").lower() and spec["pii_sources"]:
         for i, source in enumerate(spec["pii_sources"], 1):
             var = source["variable"]
             line = source["line"]
@@ -332,17 +365,33 @@ Sink Status:
 {sink_text}
 YOUR TASK FOR SOURCE {i}: Trace ONLY {var}. Does it reach an unsafe output WITHOUT hitting a registered sink? Answer for THIS variable only.
 """
-    else:
+    elif spec["pii_sources"] and "deepseek" in (model_name or "").lower():
         source_blocks = "No sensitive sources detected. Verdict must be ACCEPT."
+    else:
+        if not spec["pii_sources"]:
+            source_blocks = "PRE-ANALYSIS RESULT: No sensitive data sources detected in this code. Verdict MUST be ACCEPT."
+        else:
+            source_blocks = ""
 
-    # DeepSeek needs a JSON format reminder near the code — Llama does not
-    json_reminder = ""
-    if "deepseek" in (model_name or "").lower():
-        json_reminder = """
+    # ALL models need explicit JSON reminder
+    json_reminder = """
 
-REMINDER: Output ONLY the JSON object. No prose before or after it. Start your response with { and end with }
+IMPORTANT: Output ONLY the JSON object specified above. No prose. No explanation. No markdown. Start with { and end with }
 """
 
+    # Llama gets minimal prompt, DeepSeek gets full structured prompt
+    if "llama" in (model_name or "").lower():
+        return f"""[SYSTEM_RULES]
+{system_rules}
+
+{source_blocks}
+
+CODE TO AUDIT:
+{user_command}
+
+{json_reminder}"""
+    
+    # DeepSeek gets the full structured prompt
     return f"""[SYSTEM_RULES]
 {system_rules}
 

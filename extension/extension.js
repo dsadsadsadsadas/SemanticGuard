@@ -155,7 +155,7 @@ const LARGE_FILE_THRESHOLD = 150; // lines — files above this use diff mode
 const FIRST_AUDIT_LINE_LIMIT = 120; // Files above this skip first-save audit
 
 // Model selection state
-let _selectedModel = "deepseek-r1:7b"; // Default to Smart mode
+let _selectedModel = "llama3.1:8b"; // Default to Fast mode
 const MODEL_OPTIONS = [
     {
         label: "⚡ Fast Mode — Llama 3.1:8b",
@@ -163,9 +163,9 @@ const MODEL_OPTIONS = [
         model: "llama3.1:8b"
     },
     {
-        label: "🧠 Smart Mode — DeepSeek-R1:7b",
+        label: "🧠 Smart Mode — DeepSeek-R1",
         description: "~11 seconds per audit. Better reasoning. Best for security review.",
-        model: "deepseek-r1:7b"
+        model: "deepseek-r1:latest"
     }
 ];
 
