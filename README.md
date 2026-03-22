@@ -1,9 +1,11 @@
 # Trepan: The Architectural Seatbelt 🛡️
 
-**100% Local. Zero Cloud Leakage. Absolute Intent Verification.**
+**Privacy-First by Default. Lightning Fast with Power Mode. Absolute Intent Verification.**
 
 > Most AI tools are **Yes-Men** — they help you ship spaghetti code faster with a smile.
 > **Trepan is the No-Man.** It is the mandatory enforcement layer between your AI IDE and your codebase — catching **Context Drift** before it becomes architectural debt you can't pay back.
+>
+> **Your Choice**: 100% local privacy (default) or 3-4x faster cloud audits with your own API key (Power Mode).
 
 Built for developers suffering from the **Vibe Coding Hangover**: that moment you realize your AI wrote syntactically perfect, semantically wrong code — and you shipped it.
 
@@ -31,13 +33,24 @@ Trepan performs **Semantic Auditing** — using a local LLM to compare every cod
 
 ---
 
-## 🔒 The 100% Local Promise
+## 🔒 Privacy-First Architecture
 
-Your code is your most valuable asset. **It never leaves your machine.**
+Your code is your most valuable asset. **You choose where it goes.**
 
+### 🏠 Local Mode (Default)
 - **Zero Cloud Leakage**: No AWS. No OpenAI. No metadata sent to third parties. Ever.
-- **Privacy-First**: Powered by a local **Llama 3.1 (8B)** model via [Ollama](https://ollama.com/).
-- **War-Room Ready**: Fully offline-capable. Your security posture is not dependent on an internet connection or a corporate API's uptime.
+- **100% Privacy**: Powered by local **Llama 3.1 (8B)** model via [Ollama](https://ollama.com/)
+- **War-Room Ready**: Fully offline-capable. Your security posture is not dependent on an internet connection
+- **Audit Time**: ~4-6 seconds per save
+
+### ⚡ Power Mode (Optional - BYOK)
+- **Blazing Fast**: ~1.5s average audit time (3-4x faster!)
+- **Your API Key**: Bring your own OpenRouter or Groq key
+- **Your Control**: Toggle on/off anytime. Keys stored securely in VS Code
+- **Trade-off**: Code sent to cloud provider for faster analysis
+- **Best For**: Non-sensitive projects, prototyping, when speed matters
+
+**The Choice is Yours**: Maximum privacy or maximum speed. Trepan works both ways.
 
 ---
 
