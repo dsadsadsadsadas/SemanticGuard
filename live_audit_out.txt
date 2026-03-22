@@ -1,9 +1,0 @@
---- RUN 1 ---
-Verdict: REJECT
-Reasoning: userId (line 1) reaches unsafe output console.log(email) (line 4)
---- RUN 2 ---
-Verdict: REJECT
-Reasoning: [SOURCE]: line 2, [SINK]: line 4
---- RUN 3 ---
-Verdict: REJECT
-Reasoning: userId (line 1) reaches unsafe output console.log(email) (line 4)

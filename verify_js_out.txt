@@ -1,4 +1,0 @@
-VARDECKL L1: express = require('express')
-VARDECKL L2: app = express()
---- START DEBUG OUTPUT ---
---- END DEBUG OUTPUT ---

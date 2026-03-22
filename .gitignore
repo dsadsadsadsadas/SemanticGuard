@@ -1,44 +1,89 @@
-# ─── Node / VS Code Extension ────────────────────────────────────────────────
-node_modules/
-extension/out/
-*.vsix
-out/
-
-# ─── Python ──────────────────────────────────────────────────────────────────
+# Python
 __pycache__/
-*.pyc
-*.pyo
-.venv/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
 venv/
+ENV/
 env/
-.env
 
-# ─── Heavy ML Models & Binaries ──────────────────────────────────────────────
-Trepan_Model_V2/
-trepan-v2/
-trepan-v2_gguf/
-llama.cpp/
-trepan_beta_test/
-unsloth_compiled_cache/
-*.gguf
-*.bin
-*.safetensors
-
-# ─── IDE & Agent Directories ─────────────────────────────────────────────────
-.kiro/
-.qodo/
-.agent/
+# IDE
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# ─── Trepan Runtime (Project-specific, user-generated) ───────────────────────
-.trepan/
-*.trepan.lock
+# OS
+.DS_Store
+Thumbs.db
 
-# ─── Logs & Temp Files ───────────────────────────────────────────────────────
-ssart_trace_sync.log
+# Logs
 *.log
-output.txt
-output2.txt
+logs/
+*.jsonl
 
-# ─── Internal Roadmap (keep locally, not for public) ─────────────────────────
-PENDING_TASKS.md
+# Test files and outputs
+test_*.py
+*_test.py
+run_*.py
+run_*.txt
+*_results.txt
+*_output*.txt
+qc*.py
+qc*.js
+cool.js
+crash_test.js
+secret_test.py
+verify_*.txt
+stage*.txt
+step_configs.txt
+live_audit_out.txt
+deepseek_results.txt
+
+# Temporary markdown files
+*_FIX.md
+*_SUMMARY.md
+*_COMPARISON.md
+*_RESULTS.md
+*_NOTES.md
+check_*.md
+
+# Benchmark files (keep trepan_benchmark.py)
+trepan_*_benchmark.py
+auto_isolation_test.py
+manual_isolation_test.py
+
+# Extension build artifacts
+extension/*.vsix
+extension/run_output*.txt
+
+# Batch files
+*.bat
+
+# Media
+*.mp4
+*.mov
+*.avi
+
+# Trepan specific
+.trepan/trepan_vault/
+.trepan/walkthrough_*.md
