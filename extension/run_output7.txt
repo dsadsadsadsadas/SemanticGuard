@@ -1,0 +1,1 @@
+C:\Users\ethan\miniconda3\python.exe: can't open file 'C:\\Users\\ethan\\Documents\\Projects\\Trepan\\extension\\run_cool_deepseek_3.py': [Errno 2] No such file or directory

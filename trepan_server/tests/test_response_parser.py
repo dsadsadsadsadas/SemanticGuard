@@ -15,6 +15,7 @@ class TestResponseParser(unittest.TestCase):
     def test_valid_reject_passes(self):
         code = "name = req.body['name']\nprint(name)"
         raw_response = json.dumps({
+            "sinks_scanned": [{"line": 2, "sink": "print", "arguments": "name", "verdict": "VIOLATION"}],
             "data_flow_logic": {
                 "step_1_source": {"variable": "name", "line": 1, "expression": "req.body['name']"},
                 "step_2_propagation": [{"line": 2, "call": "print", "argument_position": 0}],
@@ -39,6 +40,7 @@ class TestResponseParser(unittest.TestCase):
     def test_literal_source_override(self):
         code = "name = 'John Doe'\nprint(name)"
         raw_response = json.dumps({
+            "sinks_scanned": [{"line": 2, "sink": "print", "arguments": "name", "verdict": "VIOLATION"}],
             "data_flow_logic": {
                 "step_1_source": {"variable": "name", "line": 1, "expression": "'John Doe'"},
                 "step_2_propagation": [],
@@ -57,6 +59,7 @@ class TestResponseParser(unittest.TestCase):
         code = "name = req.body['name']\nlogger.info('User logged in')\nprint(name)"
         # The model flags because line 2 is "nearby"
         raw_response = json.dumps({
+            "sinks_scanned": [{"line": 3, "sink": "print", "arguments": "name", "verdict": "VIOLATION"}],
             "data_flow_logic": {
                 "step_1_source": {"variable": "name", "line": 1, "expression": "req.body['name']"},
                 "step_2_propagation": [],

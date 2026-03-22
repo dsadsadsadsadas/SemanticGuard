@@ -76,12 +76,12 @@ def is_trepan_path(file_path: str) -> bool:
 
 # Handle both relative and absolute imports for flexibility
 try:
-    from .prompt_builder import build_prompt, build_meta_gate_prompt, STRUCTURAL_INTEGRITY_SYSTEM, STRUCTURAL_INTEGRITY_SYSTEM_LLAMA, METAGATE_AUDIT_SYSTEM
+    from .prompt_builder import build_prompt, build_meta_gate_prompt, extract_data_flow_spec, STRUCTURAL_INTEGRITY_SYSTEM, STRUCTURAL_INTEGRITY_SYSTEM_LLAMA, METAGATE_AUDIT_SYSTEM
     from .response_parser import guillotine_parser
     from .model_loader import get_model, generate
 except ImportError:
     # Fallback for when running directly (not as a package)
-    from prompt_builder import build_prompt, build_meta_gate_prompt, STRUCTURAL_INTEGRITY_SYSTEM, STRUCTURAL_INTEGRITY_SYSTEM_LLAMA, METAGATE_AUDIT_SYSTEM
+    from prompt_builder import build_prompt, build_meta_gate_prompt, extract_data_flow_spec, STRUCTURAL_INTEGRITY_SYSTEM, STRUCTURAL_INTEGRITY_SYSTEM_LLAMA, METAGATE_AUDIT_SYSTEM
     from response_parser import guillotine_parser
     from model_loader import get_model, generate
 
@@ -2119,6 +2119,64 @@ async def evaluate(req: EvaluateRequest):
 
     # GROUNDING: Prepend line numbers to the code snippet
     grounded_code = prepend_line_numbers(cleaned_code)
+    
+    # ── V2.0 LAYER 1: Deterministic Pre-Screener ───────────────────────────
+    from trepan_server.engine import layer1_screen
+    
+    layer1_result = layer1_screen(cleaned_code, file_extension)
+    if layer1_result.verdict == "REJECT":
+        from trepan_server.engine import layer3_aggregate
+        aggregated = layer3_aggregate(layer1_result=layer1_result)
+        logger.info(f"Layer 1 caught {len(layer1_result.violations)} violation(s) — skipping model inference")
+        append_audit_ledger("REJECT", aggregated.reasoning)
+        return EvaluateResponse(
+            action="REJECT",
+            drift_score=aggregated.drift_score,
+            reasoning=aggregated.reasoning,
+            violations=aggregated.violations,
+            filename=req.filename,
+            raw_output=aggregated.raw_output
+        )
+    # ── End Layer 1 ────────────────────────────────────────────────────────
+    
+    # ── V2.0 LAYER 2: Focused Model Analyzer ───────────────────────────────
+    from trepan_server.engine import layer2_analyze
+    
+    # Build the spec for Layer 2 — same spec the v1.0 pipeline used
+    spec = extract_data_flow_spec(cleaned_code, file_extension=file_extension)
+    sinks_list = ", ".join(sink_registry._current_registry["middleware"])
+    
+    layer2_result = None
+    if spec.get("pii_sources"):
+        logger.info(f"Layer 2 analyzing {len(spec['pii_sources'])} PII source(s) — {[s['variable'] for s in spec['pii_sources']]}")
+        
+        layer2_result = layer2_analyze(
+            spec=spec,
+            source_code=cleaned_code,
+            model_name=req.model_name,
+            registered_sinks=sinks_list
+        )
+        
+        if layer2_result.verdict == "REJECT":
+            from trepan_server.engine import layer3_aggregate
+            aggregated = layer3_aggregate(
+                layer1_result=layer1_result,
+                layer2_result=layer2_result
+            )
+            append_audit_ledger("REJECT", aggregated.reasoning)
+            return EvaluateResponse(
+                action="REJECT",
+                drift_score=aggregated.drift_score,
+                reasoning=aggregated.reasoning,
+                violations=aggregated.violations,
+                filename=req.filename,
+                raw_output=aggregated.raw_output
+            )
+        else:
+            logger.info(f"Layer 2 ACCEPT — {layer2_result.details}")
+    else:
+        logger.info("Layer 2: No PII sources detected by AST extractor — passing to v1.0 pipeline")
+    # ── End Layer 2 ────────────────────────────────────────────────────────
     
     prompt = build_prompt(
         system_rules="",        # empty — STRUCTURAL_INTEGRITY_SYSTEM carries all analysis rules

@@ -1,0 +1,68 @@
+STEP 1 — Minimal options
+==========================
+    # STEP 1 — Minimal options
+    options = {
+        "temperature": 0.1,
+        "num_ctx": 512,
+        "num_gpu": 999,
+    }
+
+
+STEP 2 — Add num_predict
+==========================
+    # STEP 2 — Add num_predict
+    options = {
+        "temperature": 0.1,
+        "num_ctx": 512,
+        "num_gpu": 999,
+        "num_predict": 800,
+    }
+
+
+STEP 3 — Add num_ctx: 2048
+==========================
+    # STEP 3 — Add num_ctx: 2048
+    options = {
+        "temperature": 0.1,
+        "num_ctx": 2048,
+        "num_gpu": 999,
+        "num_predict": 800,
+    }
+
+
+STEP 4 — Add num_thread: 8
+==========================
+    # STEP 4 — Add num_thread: 8
+    options = {
+        "temperature": 0.1,
+        "num_ctx": 2048,
+        "num_gpu": 999,
+        "num_predict": 800,
+        "num_thread": 8,
+    }
+
+
+PRODUCTION — Full options (revert to this after diagnostic)
+==========================
+    # Configure GPU/CPU based on mode
+    num_gpu = 99 if processor_mode.upper() == "GPU" else 0
+    
+    # Model-specific stop tokens — critical for correct generation termination
+    llama_stops = ["<|eot_id|>", "<|start_header_id|>"]
+    deepseek_stops = []
+    
+    active_model = model_name or "deepseek-r1:latest"
+    stop_tokens = llama_stops if "llama" in active_model.lower() else deepseek_stops
+    
+    # DeepSeek needs more tokens — think block consumes ~300 before JSON starts
+    num_predict = 800 if "deepseek" in active_model.lower() else 512
+    
+    options = {
+        "temperature": 0.1,
+        "num_ctx": 2048,
+        "num_gpu": num_gpu,
+        "num_predict": num_predict,
+    }
+    
+    if stop_tokens:
+        payload["stop"] = stop_tokens

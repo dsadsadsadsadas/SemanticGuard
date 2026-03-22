@@ -1,0 +1,100 @@
+
+🏁 TREPAN STAGE 1 MODEL BENCHMARK
+6 scenarios × 3 runs each × 2 models = 36 total inference calls
+This will take approximately 10-15 minutes. Do not interrupt.
+
+─── ROUND 1: llama3.1:8b ───
+
+  [llama3.1:8b] A — Literal string (expect ACCEPT) | Run 1: ACCEPT ✅ | 24.7s
+  [llama3.1:8b] A — Literal string (expect ACCEPT) | Run 2: ACCEPT ✅ | 35.7s
+  [llama3.1:8b] A — Literal string (expect ACCEPT) | Run 3: ACCEPT ✅ | 28.9s
+  [llama3.1:8b] B — Single source to print (expect REJECT) | Run 1: ACCEPT ❌ | 22.7s
+  [llama3.1:8b] B — Single source to print (expect REJECT) | Run 2: ACCEPT ❌ | 21.0s
+  [llama3.1:8b] B — Single source to print (expect REJECT) | Run 3: ACCEPT ❌ | 20.4s
+  [llama3.1:8b] C — Sanitized flow (expect ACCEPT) | Run 1: ACCEPT ✅ | 23.5s
+  [llama3.1:8b] C — Sanitized flow (expect ACCEPT) | Run 2: ACCEPT ✅ | 15.6s
+  [llama3.1:8b] C — Sanitized flow (expect ACCEPT) | Run 3: ACCEPT ✅ | 21.4s
+  [llama3.1:8b] D — Hashlib safe transformation (expect ACCEPT) | Run 1: ACCEPT ✅ | 21.0s
+  [llama3.1:8b] D — Hashlib safe transformation (expect ACCEPT) | Run 2: ACCEPT ✅ | 17.4s
+  [llama3.1:8b] D — Hashlib safe transformation (expect ACCEPT) | Run 3: ACCEPT ✅ | 22.4s
+  [llama3.1:8b] E — Depth limit exceeded (expect ACCEPT) | Run 1: ACCEPT ✅ | 55.7s
+  [llama3.1:8b] E — Depth limit exceeded (expect ACCEPT) | Run 2: ACCEPT ✅ | 44.3s
+  [llama3.1:8b] E — Depth limit exceeded (expect ACCEPT) | Run 3: ACCEPT ✅ | 56.0s
+  [llama3.1:8b] F — Multi-source JS (expect REJECT for email) | Run 1: ACCEPT ❌ | 28.0s
+  [llama3.1:8b] F — Multi-source JS (expect REJECT for email) | Run 2: ACCEPT ❌ | 24.1s
+  [llama3.1:8b] F — Multi-source JS (expect REJECT for email) | Run 3: ACCEPT ❌ | 27.0s
+
+============================================================
+MODEL: llama3.1:8b
+============================================================
+✅ A — Literal string (expect ACCEPT)
+   Accuracy: 3/3 | Avg: 29.7s
+❌ B — Single source to print (expect REJECT)
+   Accuracy: 0/3 | Avg: 21.3s
+✅ C — Sanitized flow (expect ACCEPT)
+   Accuracy: 3/3 | Avg: 20.1s
+✅ D — Hashlib safe transformation (expect ACCEPT)
+   Accuracy: 3/3 | Avg: 20.3s
+✅ E — Depth limit exceeded (expect ACCEPT)
+   Accuracy: 3/3 | Avg: 52.0s
+❌ F — Multi-source JS (expect REJECT for email)
+   Accuracy: 0/3 | Avg: 26.3s
+
+OVERALL: 12/18 (66%)
+============================================================
+
+─── ROUND 2: qwen2.5-coder:7b ───
+
+  [qwen2.5-coder:7b] A — Literal string (expect ACCEPT) | Run 1: REJECT ❌ | 28.8s
+  [qwen2.5-coder:7b] A — Literal string (expect ACCEPT) | Run 2: REJECT ❌ | 5.8s
+  [qwen2.5-coder:7b] A — Literal string (expect ACCEPT) | Run 3: REJECT ❌ | 5.4s
+  [qwen2.5-coder:7b] B — Single source to print (expect REJECT) | Run 1: REJECT ✅ | 6.1s
+  [qwen2.5-coder:7b] B — Single source to print (expect REJECT) | Run 2: REJECT ✅ | 33.7s
+  [qwen2.5-coder:7b] B — Single source to print (expect REJECT) | Run 3: REJECT ✅ | 5.9s
+  [qwen2.5-coder:7b] C — Sanitized flow (expect ACCEPT) | Run 1: ACCEPT ✅ | 4.8s
+  [qwen2.5-coder:7b] C — Sanitized flow (expect ACCEPT) | Run 2: ACCEPT ✅ | 4.7s
+  [qwen2.5-coder:7b] C — Sanitized flow (expect ACCEPT) | Run 3: ACCEPT ✅ | 4.5s
+  [qwen2.5-coder:7b] D — Hashlib safe transformation (expect ACCEPT) | Run 1: ACCEPT ✅ | 4.7s
+  [qwen2.5-coder:7b] D — Hashlib safe transformation (expect ACCEPT) | Run 2: ACCEPT ✅ | 4.3s
+  [qwen2.5-coder:7b] D — Hashlib safe transformation (expect ACCEPT) | Run 3: ACCEPT ✅ | 4.7s
+  [qwen2.5-coder:7b] E — Depth limit exceeded (expect ACCEPT) | Run 1: ACCEPT ✅ | 5.8s
+  [qwen2.5-coder:7b] E — Depth limit exceeded (expect ACCEPT) | Run 2: REJECT ❌ | 7.2s
+  [qwen2.5-coder:7b] E — Depth limit exceeded (expect ACCEPT) | Run 3: ACCEPT ✅ | 5.3s
+  [qwen2.5-coder:7b] F — Multi-source JS (expect REJECT for email) | Run 1: ACCEPT ❌ | 4.2s
+  [qwen2.5-coder:7b] F — Multi-source JS (expect REJECT for email) | Run 2: ACCEPT ❌ | 4.9s
+  [qwen2.5-coder:7b] F — Multi-source JS (expect REJECT for email) | Run 3: ACCEPT ❌ | 4.5s
+
+============================================================
+MODEL: qwen2.5-coder:7b
+============================================================
+❌ A — Literal string (expect ACCEPT)
+   Accuracy: 0/3 | Avg: 13.4s
+✅ B — Single source to print (expect REJECT)
+   Accuracy: 3/3 | Avg: 15.2s
+✅ C — Sanitized flow (expect ACCEPT)
+   Accuracy: 3/3 | Avg: 4.7s
+✅ D — Hashlib safe transformation (expect ACCEPT)
+   Accuracy: 3/3 | Avg: 4.6s
+⚠️ E — Depth limit exceeded (expect ACCEPT)
+   Accuracy: 2/3 | Avg: 6.1s
+❌ F — Multi-source JS (expect REJECT for email)
+   Accuracy: 0/3 | Avg: 4.5s
+
+OVERALL: 11/18 (61%)
+============================================================
+
+============================================================
+HEAD TO HEAD SUMMARY
+============================================================
+Scenario                                   Llama 3.1:8b Qwen2.5-coder:7b
+------------------------------------------------------------------------
+A — Literal string (expect ACCEPT)          3/3 @ 29.7s      0/3 @ 13.4s ⬅
+B — Single source to print (expect REJECT   0/3 @ 21.3s      3/3 @ 15.2s ➡
+C — Sanitized flow (expect ACCEPT)          3/3 @ 20.1s       3/3 @ 4.7s =
+D — Hashlib safe transformation (expect A   3/3 @ 20.3s       3/3 @ 4.6s =
+E — Depth limit exceeded (expect ACCEPT)    3/3 @ 52.0s       2/3 @ 6.1s ⬅
+F — Multi-source JS (expect REJECT for em   0/3 @ 26.3s       0/3 @ 4.5s =
+============================================================
+
+✅ Benchmark complete. Paste full output for review.
+ output for review.

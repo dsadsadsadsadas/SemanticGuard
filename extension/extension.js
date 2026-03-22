@@ -730,7 +730,8 @@ function activate(context) {
                     const enforcementMode = cfg.get("enforcementMode") ?? "Soft";
                     if (enforcementMode === "Strict") {
                         console.warn('[TREPAN DEBUG] Server is OFFLINE. Strict mode enforcing BLOCK.');
-                        vscode.window.showErrorMessage(`🛑 Trepan Strict Mode: Server is OFFLINE. Save blocked.`, { modal: true });
+                        // Sleek toast notification instead of modal
+                        vscode.window.showErrorMessage(`🛑 Trepan: Server offline — Save blocked in Strict mode`);
                         throw new Error("Trepan Strict Mode: Server is offline. Save blocked.");
                     }
                     console.warn('[TREPAN DEBUG] Server is OFFLINE. Airbag failing open for this save.');
@@ -823,7 +824,8 @@ async function evaluateSave(document) {
     } else if (!discoveredUrl) {
         console.log(`[TREPAN EVAL] ❌ No server available for evaluation`);
         if (cfg.get("enforcementMode") === "Strict") {
-            vscode.window.showErrorMessage(`🛑 Trepan Strict Mode: No server available. Save blocked.`, { modal: true });
+            // Sleek toast notification instead of modal
+            vscode.window.showErrorMessage(`🛑 Trepan: No server available — Save blocked in Strict mode`);
             throw new Error("Trepan Strict Mode: No server available.");
         }
         return []; // Fail-open: allow save to proceed
@@ -892,7 +894,8 @@ async function evaluateSave(document) {
 
             if (actionResult === "REJECT") {
                 const scoreDisplay = driftScore.toFixed(2);
-                vscode.window.showErrorMessage(`🛑 Trepan Blocked Save — Context Drift detected (Score: ${scoreDisplay})`, { modal: true });
+                // Sleek toast notification instead of modal
+                vscode.window.showErrorMessage(`🛑 Trepan: Save blocked — Security violation detected (Score: ${scoreDisplay})`);
                 throw new Error(`Trepan Gatekeeper: architectural drift detected (score ${scoreDisplay})`);
             }
 
@@ -1008,7 +1011,8 @@ async function evaluateSave(document) {
 
             if (actionResult === "REJECT") {
                 const scoreDisplay = driftScore.toFixed(2);
-                vscode.window.showErrorMessage(`🛑 Trepan Blocked Save — Context Drift detected (Score: ${scoreDisplay})`, { modal: true });
+                // Sleek toast notification instead of modal
+                vscode.window.showErrorMessage(`🛑 Trepan: Save blocked — Security violation detected (Score: ${scoreDisplay})`);
                 throw new Error(`Trepan Airbag: architectural drift detected (score ${scoreDisplay})`);
             }
 

@@ -15,6 +15,13 @@ KNOWN_SINKS: Dict[str, List[str]] = {
         "sanitize_output",
         "strip_pii",
         "redact",
+        "sanitize_input",
+        "sanitize",
+        "clean_input",
+        "clean",
+        "escape",
+        "encode",
+        "serialize",
     ],
     "decorators": [
         "sanitized",
@@ -24,6 +31,11 @@ KNOWN_SINKS: Dict[str, List[str]] = {
     "patterns": [
         r"\.replace\(",          # masking pattern
         r"hashlib\.",            # hashing
+        r"hashlib\.\w+\(",       # all hashlib functions — sha256, md5, sha512 etc
+        r"\.encode\(",           # string encoding
+        r"\.hexdigest\(",        # hash finalization — always safe output
+        r"bcrypt\.",             # password hashing
+        r"hmac\.",               # message authentication
         r"anonymize\(",          # anonymization
         r"mask_field\(",
     ]
