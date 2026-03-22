@@ -10,6 +10,7 @@ import json
 import re as _re
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger("trepan.engine.layer2")
 
@@ -154,6 +155,41 @@ def _parse_response(raw: str, variable: str) -> Layer2SourceResult:
 
 # ── MAIN ANALYZER ─────────────────────────────────────────────────────────────
 
+def _analyze_single_source(
+    source: Dict,
+    spec: Dict,
+    source_code: str,
+    model_name: str,
+    registered_sinks: str
+) -> Layer2SourceResult:
+    """Analyze a single PII source (for parallel execution)"""
+    variable = source["variable"]
+    source_line = source["line"]
+    source_expression = source["expression"]
+    
+    logger.info(f"Layer 2 analyzing source: {variable} (line {source_line})")
+    
+    prompt = _build_focused_prompt(
+        variable=variable,
+        source_line=source_line,
+        source_expression=source_expression,
+        propagation_steps=spec.get("propagation_steps", []),
+        sink_hits=spec.get("sink_hits", []),
+        code_snippet=source_code[:800],
+        registered_sinks=registered_sinks
+    )
+    
+    raw = _call_model(prompt, model_name)
+    source_result = _parse_response(raw, variable)
+    source_result.source_line = source_line
+    
+    logger.info(
+        f"Layer 2 result for {variable}: {source_result.verdict} "
+        f"({source_result.confidence}) — {source_result.rejection_reason[:60] if source_result.rejection_reason else 'no reason'}"
+    )
+    
+    return source_result
+
 def analyze(
     spec: Dict,
     source_code: str,
@@ -162,7 +198,7 @@ def analyze(
 ) -> Layer2Result:
     """
     Run Layer 2 focused analysis on each PII source from the spec.
-    One model call per source. Returns aggregated Layer2Result.
+    Parallelizes model calls for faster execution.
     """
     result = Layer2Result()
     
@@ -170,32 +206,27 @@ def analyze(
         result.details = "Layer 2: No PII sources to analyze."
         return result
     
-    for source in spec["pii_sources"]:
-        variable = source["variable"]
-        source_line = source["line"]
-        source_expression = source["expression"]
+    # Parallelize model calls using ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(len(spec["pii_sources"]), 4)) as executor:
+        futures = [
+            executor.submit(
+                _analyze_single_source,
+                source,
+                spec,
+                source_code,
+                model_name,
+                registered_sinks
+            )
+            for source in spec["pii_sources"]
+        ]
         
-        logger.info(f"Layer 2 analyzing source: {variable} (line {source_line})")
-        
-        prompt = _build_focused_prompt(
-            variable=variable,
-            source_line=source_line,
-            source_expression=source_expression,
-            propagation_steps=spec.get("propagation_steps", []),
-            sink_hits=spec.get("sink_hits", []),
-            code_snippet=source_code[:800],
-            registered_sinks=registered_sinks
-        )
-        
-        raw = _call_model(prompt, model_name)
-        source_result = _parse_response(raw, variable)
-        source_result.source_line = source_line
-        result.add_source_result(source_result)
-        
-        logger.info(
-            f"Layer 2 result for {variable}: {source_result.verdict} "
-            f"({source_result.confidence}) — {source_result.rejection_reason[:60] if source_result.rejection_reason else 'no reason'}"
-        )
+        # Collect results as they complete
+        for future in futures:
+            try:
+                source_result = future.result(timeout=60)
+                result.add_source_result(source_result)
+            except Exception as e:
+                logger.error(f"Layer 2 parallel analysis failed: {e}")
     
     violating = [r for r in result.source_results if r.verdict == "REJECT"]
     if violating:

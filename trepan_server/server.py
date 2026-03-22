@@ -1989,6 +1989,7 @@ class EvaluateRequest(BaseModel):
     project_path:   str = Field("",    description="Absolute path to the project root")
     processor_mode: Optional[str] = Field("gpu", description="CPU or GPU usage for inference")
     model_name:     str = Field("deepseek-r1:7b", description="Model to use for inference")
+    power_mode:     bool = Field(False, description="If True, run Layer 1 only and skip Layer 2 (for cloud routing)")
 
 class EvaluatePillarRequest(BaseModel):
     filename:         str = Field(..., description="The name of the pillar, e.g. system_rules.md")
@@ -2081,6 +2082,8 @@ async def evaluate(req: EvaluateRequest):
     Evaluate a user prompt against the 5 workspace pillars.
 
     Returns ACCEPT (drift_score < 0.40) or REJECT (drift_score >= 0.40).
+    
+    If power_mode=True, runs Layer 1 only and returns L1_PASS if clean.
     """
     # ── LOG SIGNAL ──
     # Extra diagnostic log as requested by user
@@ -2097,7 +2100,7 @@ async def evaluate(req: EvaluateRequest):
     # RETIRED: keyword_audit_shortcut
     # (Excision of legacy Zero-Baseline logic to enforce structural analysis)
         
-    if not _model_ready:
+    if not _model_ready and not req.power_mode:
         raise HTTPException(
             status_code=503,
             detail="Trepan model is still loading. Retry in a few seconds."
@@ -2136,6 +2139,18 @@ async def evaluate(req: EvaluateRequest):
             violations=aggregated.violations,
             filename=req.filename,
             raw_output=aggregated.raw_output
+        )
+    
+    # ── POWER MODE BYPASS: Layer 1 passed, skip Layer 2 ───────────────────
+    if req.power_mode:
+        logger.info("Power Mode: Layer 1 passed — returning L1_PASS (cloud will handle Layer 2)")
+        return EvaluateResponse(
+            action="L1_PASS",
+            drift_score=0.0,
+            reasoning="Layer 1 passed. Cloud routing enabled.",
+            violations=[],
+            filename=req.filename,
+            raw_output="[Layer 1] ACCEPT — No deterministic violations found."
         )
     # ── End Layer 1 ────────────────────────────────────────────────────────
     
