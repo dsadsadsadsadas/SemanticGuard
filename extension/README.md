@@ -98,9 +98,20 @@ Your code is your most valuable asset. **You choose where it goes.**
 
 ---
 
-## 📋 Prerequisites — Read This First
+## 📋 Prerequisites
 
-Before installing Trepan, ensure the following are in place:
+### For Power Mode (Cloud) - Minimal Setup
+If you're using Power Mode exclusively, you only need:
+
+| Requirement | Details |
+|---|---|
+| **VS Code** | Version **1.74.0+** |
+| **Cloud API Key** | OpenRouter or Groq account |
+
+**That's it!** No Ollama, no Python server, no local models. Just install the extension and configure your API key.
+
+### For Local Mode - Full Setup
+If you want 100% local privacy, you'll need:
 
 | Requirement | Details |
 |---|---|
@@ -110,37 +121,53 @@ Before installing Trepan, ensure the following are in place:
 | **Python** | Version **3.8+** |
 | **VS Code** | Version **1.74.0+** |
 
+**Note**: Ollama is only required if you want to use Local Mode. Power Mode works without any local setup.
+
 ---
 
 ## 🚀 Installation
 
-### Option 1: Install from VSIX (Recommended)
+### Quick Start: Power Mode Only (No Local Setup)
+
+Want to get started in 60 seconds? Use Power Mode:
+
 ```bash
-# 1. Download trepan-gatekeeper-2.0.0.vsix from GitHub releases
+# 1. Download trepan-gatekeeper-2.2.2.vsix from GitHub releases
 
 # 2. Install in VS Code
-code --install-extension trepan-gatekeeper-2.0.0.vsix
+code --install-extension trepan-gatekeeper-2.2.2.vsix
 
 # Or install via VS Code UI:
 # Extensions → ... → Install from VSIX
 ```
 
-### Option 2: Build from Source
+**That's it!** Configure your cloud API key and start auditing. No Ollama, no Python server needed.
+
+### Full Setup: Local Mode (100% Privacy)
+
+Want 100% local privacy? Follow the complete setup:
+
 ```bash
-# 1. Clone the repository
+# 1. Install Ollama
+# Download from: https://ollama.com/download
+
+# 2. Pull the model
+ollama pull llama3.1:8b
+
+# 3. Clone the repository
 git clone https://github.com/dsadsadsadsadas/Trepan.git
 cd Trepan
 
-# 2. Install Python dependencies
+# 4. Install Python dependencies
 pip install -r requirements.txt
 
-# 3. Start the local audit server
+# 5. Start the local audit server
 python start_server.py
 
-# 4. Install the extension from /extension folder
+# 6. Install the extension from /extension folder
 cd extension
 vsce package
-code --install-extension trepan-gatekeeper-2.0.0.vsix
+code --install-extension trepan-gatekeeper-2.2.2.vsix
 ```
 
 Every file save is now audited in real-time with Layer 1 + Layer 2 defense!

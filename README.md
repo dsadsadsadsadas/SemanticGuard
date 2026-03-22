@@ -54,9 +54,20 @@ Your code is your most valuable asset. **You choose where it goes.**
 
 ---
 
-## 📋 Prerequisites — Read This First
+## 📋 Prerequisites
 
-Before installing Trepan, ensure the following are in place:
+### For Power Mode (Cloud) - Minimal Setup
+If you're using Power Mode exclusively, you only need:
+
+| Requirement | Details |
+|---|---|
+| **VS Code** | For the extension-based audit workflow |
+| **Cloud API Key** | OpenRouter or Groq account |
+
+**That's it!** No Ollama, no Python server, no local models. Just install the extension and configure your API key.
+
+### For Local Mode - Full Setup
+If you want 100% local privacy, you'll need:
 
 | Requirement | Details |
 |---|---|
@@ -64,11 +75,33 @@ Before installing Trepan, ensure the following are in place:
 | **Ollama Model** | `ollama pull llama3.1:8b` (or your preferred 8B-class model) |
 | **Python** | Version **3.8+** |
 | **VS Code** | For the extension-based audit workflow |
+
+**Note**: Ollama is only required if you want to use Local Mode. Power Mode works without any local setup.
 | **Extension** |[Here](https://marketplace.visualstudio.com/items?itemName=trepansec.trepan-gatekeeper#review-details)| 
 
 ---
 
 ## 🚀 Installation
+
+### Quick Start: Power Mode Only (No Local Setup)
+
+Want to get started in 60 seconds? Use Power Mode:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/your-username/trepan.git
+cd trepan
+
+# 2. Install the VS Code Extension
+cd extension
+code --install-extension trepan-gatekeeper-2.2.2.vsix
+```
+
+**That's it!** Configure your cloud API key in the extension and start auditing. No Ollama, no Python server needed.
+
+### Full Setup: Local Mode (100% Privacy)
+
+Want 100% local privacy? Follow the complete setup:
 
 ```bash
 # 1. Clone the repository
@@ -80,6 +113,10 @@ pip install -r requirements.txt
 
 # 3. Start the local audit server
 python start_server.py
+
+# 4. Install the VS Code Extension
+cd extension
+code --install-extension trepan-gatekeeper-2.2.2.vsix
 ```
 
 Then install the **Trepan VS Code Extension** from the Marketplace (or from the `/extension` folder). Every file save is now audited in real-time.
