@@ -70,8 +70,9 @@ python start_server.py
 Then install the **Trepan VS Code Extension** from the Marketplace (or from the `/extension` folder). Every file save is now audited in real-time.
 
 ---
+## Buttons !
 
-## 🎯 Switching Audit Models
+**🎯 Switching Audit Models**
 
 Trepan supports multiple models for different use cases:
 
@@ -85,6 +86,13 @@ To switch models:
 
 The selected model persists across VS Code sessions.
 
+**Switch CPU/GPU**
+
+1. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
+2. Type `Trepan: Switch CPU/GPU`
+3. Choose your preferred mode
+
+The selected mode persists across VS Code sessions.
 ---
 
 ## ⚡ Project Initialization
