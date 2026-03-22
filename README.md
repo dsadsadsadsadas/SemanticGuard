@@ -11,7 +11,7 @@ Built for developers suffering from the **Vibe Coding Hangover**: that moment yo
 
 ---
 
-## 🎬 See Trepan in Action
+## 🎬 See Trepan in Action (Local Mode)
 
 ![Trepan catching a security violation in VS Code](images/trepan_demo.gif)
 
