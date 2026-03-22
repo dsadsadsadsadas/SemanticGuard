@@ -64,7 +64,7 @@ Before installing Trepan, ensure the following are in place:
 | **Ollama Model** | `ollama pull llama3.1:8b` (or your preferred 8B-class model) |
 | **Python** | Version **3.8+** |
 | **VS Code** | For the extension-based audit workflow |
-| **Extension** |[Here]| 
+| **Extension** |[Here](https://marketplace.visualstudio.com/items?itemName=trepansec.trepan-gatekeeper#review-details)| 
 
 ---
 
