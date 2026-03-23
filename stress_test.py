@@ -705,9 +705,14 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
         }
     
     async def audit_codebase(self, files: List[Path], concurrency: int = 1):
-        """Audit multiple files with concurrency control"""
+        """Audit multiple files with concurrency control and live timestamps"""
         print(f"\n{colored('🚀 Starting audit...', Colors.CYAN)}")
         print(f"{colored(f'Model: {self.model} | Max RPM: {self.rate_limiter.max_rpm} | Max TPM: {self.rate_limiter.max_tpm}', Colors.DIM)}\n")
+        
+        def get_timestamp():
+            """Get current timestamp with milliseconds"""
+            now = datetime.now()
+            return now.strftime("%H:%M:%S.%f")[:-3]  # HH:MM:SS.mmm
         
         semaphore = asyncio.Semaphore(concurrency)
         total_files = len(files)
@@ -717,8 +722,9 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
             async with semaphore:
                 file_counter["count"] += 1
                 current = file_counter["count"]
-                # Print progress indicator
-                print(f"{colored(f'[{current}/{total_files}]', Colors.CYAN)} {colored(file_path.name, Colors.DIM)}")
+                timestamp = get_timestamp()
+                # Print progress indicator with timestamp
+                print(f"{colored(f'[{timestamp}] [{current}/{total_files}]', Colors.CYAN)} {colored(file_path.name, Colors.DIM)}")
                 return await self.audit_file(file_path)
         
         tasks = [audit_with_semaphore(f) for f in files]
