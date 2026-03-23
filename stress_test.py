@@ -74,42 +74,130 @@ GROQ_MODELS = {
 # ─── Token Bucket Rate Limiter ──────────────────────────────────────────────
 
 class TokenBucket:
-    """Mathematical Proactive Throttling with TPM-Based Governor
+    """Global Leaky Bucket Rate Limiter with asyncio.Lock()
     
-    Uses formula: Delay = (File_Tokens / TPM_Limit) * 60
-    Adds 10% safety buffer to account for network jitter.
+    Prevents concurrent task bursts by maintaining globally shared token state.
+    Tokens regenerate at 500/second (30,000 TPM).
+    Uses asyncio.Lock() to serialize token consumption.
     """
     
     def __init__(self, max_rpm: int, max_tpm: int):
         self.max_rpm = max_rpm
         self.max_tpm = max_tpm
-        self.rpm_bucket = max_rpm
-        self.tpm_bucket = max_tpm
+        self.available_tokens = max_tpm  # Start with full bucket
         self.last_refill = time.time()
-        self.token_history = deque(maxlen=60)  # Track tokens used in last 60 seconds
-        self.rate_limit_hit_time = None  # Track when we hit a 429 error
-        self.rate_limit_recovery_time = 10  # Wait 10 seconds after 429 before retrying
-        self.safety_buffer = 1.10  # 10% safety buffer for network jitter
+        self.refill_rate = max_tpm / 60  # Tokens per second (500 for 30k TPM)
         
+        # Asyncio lock for thread-safe token consumption
+        self.lock = asyncio.Lock()
+        
+        # Global 429 cooldown flag
+        self.global_pause_until = 0.0
+        self.global_pause_lock = asyncio.Lock()
+        
+        # Tracking
+        self.token_history = deque(maxlen=60)
+        self.rate_limit_hit_time = None
+        self.rate_limit_recovery_time = 10
+        self.safety_buffer = 1.10
+        
+        # Skip threshold for files too large
+        self.max_file_tokens = 25000
+    
     def refill(self):
-        """Refill buckets based on elapsed time"""
+        """Refill available tokens based on elapsed time"""
         now = time.time()
         elapsed = now - self.last_refill
         
-        # Refill RPM bucket (1 request per second max)
-        self.rpm_bucket = min(self.max_rpm, self.rpm_bucket + (elapsed * self.max_rpm / 60))
-        
-        # Refill TPM bucket
-        self.tpm_bucket = min(self.max_tpm, self.tpm_bucket + (elapsed * self.max_tpm / 60))
+        # Add tokens: elapsed_seconds * refill_rate
+        tokens_to_add = elapsed * self.refill_rate
+        self.available_tokens = min(self.max_tpm, self.available_tokens + tokens_to_add)
         
         self.last_refill = now
     
+    async def set_global_pause(self, duration: float = 30.0):
+        """Set global pause flag when 429 error occurs"""
+        async with self.global_pause_lock:
+            self.global_pause_until = time.time() + duration
+    
+    async def wait_for_global_pause(self):
+        """Wait if global pause is active"""
+        async with self.global_pause_lock:
+            pause_remaining = self.global_pause_until - time.time()
+        
+        if pause_remaining > 0:
+            await asyncio.sleep(pause_remaining)
+    
+    async def consume(self, file_tokens: int) -> Tuple[bool, float]:
+        """Consume tokens from the global bucket with exact delay calculation.
+        
+        Returns: (success, wait_time)
+        - success: True if tokens were consumed
+        - wait_time: How long we waited (for logging)
+        """
+        # Check if file is too large
+        if file_tokens > self.max_file_tokens:
+            return False, 0.0  # Signal to skip this file
+        
+        # Wait for global pause to end
+        await self.wait_for_global_pause()
+        
+        async with self.lock:
+            # Refill based on elapsed time
+            self.refill()
+            
+            # If we have enough tokens, consume immediately
+            if self.available_tokens >= file_tokens:
+                self.available_tokens -= file_tokens
+                self.token_history.append((time.time(), file_tokens))
+                return True, 0.0
+            
+            # Calculate exact delay needed to refill deficit
+            deficit = file_tokens - self.available_tokens
+            delay_seconds = (deficit / self.refill_rate) * self.safety_buffer
+            
+            # Return delay (caller will sleep)
+            return False, delay_seconds
+    
+    async def consume_with_wait(self, file_tokens: int) -> float:
+        """Consume tokens, waiting if necessary. Returns actual wait time.
+        
+        This is the main method called by audit_file.
+        """
+        # Check if file is too large
+        if file_tokens > self.max_file_tokens:
+            return -1.0  # Signal to skip this file
+        
+        # Try to consume
+        success, wait_time = await self.consume(file_tokens)
+        
+        if success:
+            return 0.0  # No wait needed
+        
+        # Wait for tokens to refill
+        if wait_time > 0:
+            await asyncio.sleep(wait_time)
+        
+        # Try again after waiting
+        success, _ = await self.consume(file_tokens)
+        
+        if success:
+            return wait_time
+        
+        # Fallback: wait a bit more and try once more
+        await asyncio.sleep(1.0)
+        success, _ = await self.consume(file_tokens)
+        
+        if success:
+            return wait_time + 1.0
+        
+        # Should not reach here, but return the calculated wait
+        return wait_time
+    
     def on_rate_limit_error(self):
-        """Called when a 429 error is received. Triggers self-healing."""
+        """Called when a 429 error is received"""
         self.rate_limit_hit_time = time.time()
-        # Reset buckets to force a wait period
-        self.rpm_bucket = 0
-        self.tpm_bucket = 0
+        self.available_tokens = 0  # Reset bucket
     
     def get_recovery_wait_time(self) -> float:
         """Get how long to wait after a 429 error"""
@@ -120,88 +208,39 @@ class TokenBucket:
         remaining = self.rate_limit_recovery_time - elapsed
         
         if remaining <= 0:
-            # Recovery period is over, reset
             self.rate_limit_hit_time = None
             return 0.0
         
         return remaining
     
-    def calculate_proactive_delay(self, estimated_tokens: int) -> float:
-        """Calculate proactive delay using TPM-based governor formula.
-        
-        Formula: Delay = (File_Tokens / TPM_Limit) * 60
-        With 10% safety buffer: Delay * 1.10
-        
-        Args:
-            estimated_tokens: Number of tokens for this file
-            
-        Returns:
-            Delay in seconds (with safety buffer applied)
-        """
-        # Base delay: (tokens / TPM_limit) * 60 seconds
-        base_delay = (estimated_tokens / self.max_tpm) * 60
-        
-        # Apply 10% safety buffer for network jitter
-        delay_with_buffer = base_delay * self.safety_buffer
-        
-        return delay_with_buffer
-    
-    async def wait_for_capacity(self, estimated_tokens: int) -> float:
-        """Proactively wait before making a request.
-        
-        Uses mathematical throttling to prevent 429 errors.
-        Returns the actual wait time.
-        """
-        # Check if we're in recovery mode from a 429 error
-        recovery_wait = self.get_recovery_wait_time()
-        if recovery_wait > 0:
-            await asyncio.sleep(recovery_wait)
-            return recovery_wait
-        
-        # Calculate proactive delay based on token count
-        delay = self.calculate_proactive_delay(estimated_tokens)
-        
-        if delay > 0:
-            await asyncio.sleep(delay)
-        
-        return delay
-    
     def can_request(self, estimated_tokens: int = 1000) -> Tuple[bool, float]:
-        """Check if we can make a request. Returns (can_request, wait_time)
-        
-        Self-healing: If we hit a 429 error, wait 10 seconds before retrying.
-        """
-        # Check if we're in recovery mode from a 429 error
+        """Legacy method for backward compatibility"""
         recovery_wait = self.get_recovery_wait_time()
         if recovery_wait > 0:
             return False, recovery_wait
         
         self.refill()
         
-        # Prevent "Whale File" infinite loop
         if estimated_tokens > self.max_tpm:
             raise ValueError(f"File too large ({estimated_tokens} tokens) for TPM limit ({self.max_tpm})")
         
-        if self.rpm_bucket >= 1 and self.tpm_bucket >= estimated_tokens:
-            # PRE-CONSUME to prevent race conditions
-            self.rpm_bucket -= 1
-            self.tpm_bucket -= estimated_tokens
+        if self.available_tokens >= estimated_tokens:
+            self.available_tokens -= estimated_tokens
             return True, 0.0
         
-        # Calculate wait time
-        rpm_wait = (1 - self.rpm_bucket) * (60 / self.max_rpm) if self.rpm_bucket < 1 else 0
-        tpm_wait = (estimated_tokens - self.tpm_bucket) * (60 / self.max_tpm) if self.tpm_bucket < estimated_tokens else 0
+        rpm_wait = (1 - (self.max_rpm / 60)) * (60 / self.max_rpm) if (self.max_rpm / 60) < 1 else 0
+        tpm_wait = (estimated_tokens - self.available_tokens) * (60 / self.max_tpm) if self.available_tokens < estimated_tokens else 0
         
         wait_time = max(rpm_wait, tpm_wait)
         return False, wait_time
     
     def refund(self, tokens_estimated: int, tokens_actual: int):
-        """Refund tokens if the estimate was too high"""
+        """Refund tokens if estimate was too high"""
         if tokens_estimated > tokens_actual:
-            self.tpm_bucket = min(self.max_tpm, self.tpm_bucket + (tokens_estimated - tokens_actual))
+            self.available_tokens = min(self.max_tpm, self.available_tokens + (tokens_estimated - tokens_actual))
     
-    def consume(self, tokens_used: int):
-        """Consume tokens from the bucket (legacy, kept for compatibility)"""
+    def consume_legacy(self, tokens_used: int):
+        """Legacy method for backward compatibility"""
         self.token_history.append((time.time(), tokens_used))
 
 # ─── Layer 1 Pre-Screener (AST/Regex) ──────────────────────────────────────
@@ -534,11 +573,10 @@ SAFE - No exploitable vulnerabilities detected.
 Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
     
     async def audit_file(self, file_path: Path) -> Dict:
-        """Audit a single file with mathematical proactive throttling
+        """Audit a single file with global leaky bucket rate limiting
         
-        Uses TPM-based governor formula: Delay = (File_Tokens / TPM_Limit) * 60
-        Adds 10% safety buffer to prevent 429 errors.
-        Includes live timestamps with milliseconds for all events.
+        Uses globally shared token state with asyncio.Lock() to prevent bursts.
+        Skips files > 25,000 tokens (too large for free tier).
         """
         max_retries = 3
         retry_count = 0
@@ -548,23 +586,34 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
             now = datetime.now()
             return now.strftime("%H:%M:%S.%f")[:-3]  # HH:MM:SS.mmm
         
+        # Read file
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            code = f.read()
+        
+        # Estimate tokens (rough: 1 token ≈ 4 chars)
+        estimated_tokens = len(code) // 4 + 500
+        
+        # Check if file is too large for free tier
+        if estimated_tokens > self.rate_limiter.max_file_tokens:
+            timestamp = get_timestamp()
+            print(f"{colored(f'[{timestamp}] [SKIP: {estimated_tokens:,} tokens > {self.rate_limiter.max_file_tokens:,} max]', Colors.YELLOW)}")
+            return {
+                "file": str(file_path),
+                "status": "skipped",
+                "reason": f"File too large ({estimated_tokens:,} tokens)",
+                "latency": 0
+            }
+        
+        # GLOBAL LEAKY BUCKET: Wait for token availability
+        wait_time = await self.rate_limiter.consume_with_wait(estimated_tokens)
+        
+        # Print throttling info with timestamp
+        if wait_time > 0:
+            timestamp = get_timestamp()
+            print(f"{colored(f'[{timestamp}] [Wait: {wait_time:.2f}s for {estimated_tokens:,} tokens]', Colors.CYAN)}")
+        
         while retry_count <= max_retries:
             try:
-                # Read file
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    code = f.read()
-                
-                # Estimate tokens (rough: 1 token ≈ 4 chars)
-                estimated_tokens = len(code) // 4 + 500
-                
-                # PROACTIVE THROTTLING: Calculate and wait based on token count
-                wait_time = await self.rate_limiter.wait_for_capacity(estimated_tokens)
-                
-                # Print throttling info for visibility with timestamp
-                if wait_time > 0:
-                    timestamp = get_timestamp()
-                    print(f"{colored(f'[{timestamp}] [Wait: {wait_time:.2f}s for {estimated_tokens:,} tokens]', Colors.CYAN)}")
-                
                 # Make API call (non-blocking via asyncio.to_thread)
                 start_time = time.time()
                 
@@ -597,11 +646,11 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                     if response.status_code == 429:
                         if retry_count < max_retries:
                             retry_count += 1
-                            # Trigger self-healing in token bucket
-                            self.rate_limiter.on_rate_limit_error()
+                            # Set global pause for ALL tasks
+                            await self.rate_limiter.set_global_pause(30.0)
                             timestamp = get_timestamp()
-                            print(f"{colored(f'[{timestamp}] [429 Rate Limit Hit! Waiting 10.00s before retry {retry_count}/{max_retries}...]', Colors.RED)}")
-                            await asyncio.sleep(10)  # Wait 10 seconds for Groq to recover
+                            print(f"{colored(f'[{timestamp}] [429 GLOBAL PAUSE! All tasks sleeping 30s...]', Colors.RED)}")
+                            await asyncio.sleep(30)  # Wait 30 seconds for Groq to reset
                             continue
                         else:
                             return {
@@ -611,10 +660,10 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                                 "latency": elapsed
                             }
                     
-                    # Retry on other timeout errors (408, 504) with aggressive error suppression
+                    # Retry on other timeout errors (408, 504)
                     if response.status_code in [408, 504] and retry_count < max_retries:
                         retry_count += 1
-                        backoff_time = 15  # Aggressive error suppression: 15 second wait
+                        backoff_time = 15
                         timestamp = get_timestamp()
                         print(f"{colored(f'[{timestamp}] [HTTP {response.status_code} Error! Waiting {backoff_time:.2f}s before retry {retry_count}/{max_retries}...]', Colors.YELLOW)}")
                         await asyncio.sleep(backoff_time)
@@ -638,8 +687,7 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                 self.total_tokens += tokens_used
                 self.files_scanned += 1
                 
-                # Parse result: check for VULNERABILITY_FOUND marker
-                # Also check for false positives like "SAFE - No exploitable vulnerabilities"
+                # Parse result
                 result_upper = result.strip().upper()
                 is_vulnerable = (
                     "VULNERABILITY_FOUND" in result_upper and
@@ -647,7 +695,6 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                 )
                 
                 if is_vulnerable:
-                    # Extract the violation summary (first line after VULNERABILITY_FOUND)
                     lines = result.strip().split('\n')
                     violation_summary = lines[0] if lines else result.strip()[:100]
                     
@@ -666,10 +713,9 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                 }
             
             except (requests.Timeout, asyncio.TimeoutError) as e:
-                # Retry on timeout with aggressive error suppression (15 second wait)
                 if retry_count < max_retries:
                     retry_count += 1
-                    backoff_time = 15  # Aggressive error suppression: 15 second wait
+                    backoff_time = 15
                     timestamp = get_timestamp()
                     print(f"{colored(f'[{timestamp}] [Timeout! Waiting {backoff_time:.2f}s before retry {retry_count}/{max_retries}...]', Colors.YELLOW)}")
                     await asyncio.sleep(backoff_time)
@@ -694,7 +740,6 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                     "latency": 0
                 }
         
-        # Should not reach here, but just in case
         timestamp = get_timestamp()
         print(f"{colored(f'[{timestamp}] [Unknown error after retries]', Colors.RED)}")
         return {
