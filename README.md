@@ -153,6 +153,22 @@ or :https://marketplace.visualstudio.com/items?itemName=trepansec.trepan-gatekee
 Then install the **Trepan VS Code Extension** from the Marketplace (or from the `/extension` folder). Every file save is now audited in real-time.
 
 ---
+
+## ⚡ Project Initialization
+
+Starting a new project? Click the ⚙️ Gear Icon in the Trepan Vault UI and select **"Initialize Project"**.
+
+Choose a **RULE AFFECTING** mode that matches your context:
+
+| Mode | Target | Enforces |
+|---|---|---|
+| 🚀 **Solo-Indie (The Speedster)** | Rapid solo development | Function size, nesting depth, clean naming |
+| 🏗️ **Clean-Layers (The Architect)** | Long-term scalability | Separation of concerns, DI, interface-driven design |
+| 🛡️ **Secure-Stateless (The Fortress)** | Mission-critical security | Input sanitization, stateless ops, encryption-at-rest, audit logging |
+
+---
+
+
 ## Buttons !
 
 **🎯 Local Mode - Switching Audit Models**
@@ -223,16 +239,16 @@ Want maximum speed without sacrificing accuracy? Configure Power Mode with your 
 - Click the ⚙️ Gear Icon in the Trepan Vault panel
 - Use the "Mode Selection" section to switch between Local and Cloud Power Mode
 
-**Performance:**
+**Performance of POWER Mode :**
 - **⚡ Cloud Average**: ~1.5 seconds per audit (3-4x faster than local!)
 - **OpenRouter (Claude 3.5)**: ~1-2 seconds per audit
 - **Groq (Llama 70B)**: ~0.5-1 second per audit (fastest!)
 - **Local (Llama 3.1:8b)**: ~4-6 seconds per audit
 
-**Benefits:**
+**Benefits of POWER Mode :**
 - ⚡ **Blazing fast**: ~1.5s average (3-4x faster than local models)
 - 🧠 **Better accuracy**: Flagship models outperform local 8B models
-- 💰 **Pay-as-you-go**: Only pay for what you use (~$0.01-0.05 per audit)
+- 💰 **Pay-as-you-go**: Only pay for what you use (Averages at Less Then 0.01$ per audit)
 - 📊 **Performance tracking**: See provider name and latency in audit results
 
 **Security Note:**
@@ -262,21 +278,7 @@ To switch between CPU and GPU modes:
 3. Choose your preferred mode
 
 The selected mode persists across VS Code sessions.
----
-
-## ⚡ Project Initialization
-
-Starting a new project? Click the ⚙️ Gear Icon in the Trepan Vault UI and select **"Initialize Project"**.
-
-Choose a mode that matches your context:
-
-| Mode | Target | Enforces |
-|---|---|---|
-| 🚀 **Solo-Indie (The Speedster)** | Rapid solo development | Function size, nesting depth, clean naming |
-| 🏗️ **Clean-Layers (The Architect)** | Long-term scalability | Separation of concerns, DI, interface-driven design |
-| 🛡️ **Secure-Stateless (The Fortress)** | Mission-critical security | Input sanitization, stateless ops, encryption-at-rest, audit logging |
-
----
+--- 
 
 ## 📁 The Six Pillars of the Trepan Vault
 
