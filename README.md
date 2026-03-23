@@ -123,7 +123,7 @@ cd trepan
 
 # 2. Install the VS Code Extension
 cd extension
-code --install-extension trepan-gatekeeper-2.3.1.vsix
+code --install-extension trepan-gatekeeper-x.x.x.vsix (View Latest Version in Releases)
 ```
 
 **That's it!** Configure your cloud API key in the extension and start auditing. No Ollama, no Python server needed.
@@ -145,7 +145,9 @@ python start_server.py
 
 # 4. Install the VS Code Extension
 cd extension
-code --install-extension trepan-gatekeeper-2.2.3.vsix
+code --install-extension trepan-gatekeeper-x.x.x.vsix (View Latest Version in Releases)
+
+or :https://marketplace.visualstudio.com/items?itemName=trepansec.trepan-gatekeeper
 ```
 
 Then install the **Trepan VS Code Extension** from the Marketplace (or from the `/extension` folder). Every file save is now audited in real-time.
