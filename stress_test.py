@@ -330,8 +330,11 @@ def print_results(client: GroqAuditClient, results: List[Dict]):
     if client.vulnerabilities_found:
         print(f"{colored('🔴 VULNERABILITIES FOUND:', Colors.RED)}\n")
         for vuln in client.vulnerabilities_found:
-            print(f"{colored(f'File: {vuln[\"file\"]}', Colors.YELLOW)}")
-            print(f"{colored(f'Finding: {vuln[\"finding\"]}', Colors.RED)}\n")
+            file_path = vuln["file"]
+            finding = vuln["finding"]
+            print(colored(f'File: {file_path}', Colors.YELLOW))
+            print(colored(f'Finding: {finding}', Colors.RED))
+            print()
     
     # Latency stats
     latencies = [r.get("latency", 0) for r in results if r.get("latency")]
