@@ -538,9 +538,15 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
         
         Uses TPM-based governor formula: Delay = (File_Tokens / TPM_Limit) * 60
         Adds 10% safety buffer to prevent 429 errors.
+        Includes live timestamps with milliseconds for all events.
         """
         max_retries = 3
         retry_count = 0
+        
+        def get_timestamp():
+            """Get current timestamp with milliseconds"""
+            now = datetime.now()
+            return now.strftime("%H:%M:%S.%f")[:-3]  # HH:MM:SS.mmm
         
         while retry_count <= max_retries:
             try:
@@ -554,9 +560,10 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                 # PROACTIVE THROTTLING: Calculate and wait based on token count
                 wait_time = await self.rate_limiter.wait_for_capacity(estimated_tokens)
                 
-                # Print throttling info for visibility
+                # Print throttling info for visibility with timestamp
                 if wait_time > 0:
-                    print(f"{colored(f'[Wait: {wait_time:.1f}s for {estimated_tokens:,} tokens]', Colors.CYAN)}")
+                    timestamp = get_timestamp()
+                    print(f"{colored(f'[{timestamp}] [Wait: {wait_time:.2f}s for {estimated_tokens:,} tokens]', Colors.CYAN)}")
                 
                 # Make API call (non-blocking via asyncio.to_thread)
                 start_time = time.time()
@@ -592,7 +599,8 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                             retry_count += 1
                             # Trigger self-healing in token bucket
                             self.rate_limiter.on_rate_limit_error()
-                            print(f"{colored(f'⚠️  429 Rate Limit Hit! Waiting 10s before retry {retry_count}/{max_retries}...', Colors.RED)}")
+                            timestamp = get_timestamp()
+                            print(f"{colored(f'[{timestamp}] [429 Rate Limit Hit! Waiting 10.00s before retry {retry_count}/{max_retries}...]', Colors.RED)}")
                             await asyncio.sleep(10)  # Wait 10 seconds for Groq to recover
                             continue
                         else:
@@ -607,9 +615,13 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                     if response.status_code in [408, 504] and retry_count < max_retries:
                         retry_count += 1
                         backoff_time = 15  # Aggressive error suppression: 15 second wait
+                        timestamp = get_timestamp()
+                        print(f"{colored(f'[{timestamp}] [HTTP {response.status_code} Error! Waiting {backoff_time:.2f}s before retry {retry_count}/{max_retries}...]', Colors.YELLOW)}")
                         await asyncio.sleep(backoff_time)
                         continue
                     
+                    timestamp = get_timestamp()
+                    print(f"{colored(f'[{timestamp}] [HTTP {response.status_code} Error: {response.text[:50]}]', Colors.RED)}")
                     return {
                         "file": str(file_path),
                         "status": "error",
@@ -658,9 +670,13 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                 if retry_count < max_retries:
                     retry_count += 1
                     backoff_time = 15  # Aggressive error suppression: 15 second wait
+                    timestamp = get_timestamp()
+                    print(f"{colored(f'[{timestamp}] [Timeout! Waiting {backoff_time:.2f}s before retry {retry_count}/{max_retries}...]', Colors.YELLOW)}")
                     await asyncio.sleep(backoff_time)
                     continue
                 
+                timestamp = get_timestamp()
+                print(f"{colored(f'[{timestamp}] [Timeout Error after {max_retries} retries]', Colors.RED)}")
                 return {
                     "file": str(file_path),
                     "status": "error",
@@ -669,6 +685,8 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                 }
             
             except Exception as e:
+                timestamp = get_timestamp()
+                print(f"{colored(f'[{timestamp}] [Exception: {str(e)[:50]}]', Colors.RED)}")
                 return {
                     "file": str(file_path),
                     "status": "error",
@@ -677,6 +695,8 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                 }
         
         # Should not reach here, but just in case
+        timestamp = get_timestamp()
+        print(f"{colored(f'[{timestamp}] [Unknown error after retries]', Colors.RED)}")
         return {
             "file": str(file_path),
             "status": "error",
