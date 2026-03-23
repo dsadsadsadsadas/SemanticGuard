@@ -876,12 +876,15 @@ function activate(context) {
                         const pillars = {};
                         const processorMode = "GPU";
                         
+                        // Strip comments while preserving line numbers for Power Mode
+                        const auditCode = isPowerMode ? stripCommentsPreserveLines(code) : code;
+                        
                         const response = await fetchWithTimeout(`${serverUrl}/evaluate`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                                 filename: fileName,
-                                code_snippet: code,
+                                code_snippet: auditCode,
                                 pillars: pillars,
                                 project_path: vscode.workspace.workspaceFolders[0].uri.fsPath,
                                 processor_mode: processorMode,
@@ -2142,6 +2145,25 @@ function loadSystemRules(projectPath) {
     }
 }
 
+// ─── Ghost Stripper: Strip Comments While Preserving Line Numbers ──────────
+
+/**
+ * Remove full-line Python comments while preserving exact line count.
+ * Replaces comment lines with blank lines to maintain line number alignment.
+ * @param {string} code - Source code
+ * @returns {string} - Code with comments stripped, line count preserved
+ */
+function stripCommentsPreserveLines(code) {
+    return code.split('\n').map(line => {
+        const trimmed = line.trim();
+        // If line is a full-line comment, replace with blank line
+        if (trimmed.startsWith('#')) {
+            return '';
+        }
+        return line;
+    }).join('\n');
+}
+
 // ─── Cloud API Call (Power Mode - Multi-Provider) ────────────────────────────
 
 async function callCloudAPI(context, payload) {
@@ -2194,11 +2216,15 @@ async function callCloudAPI(context, payload) {
             console.warn('[TREPAN POWER MODE] No system_rules.md found - using empty ruleset');
         }
         
+        // ═══ GHOST STRIPPER: Remove Comments While Preserving Line Numbers ═══
+        const originalCode = payload.code_snippet;
+        const strippedCode = stripCommentsPreserveLines(originalCode);
+        console.log(`[TREPAN GHOST STRIPPER] Stripped comments from ${originalCode.split('\n').length} lines`);
+        
         // ═══ REQUIREMENT 1: LINE NUMBER INJECTION ═══
         // Inject line numbers into code before sending to Cloud API
-        const originalCode = payload.code_snippet;
-        const numberedCode = injectLineNumbers(originalCode);
-        console.log(`[TREPAN LINE INJECTION] Injected line numbers into ${originalCode.split('\n').length} lines`);
+        const numberedCode = injectLineNumbers(strippedCode);
+        console.log(`[TREPAN LINE INJECTION] Injected line numbers into ${strippedCode.split('\n').length} lines`);
         
         // Build the prompt based on version
         let systemPrompt, userPrompt;
