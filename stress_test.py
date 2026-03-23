@@ -900,11 +900,32 @@ async def main():
     if not should_proceed:
         sys.exit(0)
     
+    # Start audit timer
+    audit_start_time = time.time()
+    
     # Run audit on filtered files (concurrency=2 for aggressive error suppression)
     results = await client.audit_codebase(filtered_files, concurrency=2)
     
+    # Calculate audit duration
+    audit_end_time = time.time()
+    audit_duration = audit_end_time - audit_start_time
+    
     # Print results
     print_results(client, results)
+    
+    # Print audit timing
+    hours = int(audit_duration // 3600)
+    minutes = int((audit_duration % 3600) // 60)
+    seconds = int(audit_duration % 60)
+    
+    if hours > 0:
+        time_str = f"{hours}h {minutes}m {seconds}s"
+    elif minutes > 0:
+        time_str = f"{minutes}m {seconds}s"
+    else:
+        time_str = f"{seconds}s"
+    
+    print(f"{colored('⏱️  Audit Duration: ', Colors.CYAN)}{colored(time_str, Colors.BOLD)}")
     
     print(f"\n{colored('✅ Stress test complete!', Colors.GREEN)}")
 
