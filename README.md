@@ -21,7 +21,7 @@ Built for developers suffering from the **Vibe Coding Hangover**: that moment yo
   - Detects sensitive data in logs (passwords, PII, credit cards)
   - Identifies SQL injection via environment variables
   
-- **⚡ Llama 4 Scout 17B**: Now the default Groq model
+- **⚡ Llama 4 Scout 17B** (on POWER Mode): Now the default Groq model
   - 2.5x faster than Llama 3.3 70B (30K vs 12K tokens/minute)
   - Same 96% accuracy in security analysis
   - 0.7s average response time
@@ -30,8 +30,6 @@ Built for developers suffering from the **Vibe Coding Hangover**: that moment yo
   - Quick-pick menu with recommended models
   - Custom model input for power users
   - Clear speed/accuracy tradeoffs displayed
-  
-- **🧪 26-Case Adversarial Benchmark**: Comprehensive test suite validates prompt effectiveness
 
 - **📁 Full Folder Audit** (v2.3.1): Scan your entire codebase in one command
   - `Ctrl+Shift+P` → "Trepan: Audit Entire Folder"
@@ -155,12 +153,12 @@ Then install the **Trepan VS Code Extension** from the Marketplace (or from the 
 ---
 ## Buttons !
 
-**🎯 Switching Audit Models**
+**🎯 Switching Audit Models on Local Mode**
 
 Trepan supports multiple models for different use cases:
 
-- **⚡ Fast Mode (Llama 3.1:8b)**: ~4-6s per audit. Best for active coding sessions.
-- **🧠 Smart Mode (DeepSeek-R1:7b)**: ~10-15s per audit. Better reasoning for security reviews.
+- **⚡ (Local Mode) Fast Mode (Llama 3.1:8b)**: ~4-6s per audit. Best for active coding sessions.
+- **🧠 (Local Mode ) Smart Mode (DeepSeek-R1:7b)**: ~10-15s per audit. Better reasoning for security reviews.
 - **🚀 Power Mode (BYOK - Cloud)**: ~1.5s average per audit. Use your own cloud API key for maximum speed with flagship models like Claude 3.5 Sonnet or GPT-4o. **3-4x faster than local!**
 
 To switch models:
