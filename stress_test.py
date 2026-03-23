@@ -705,7 +705,7 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
         }
     
     async def audit_codebase(self, files: List[Path], concurrency: int = 1):
-        """Audit multiple files with concurrency control and live timestamps"""
+        """Audit multiple files with concurrency control, live timestamps, and token tracking"""
         print(f"\n{colored('🚀 Starting audit...', Colors.CYAN)}")
         print(f"{colored(f'Model: {self.model} | Max RPM: {self.rate_limiter.max_rpm} | Max TPM: {self.rate_limiter.max_tpm}', Colors.DIM)}\n")
         
@@ -714,18 +714,47 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
             now = datetime.now()
             return now.strftime("%H:%M:%S.%f")[:-3]  # HH:MM:SS.mmm
         
+        def estimate_tokens(file_path: Path) -> int:
+            """Estimate tokens for a file (1 token ≈ 4 chars)"""
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    code = f.read()
+                return len(code) // 4 + 500
+            except:
+                return 500
+        
+        # Pre-calculate token counts for all files
+        file_tokens = {}
+        total_tokens_estimate = 0
+        for file_path in files:
+            tokens = estimate_tokens(file_path)
+            file_tokens[str(file_path)] = tokens
+            total_tokens_estimate += tokens
+        
         semaphore = asyncio.Semaphore(concurrency)
         total_files = len(files)
         file_counter = {"count": 0}  # Shared counter for progress
+        tokens_processed = {"count": 0}  # Shared token counter
         
         async def audit_with_semaphore(file_path):
             async with semaphore:
                 file_counter["count"] += 1
                 current = file_counter["count"]
                 timestamp = get_timestamp()
-                # Print progress indicator with timestamp
-                print(f"{colored(f'[{timestamp}] [{current}/{total_files}]', Colors.CYAN)} {colored(file_path.name, Colors.DIM)}")
-                return await self.audit_file(file_path)
+                
+                # Get token count for this file
+                file_token_count = file_tokens.get(str(file_path), 500)
+                tokens_before = tokens_processed["count"]
+                
+                # Print progress indicator with timestamp and token info
+                print(f"{colored(f'[{timestamp}] [{current}/{total_files}]', Colors.CYAN)} {colored(file_path.name, Colors.DIM)} {colored(f'[{tokens_before:,}/{total_tokens_estimate:,} Tokens | File: {file_token_count:,}]', Colors.YELLOW)}")
+                
+                result = await self.audit_file(file_path)
+                
+                # Update tokens processed
+                tokens_processed["count"] += file_token_count
+                
+                return result
         
         tasks = [audit_with_semaphore(f) for f in files]
         results = await asyncio.gather(*tasks)
