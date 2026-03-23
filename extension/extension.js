@@ -1537,7 +1537,7 @@ async function evaluateSave(document) {
 
         console.log(`[TREPAN META-GATE] Pillar file save detected: ${fileName}`);
 
-        setStatus("checking");
+        updateStatusBar(context, 'auditing');
         trepanSidebarProvider.sendMessage({ type: 'scanning', title: 'Meta-Gate Audit: ' + fileName }, true);
         
         try {
@@ -1564,7 +1564,7 @@ async function evaluateSave(document) {
 
             if (!res.ok) {
                 console.warn(`Trepan: Meta-Gate server returned ${res.status} — failing open`);
-                setStatus("online");
+                updateStatusBar(context, 'idle');
                 return [];
             }
 
@@ -1594,12 +1594,12 @@ async function evaluateSave(document) {
             }
 
             setStatus("accepted");
-            setTimeout(() => setStatus("online"), 2000);
+            setTimeout(() => updateStatusBar(context, 'idle'), 2000);
             _lastAuditedContent.set(fileKey, currentContent);
             return [];
         } catch (err) {
             console.error("Trepan Meta-Gate error:", err);
-            setStatus("online");
+            updateStatusBar(context, 'idle');
             return [];
         }
     } else {
@@ -1669,7 +1669,7 @@ async function evaluateSave(document) {
 
         console.log(`[TREPAN AIRBAG] Document save detected: ${fileName}`);
 
-        setStatus("checking");
+        updateStatusBar(context, 'auditing');
         trepanSidebarProvider.sendMessage({ type: 'scanning', title: 'Airbag Audit: ' + fileName }, true);
 
         try {
@@ -1709,7 +1709,7 @@ async function evaluateSave(document) {
 
                 if (!layer1Response.ok) {
                     console.warn(`Trepan: Layer 1 server returned ${layer1Response.status} — failing open`);
-                    setStatus("online");
+                    updateStatusBar(context, 'idle');
                     return [];
                 }
 
@@ -1791,7 +1791,7 @@ async function evaluateSave(document) {
                         if (fallbackResponse.ok) {
                             data = await fallbackResponse.json();
                         } else {
-                            setStatus("online");
+                            updateStatusBar(context, 'idle');
                             return [];
                         }
                     }
@@ -1819,7 +1819,7 @@ async function evaluateSave(document) {
 
                 if (!res.ok) {
                     console.warn(`Trepan: Airbag server returned ${res.status} — failing open`);
-                    setStatus("online");
+                    updateStatusBar(context, 'idle');
                     return [];
                 }
 
@@ -1859,12 +1859,12 @@ async function evaluateSave(document) {
             }
 
             setStatus("accepted");
-            setTimeout(() => setStatus("online"), 2000);
+            setTimeout(() => updateStatusBar(context, 'idle'), 2000);
             _lastAuditedContent.set(fileKey, currentContent);
             return [];
         } catch (err) {
             console.error("Trepan Airbag error:", err);
-            setStatus("online");
+            updateStatusBar(context, 'idle');
             return [];
         }
     }
@@ -2523,9 +2523,10 @@ async function checkServerHealth() {
 const STATUS_MAP = {
     online: { text: "🛡️ Trepan: Watching...", tooltip: "Trepan online — airbag armed", bg: undefined },
     loading: { text: "$(shield) Trepan ⏳", tooltip: "Trepan online — model loading…", bg: undefined },
-    checking: { text: "🛡️ Trepan: Auditing...", tooltip: "Trepan — evaluating save…", bg: new vscode.ThemeColor("statusBarItem.warningBackground") },
+    checking: { text: "$(sync~spin) Auditing...", tooltip: "Trepan — evaluating save…", bg: new vscode.ThemeColor("terminal.ansiYellow") },
     accepted: { text: "🛡️ Trepan: Accepted ✅", tooltip: "Trepan — save ACCEPTED", bg: new vscode.ThemeColor("statusBarItem.prominentBackground") },
     offline: { text: "$(shield) Trepan ⚫", tooltip: "Trepan offline — saves pass through", bg: undefined },
+    powerMode: { text: "$(zap) Trepan: Power Mode", tooltip: "Trepan Power Mode — using cloud AI", bg: undefined }
 };
 
 function setStatus(key, customText = null, customTooltip = null) {
@@ -2536,7 +2537,7 @@ function setStatus(key, customText = null, customTooltip = null) {
     statusBarItem.backgroundColor = s.bg;
 }
 
-function updateStatusBar(context) {
+async function updateStatusBar(context, state = 'idle') {
     if (!statusBarItem) return;
     const mode = context?.globalState.get('trepan.mode');
     const provider = context?.globalState.get('trepan.provider') || 'openrouter';
@@ -2546,7 +2547,7 @@ function updateStatusBar(context) {
         groq: "Groq"
     };
     
-    console.log(`[TREPAN STATUS] Updating status bar - mode: ${mode}, provider: ${provider}, serverOnline: ${serverOnline}`);
+    console.log(`[TREPAN STATUS] Updating status bar - mode: ${mode}, provider: ${provider}, state: ${state}, serverOnline: ${serverOnline}`);
     
     // Priority 1: If server is offline, always show offline (regardless of mode)
     if (!serverOnline) {
@@ -2555,17 +2556,52 @@ function updateStatusBar(context) {
         return;
     }
     
-    // Priority 2: If server is online and Power Mode is active, show Power Mode with provider
+    // Priority 2: Handle active audit state
+    if (state === 'auditing') {
+        setStatus('checking');
+        console.log(`[TREPAN STATUS] ✅ Status bar set to auditing`);
+        return;
+    }
+    
+    // Priority 3: If server is online and Power Mode is active, show Power Mode with exact model
     if (mode === 'cloud') {
         const displayName = providerDisplayNames[provider];
-        setStatus(
-            'online',
-            `🛡️ Trepan: Power Mode ⚡ [${displayName}]`,
-            `Trepan Power Mode — using ${displayName} cloud AI`
-        );
-        console.log(`[TREPAN STATUS] ✅ Status bar set to Power Mode with ${displayName}`);
+        
+        // Get the exact model name from globalState
+        const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
+        const modelId = context?.globalState.get(modelKey);
+        
+        // Check if API key exists
+        const keyName = provider === 'openrouter' ? 'openrouter_api_key' : 'groq_api_key';
+        const apiKey = await context?.secrets.get(keyName);
+        
+        if (modelId && apiKey) {
+            // Show provider and exact model name
+            setStatus(
+                'powerMode',
+                `$(zap) Trepan: Power Mode [${displayName}: ${modelId}]`,
+                `Trepan Power Mode — using ${displayName} with ${modelId}`
+            );
+            console.log(`[TREPAN STATUS] ✅ Status bar set to Power Mode with ${displayName}: ${modelId}`);
+        } else if (apiKey) {
+            // Has key but no model selected (shouldn't happen, but handle gracefully)
+            setStatus(
+                'powerMode',
+                `$(zap) Trepan: Power Mode [${displayName}]`,
+                `Trepan Power Mode — using ${displayName} cloud AI`
+            );
+            console.log(`[TREPAN STATUS] ✅ Status bar set to Power Mode with ${displayName} (no model specified)`);
+        } else {
+            // No API key configured
+            setStatus(
+                'powerMode',
+                `$(zap) Trepan: Power Mode [No API Key]`,
+                `Trepan Power Mode — API key not configured`
+            );
+            console.log(`[TREPAN STATUS] ⚠️ Status bar set to Power Mode but no API key found`);
+        }
     } else {
-        // Priority 3: Server online, Local Mode
+        // Priority 4: Server online, Local Mode
         setStatus('online');
         console.log(`[TREPAN STATUS] ✅ Status bar set to online (local mode)`);
     }
@@ -2858,10 +2894,10 @@ class TrepanSidebarProvider {
     constructor() {
         this._lastMessage = null;
     }
-    resolveWebviewView(webviewView) {
+    async resolveWebviewView(webviewView) {
         this._view = webviewView;
         webviewView.webview.options = { enableScripts: true };
-        webviewView.webview.html = this._getHtmlForWebview();
+        webviewView.webview.html = await this._getHtmlForWebview();
 
         // If we have a cached message, send it immediately upon resolution
         if (this._lastMessage) {
@@ -2971,7 +3007,31 @@ class TrepanSidebarProvider {
             }
         }, 500);
     }
-    _getHtmlForWebview() {
+    async _getHtmlForWebview() {
+        // Get current mode and model information
+        const context = global.trepanContext;
+        const mode = context?.globalState.get('trepan.mode') || 'local';
+        const provider = context?.globalState.get('trepan.provider') || 'openrouter';
+        
+        // Get model name
+        const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
+        const modelId = context?.globalState.get(modelKey);
+        
+        // Check if API key exists
+        const keyName = provider === 'openrouter' ? 'openrouter_api_key' : 'groq_api_key';
+        const apiKey = await context?.secrets.get(keyName);
+        
+        // Build model badge HTML (only for Power Mode)
+        let modelBadgeHtml = '';
+        if (mode === 'cloud') {
+            if (apiKey && modelId) {
+                const providerName = provider === 'openrouter' ? 'OpenRouter' : 'Groq';
+                modelBadgeHtml = `<span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background-color: #333; color: #ccc; vertical-align: middle; margin-left: 8px;">${providerName}: ${modelId}</span>`;
+            } else if (!apiKey) {
+                modelBadgeHtml = `<span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; color: #ff5555; border: 1px solid #ff5555; vertical-align: middle; margin-left: 8px;">No API Key Detected</span>`;
+            }
+        }
+        
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3103,7 +3163,7 @@ class TrepanSidebarProvider {
 
     <div id="content">
         <div class="header-container">
-            <h2>🏛️ Trepan Vault Access</h2>
+            <h2>🏛️ Trepan Vault Access${modelBadgeHtml}</h2>
             <div style="display: flex; gap: 8px; align-items: center;">
                 <button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()">
                     <span id="mode-text">Local</span>
