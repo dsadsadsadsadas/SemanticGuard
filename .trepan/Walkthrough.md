@@ -2188,3 +2188,31 @@ Notes: The code explicitly mentions following system rules, which implies adhere
 ## 2026-03-23 07:15:47 | Result: ACCEPT
 **Thought Process:**
 > 
+
+## 2026-03-23 07:30:03 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-001 on line 1.
+
+## 2026-03-23 07:30:06 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-004 on line 7.
+
+## 2026-03-23 07:42:47 | Result: REJECT
+**Thought Process:**
+> [Layer1] 7 violation(s) found. Most severe: L1-001 on line 321.
+
+## 2026-03-23 07:43:09 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-010 on line 280.
+
+## 2026-03-23 07:43:27 | Result: REJECT
+**Thought Process:**
+> [Layer1] 5 violation(s) found. Most severe: L1-006 on line 88.
+
+## 2026-03-23 07:43:46 | Result: REJECT
+**Thought Process:**
+> [Layer1] 4 violation(s) found. Most severe: L1-006 on line 2176.
+
+## 2026-03-23 07:45:23 | Result: REJECT
+**Thought Process:**
+> [Layer1] 9 violation(s) found. Most severe: L1-001 on line 12.
