@@ -153,20 +153,40 @@ Then install the **Trepan VS Code Extension** from the Marketplace (or from the 
 ---
 ## Buttons !
 
-**🎯 Switching Audit Models on Local Mode**
+**🎯 Local Mode - Switching Audit Models (Command Palette)**
 
-Trepan supports multiple models for different use cases:
+For Local Mode (100% privacy), switch between different local models:
 
-- **⚡ (Local Mode) Fast Mode (Llama 3.1:8b)**: ~4-6s per audit. Best for active coding sessions.
-- **🧠 (Local Mode ) Smart Mode (DeepSeek-R1:7b)**: ~10-15s per audit. Better reasoning for security reviews.
-- **🚀 Power Mode (BYOK - Cloud)**: ~1.5s average per audit. Use your own cloud API key for maximum speed with flagship models like Claude 3.5 Sonnet or GPT-4o. **3-4x faster than local!**
+- **⚡ Fast Mode (Llama 3.1:8b)**: ~4-6s per audit. Best for active coding sessions.
+- **🧠 Smart Mode (DeepSeek-R1:7b)**: ~10-15s per audit. Better reasoning for security reviews.
 
-To switch models:
+To switch local models:
 1. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
 2. Type `Trepan: Select Audit Model`
-3. Choose your preferred mode
+3. Choose your preferred local model
 
 The selected model persists across VS Code sessions.
+
+**🚀 Power Mode - Cloud API Configuration (UI Panel)**
+
+For Power Mode (cloud-based, 3-4x faster), configure through the Trepan UI:
+
+**Setup via UI Panel:**
+1. Open the **Trepan Vault panel** in VS Code sidebar
+2. Click the **⚙️ gear icon** to configure Power Mode
+3. Select your provider (OpenRouter or Groq)
+4. Enter your API key and choose a model
+5. Click the **"Local"** button to toggle to **"Power ⚡"** mode
+
+**Supported Providers:**
+- **OpenRouter**: Access to Claude 3.5 Sonnet, GPT-4o, and 100+ models
+- **Groq**: Ultra-fast inference with Llama models (up to 10x faster)
+
+**Performance:**
+- **⚡ Cloud Average**: ~1.5 seconds per audit (3-4x faster than local!)
+- **OpenRouter (Claude 3.5)**: ~1-2 seconds per audit
+- **Groq (Llama 70B)**: ~0.5-1 second per audit (fastest!)
+- **Local (Llama 3.1:8b)**: ~4-6 seconds per audit
 
 **🚀 Power Mode (BYOK) - Bring Your Own Key**
 
@@ -184,7 +204,7 @@ Want maximum speed without sacrificing accuracy? Configure Power Mode with your 
    - Groq: Get one at [groq.com](https://groq.com)
 4. Choose a model:
    - OpenRouter: `anthropic/claude-3.5-sonnet`, `openai/gpt-4o-mini`, etc.
-   - Groq: `llama3-70b-8192`, `mixtral-8x7b-32768`, etc.
+   - Groq: `meta-llama/llama-4-scout-17b-16e-instruct`, `llama-3.3-70b-versatile`, etc.
 5. Trepan tests the connection and saves your credentials securely
 
 **Toggle Power Mode:**
