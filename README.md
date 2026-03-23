@@ -118,7 +118,7 @@ Want to get started in 60 seconds? Use Power Mode:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/trepan.git
+git clone https://github.com/dsadsadsadsadas/Trepan
 cd trepan
 
 # 2. Install the VS Code Extension
@@ -134,7 +134,7 @@ Want 100% local privacy? Follow the complete setup:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/trepan.git
+git clone https://github.com/dsadsadsadsadas/Trepan
 cd trepan
 
 # 2. Install Python dependencies
