@@ -1847,13 +1847,16 @@ async function evaluateSave(document) {
                 console.log("[TREPAN TRAFFIC COP] Power Mode detected — routing through Layer 1 + Cloud");
                 console.log(`[TREPAN TRAFFIC COP] Sending full file: ${totalLines} lines for deep analysis`);
                 
+                // Strip comments to protect Layer 1 Regex from false positives
+                const strippedCodeContent = stripCommentsPreserveLines(codeContent);
+                
                 // Step 1: Run Layer 1 on Python server
                 const layer1Response = await fetchWithTimeout(`${serverUrl}/evaluate`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         filename: fileName,
-                        code_snippet: codeContent,
+                        code_snippet: strippedCodeContent,
                         pillars: pillars,
                         project_path: projectPath,
                         processor_mode: processorMode,
@@ -1958,12 +1961,16 @@ async function evaluateSave(document) {
                 // Local Mode: Standard full audit
                 console.log("[TREPAN TRAFFIC COP] Local Mode — running full local audit");
                 
+                // Strip comments to protect Layer 1 Regex from false positives
+                const strippedCodeContent = stripCommentsPreserveLines(codeContent);
+                
+                const localStartTime = Date.now();
                 const res = await fetchWithTimeout(`${serverUrl}/evaluate`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         filename: fileName,
-                        code_snippet: codeContent,
+                        code_snippet: strippedCodeContent,
                         pillars: pillars,
                         project_path: projectPath,
                         processor_mode: processorMode,
@@ -1971,6 +1978,8 @@ async function evaluateSave(document) {
                         power_mode: false
                     }),
                 }, timeoutMs);
+                const localEndTime = Date.now();
+                const localLatency = ((localEndTime - localStartTime) / 1000).toFixed(2);
 
                 if (!res.ok) {
                     console.warn(`Trepan: Airbag server returned ${res.status} — failing open`);
@@ -1982,6 +1991,7 @@ async function evaluateSave(document) {
                 
                 // Add local audit metadata
                 data.audit_mode = 'local';
+                data.local_latency = localLatency;
             }
             // ── End Traffic Cop ────────────────────────────────────────────────
             const driftScore = data.drift_score ?? 0;
@@ -2001,6 +2011,7 @@ async function evaluateSave(document) {
                 audit_mode: data.audit_mode || 'local',
                 cloud_provider: data.cloud_provider || null,
                 cloud_latency: data.cloud_latency || null,
+                local_latency: data.local_latency || null,
             };
 
             trepanSidebarProvider.sendMessage(webviewMessage, actionResult === "REJECT");
@@ -3741,6 +3752,11 @@ class TrepanSidebarProvider {
                     html += '<div style="background: rgba(78, 201, 176, 0.1); border-left: 3px solid #4ec9b0; padding: 8px 12px; margin: 10px 0; border-radius: 4px; font-size: 0.9em;">';
                     html += '<span style="color: #4ec9b0;">💻 Local Audit:</span> ';
                     html += '<span style="font-weight: bold; color: var(--vscode-editor-foreground);">Layer 1 + Layer 2</span>';
+                    if (message.local_latency) {
+                        html += ' | ';
+                        html += '<span style="color: #dcdcaa;">⚡ Latency:</span> ';
+                        html += '<span style="font-weight: bold; color: #4ec9b0;">' + escapeHtml(message.local_latency) + 's</span>';
+                    }
                     html += '</div>';
                 }
 
