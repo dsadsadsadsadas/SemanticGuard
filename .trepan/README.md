@@ -99,8 +99,8 @@ Upon initialization, Trepan manages the following in your project root:
 When Trepan rejects a change, don't just take its word for it:
 
 1. **Open the Side-by-Side Review**
-   - Press `Ctrl+Shift+P` (Windows) or `Cmd+Shift+P` (Mac)
-   - Run: "Trepan: Review Changes vs. Walkthrough"
+   - Click the ⚙️ Gear Icon in the Trepan Vault UI
+   - Select "Review Changes vs. Walkthrough"
 
 2. **Compare**
    - Code on the Left | Audit Trail on the Right
@@ -183,13 +183,13 @@ Edit VS Code settings (`settings.json`):
 ### Extension not working
 - Verify server is running (status bar shows green shield)
 - Check server URL in settings matches `http://127.0.0.1:8000`
-- Reload VS Code window: `Ctrl+Shift+P` -> "Developer: Reload Window"
+- Reload VS Code window: Click the ⚙️ Gear Icon → "Reload Window"
 - Check firewall isn't blocking localhost:8000
 
 ### Saves always blocked
 - Check `.trepan/system_rules.md` for overly strict rules
 - Review `Walkthrough.md` to see why saves are rejected
-- Temporarily disable: `Ctrl+Shift+P` -> "Trepan: Toggle Airbag On/Off"
+- Temporarily disable: Click the ⚙️ Gear Icon → "Toggle Airbag On/Off"
 
 ### Vault Compromised Error
 - This means `.trepan/trepan_vault/` files or `.trepan.lock` were manually edited

@@ -231,12 +231,38 @@ Keep it simple, keep it readable. You're flying solo, so future-you needs to und
 - Write tests for edge cases
 - Don't test trivial getters/setters
 
-## Mandatory Security Baseline
-- NO hardcoded secrets, API keys, or passwords
-- NO `eval()` or `exec()` with user input
+## Core Security Rules (RULE_100-110)
+
+### RULE_100: HARDCODED_SECRETS
+- NO hardcoded secrets, API keys, passwords, or tokens in code
+- Use environment variables or secret management services
+- Secrets must never appear in logs or error messages
+- Action: REJECT if any hardcoded credentials detected
+
+### RULE_101: EVAL_INJECTION
+- NO `eval()` or `exec()` with any input (user or otherwise)
+- These functions execute arbitrary code and are inherently dangerous
+- Action: REJECT if eval/exec detected
+
+### RULE_102: SHELL_INJECTION
 - NO `os.system()` or `subprocess` with `shell=True`
-- ALL file paths must use `os.path.realpath()` + `startswith()` validation
+- Use argument lists instead of shell strings
+- Action: REJECT if shell=True detected
+
+### RULE_103: SQL_INJECTION
 - ALL SQL queries must use parameterized statements
+- NO string concatenation or f-strings in SQL
+- Action: REJECT if dynamic SQL detected
+
+### RULE_104: PHI_PROTECTION
+- Sensitive data (SSN, credit card, medical info, PII) must NOT reach insecure sinks
+- Insecure sinks: print(), console.log(), logs, unencrypted HTTP responses
+- Action: REJECT if sensitive data flows to insecure sink
+
+### RULE_105: LOGGING_GATE
+- NO sensitive data in logs without sanitization
+- Passwords, tokens, credit cards must be redacted
+- Action: REJECT if sensitive data logged
 """,
         "llm_prompt": """Generate a 'Perfect Execution' code example for the Solo-Indie (Speedster) mode.
 
@@ -305,13 +331,38 @@ Separation of concerns is law. The Brain (logic) and Body (UI) must never mix. T
 - Versioned APIs (/v1/, /v2/)
 - OpenAPI/Swagger documentation required
 
-## Mandatory Security Baseline
-- NO hardcoded secrets, API keys, or passwords
-- NO `eval()` or `exec()` with user input
+## Core Security Rules (RULE_100-110)
+
+### RULE_100: HARDCODED_SECRETS
+- NO hardcoded secrets, API keys, passwords, or tokens in code
+- Use environment variables or secret management services
+- Secrets must never appear in logs or error messages
+- Action: REJECT if any hardcoded credentials detected
+
+### RULE_101: EVAL_INJECTION
+- NO `eval()` or `exec()` with any input (user or otherwise)
+- These functions execute arbitrary code and are inherently dangerous
+- Action: REJECT if eval/exec detected
+
+### RULE_102: SHELL_INJECTION
 - NO `os.system()` or `subprocess` with `shell=True`
-- ALL file paths must use `os.path.realpath()` + `startswith()` validation
+- Use argument lists instead of shell strings
+- Action: REJECT if shell=True detected
+
+### RULE_103: SQL_INJECTION
 - ALL SQL queries must use parameterized statements
-- Input validation at layer boundaries
+- NO string concatenation or f-strings in SQL
+- Action: REJECT if dynamic SQL detected
+
+### RULE_104: PHI_PROTECTION
+- Sensitive data (SSN, credit card, medical info, PII) must NOT reach insecure sinks
+- Insecure sinks: print(), console.log(), logs, unencrypted HTTP responses
+- Action: REJECT if sensitive data flows to insecure sink
+
+### RULE_105: LOGGING_GATE
+- NO sensitive data in logs without sanitization
+- Passwords, tokens, credit cards must be redacted
+- Action: REJECT if sensitive data logged
 """,
         "llm_prompt": """Generate a 'Perfect Execution' code example for the Clean-Layers (Architect) mode.
 
@@ -400,7 +451,40 @@ Trust no one. Assume every input is malicious. Privacy is non-negotiable. Statel
 - Support data deletion requests (GDPR compliance)
 - NO third-party tracking without explicit consent
 
-## Mandatory Code Security
+## Core Security Rules (RULE_100-110)
+
+### RULE_100: HARDCODED_SECRETS
+- NO hardcoded secrets, API keys, passwords, or tokens in code
+- Use environment variables or secret management services
+- Secrets must never appear in logs or error messages
+- Action: REJECT if any hardcoded credentials detected
+
+### RULE_101: EVAL_INJECTION
+- NO `eval()` or `exec()` with any input (user or otherwise)
+- These functions execute arbitrary code and are inherently dangerous
+- Action: REJECT if eval/exec detected
+
+### RULE_102: SHELL_INJECTION
+- NO `os.system()` or `subprocess` with `shell=True`
+- Use argument lists instead of shell strings
+- Action: REJECT if shell=True detected
+
+### RULE_103: SQL_INJECTION
+- ALL SQL queries must use parameterized statements
+- NO string concatenation or f-strings in SQL
+- Action: REJECT if dynamic SQL detected
+
+### RULE_104: PHI_PROTECTION
+- Sensitive data (SSN, credit card, medical info, PII) must NOT reach insecure sinks
+- Insecure sinks: print(), console.log(), logs, unencrypted HTTP responses
+- Action: REJECT if sensitive data flows to insecure sink
+
+### RULE_105: LOGGING_GATE
+- NO sensitive data in logs without sanitization
+- Passwords, tokens, credit cards must be redacted
+- Action: REJECT if sensitive data logged
+
+## Mandatory Code Security (Additional)
 - NO `eval()` or `exec()` EVER
 - NO `os.system()` or `subprocess` with `shell=True`
 - NO dynamic SQL queries (use parameterized queries ONLY)
@@ -415,10 +499,11 @@ Trust no one. Assume every input is malicious. Privacy is non-negotiable. Statel
 - Review dependency licenses
 - Minimize dependency count
 
-## Rule 100: DOM_INTEGRITY_PROTECTION
-- Forbidden use of innerHTML, outerHTML, or document.write.
-- Reasoning: These are primary XSS vectors.
-- Action: Use textContent or innerText instead.
+## RULE_110: DOM_INTEGRITY_PROTECTION
+- Forbidden use of innerHTML, outerHTML, or document.write
+- Reasoning: These are primary XSS vectors
+- Action: Use textContent or innerText instead
+- Action: REJECT if innerHTML/outerHTML/document.write detected
 """,
         "llm_prompt": """Generate a 'Perfect Execution' code example for the Secure-Stateless (Fortress) mode.
 
@@ -1106,8 +1191,8 @@ Upon initialization, Trepan manages the following in your project root:
 When Trepan rejects a change, don't just take its word for it:
 
 1. **Open the Side-by-Side Review**
-   - Press `Ctrl+Shift+P` (Windows) or `Cmd+Shift+P` (Mac)
-   - Run: "Trepan: Review Changes vs. Walkthrough"
+   - Click the ⚙️ Gear Icon in the Trepan Vault UI
+   - Select "Review Changes vs. Walkthrough"
 
 2. **Compare**
    - Code on the Left | Audit Trail on the Right
@@ -1190,13 +1275,13 @@ Edit VS Code settings (`settings.json`):
 ### Extension not working
 - Verify server is running (status bar shows green shield)
 - Check server URL in settings matches `http://127.0.0.1:8000`
-- Reload VS Code window: `Ctrl+Shift+P` -> "Developer: Reload Window"
+- Reload VS Code window: Click the ⚙️ Gear Icon → "Reload Window"
 - Check firewall isn't blocking localhost:8000
 
 ### Saves always blocked
 - Check `.trepan/system_rules.md` for overly strict rules
 - Review `Walkthrough.md` to see why saves are rejected
-- Temporarily disable: `Ctrl+Shift+P` -> "Trepan: Toggle Airbag On/Off"
+- Temporarily disable: Click the ⚙️ Gear Icon → "Toggle Airbag On/Off"
 
 ### Vault Compromised Error
 - This means `.trepan/trepan_vault/` files or `.trepan.lock` were manually edited

@@ -689,10 +689,98 @@ function activate(context) {
                 return;
             }
             
-            const rootPath = workspaceFolders[0].uri;
+            // Step 1: Let user pick which folder to audit
+            let targetFolder;
+            
+            if (workspaceFolders.length === 1) {
+                // Only one workspace folder, use it
+                targetFolder = workspaceFolders[0].uri;
+            } else {
+                // Multiple workspace folders, let user choose
+                const folderChoice = await vscode.window.showQuickPick(
+                    workspaceFolders.map(folder => ({
+                        label: folder.name,
+                        description: folder.uri.fsPath,
+                        uri: folder.uri
+                    })),
+                    {
+                        placeHolder: "Select folder to audit",
+                        title: "🛡️ Trepan: Choose Folder for Full Audit"
+                    }
+                );
+                
+                if (!folderChoice) {
+                    return; // User cancelled
+                }
+                
+                targetFolder = folderChoice.uri;
+            }
+            
+            // Alternatively, let user pick any subfolder
+            const pickSubfolder = await vscode.window.showQuickPick([
+                {
+                    label: "$(folder) Audit entire workspace folder",
+                    description: targetFolder.fsPath,
+                    choice: "root"
+                },
+                {
+                    label: "$(folder-opened) Pick a specific subfolder",
+                    description: "Browse and select a subfolder to audit",
+                    choice: "subfolder"
+                }
+            ], {
+                placeHolder: "Audit entire folder or pick a subfolder?",
+                title: "🛡️ Trepan: Folder Audit Scope"
+            });
+            
+            if (!pickSubfolder) {
+                return; // User cancelled
+            }
+            
+            if (pickSubfolder.choice === "subfolder") {
+                const selectedFolder = await vscode.window.showOpenDialog({
+                    canSelectFiles: false,
+                    canSelectFolders: true,
+                    canSelectMany: false,
+                    defaultUri: targetFolder,
+                    openLabel: "Select Folder to Audit"
+                });
+                
+                if (!selectedFolder || selectedFolder.length === 0) {
+                    return; // User cancelled
+                }
+                
+                targetFolder = selectedFolder[0];
+            }
+            
             const context = global.trepanContext;
             const isPowerMode = context?.globalState.get('trepan.mode') === 'cloud';
-            const serverUrl = getServerUrl();
+            
+            // Get server URL
+            const cfg = vscode.workspace.getConfiguration("trepan");
+            let serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8001";
+            
+            // Try to use discovered URL if available
+            const discoveredUrl = await discoverServerURL();
+            if (discoveredUrl) {
+                serverUrl = discoveredUrl;
+            }
+            
+            // Get current model for latency calculation
+            let currentModel = _selectedModel; // Local mode model
+            if (isPowerMode) {
+                const provider = context?.globalState.get('trepan.provider') || 'openrouter';
+                const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
+                currentModel = context?.globalState.get(modelKey) || '';
+            }
+            
+            // Determine latency based on model
+            let interFileLatency = 3000; // Default 3 seconds for llama3
+            if (currentModel.toLowerCase().includes('llama-4') || currentModel.toLowerCase().includes('llama4')) {
+                interFileLatency = 1500; // 1.5 seconds for llama4
+            }
+            
+            console.log(`[TREPAN FOLDER AUDIT] Using model: ${currentModel}, inter-file latency: ${interFileLatency}ms`);
             
             // Warn about cost if Power Mode
             if (isPowerMode) {
@@ -713,28 +801,30 @@ function activate(context) {
                 '__pycache__', '.trepan', 'trepan_vault', 'coverage', '.next'
             ]);
             
-            // Collect all files
-            const allFiles = await vscode.workspace.findFiles(
-                '**/*',
-                `{${[...SKIP_DIRS].map(d => `**/${d}/**`).join(',')}}`
-            );
+            // Collect all files in the target folder
+            const relativePath = vscode.workspace.asRelativePath(targetFolder);
+            const searchPattern = new vscode.RelativePattern(targetFolder, '**/*');
+            const excludePattern = `{${[...SKIP_DIRS].map(d => `**/${d}/**`).join(',')}}`;
+            
+            const allFiles = await vscode.workspace.findFiles(searchPattern, excludePattern);
             
             const auditableFiles = allFiles.filter(f => 
                 AUDITABLE_EXTENSIONS.some(ext => f.fsPath.endsWith(ext))
             );
             
             if (auditableFiles.length === 0) {
-                vscode.window.showInformationMessage("Trepan: No auditable files found in workspace.");
+                vscode.window.showInformationMessage(`Trepan: No auditable files found in ${relativePath}.`);
                 return;
             }
             
             const modeLabel = isPowerMode ? "☁️ Cloud" : "⚡ Local";
             vscode.window.showInformationMessage(
-                `🛡️ Trepan: Starting folder audit of ${auditableFiles.length} files [${modeLabel} Mode]...`
+                `🛡️ Trepan: Starting folder audit of ${auditableFiles.length} files in "${relativePath}" [${modeLabel} Mode]...`
             );
             
             const violations = [];
             const errors = [];
+            const errorDetails = {}; // Store detailed error info
             let processed = 0;
             let skipped = 0;
             
@@ -745,17 +835,19 @@ function activate(context) {
                 cancellable: true
             }, async (progress, token) => {
                 
-                for (const fileUri of auditableFiles) {
+                for (let i = 0; i < auditableFiles.length; i++) {
+                    const fileUri = auditableFiles[i];
+                    
                     if (token.isCancellationRequested) {
                         console.log("[TREPAN FOLDER AUDIT] Cancelled by user");
                         break;
                     }
                     
                     const fileName = fileUri.fsPath.split(/[/\\]/).pop();
-                    const relativePath = vscode.workspace.asRelativePath(fileUri);
+                    const fileRelativePath = vscode.workspace.asRelativePath(fileUri);
                     
                     progress.report({
-                        message: `${processed + 1}/${auditableFiles.length} — ${relativePath}`,
+                        message: `${processed + 1}/${auditableFiles.length} — ${fileRelativePath}`,
                         increment: 100 / auditableFiles.length
                     });
                     
@@ -771,12 +863,13 @@ function activate(context) {
                         // Skip very large files over 500 lines in local mode
                         const lineCount = code.split('\n').length;
                         if (!isPowerMode && lineCount > 500) {
-                            console.log(`[TREPAN FOLDER AUDIT] Skipping large file: ${relativePath} (${lineCount} lines)`);
+                            console.log(`[TREPAN FOLDER AUDIT] Skipping large file: ${fileRelativePath} (${lineCount} lines)`);
                             skipped++;
                             continue;
                         }
                         
-                        const pillars = getPillars(vscode.workspace.workspaceFolders[0].uri.fsPath);
+                        // Pillars are loaded server-side from project_path
+                        const pillars = {};
                         const processorMode = "GPU";
                         
                         const response = await fetchWithTimeout(`${serverUrl}/evaluate`, {
@@ -794,7 +887,11 @@ function activate(context) {
                         }, 60000);
                         
                         if (!response.ok) {
-                            errors.push(relativePath);
+                            const errorText = await response.text().catch(() => 'Unable to read error response');
+                            const errorMsg = `HTTP ${response.status}: ${errorText}`;
+                            console.error(`[TREPAN FOLDER AUDIT] Server error on ${fileRelativePath}: ${errorMsg}`);
+                            errors.push(fileRelativePath);
+                            errorDetails[fileRelativePath] = errorMsg;
                             processed++;
                             continue;
                         }
@@ -804,7 +901,7 @@ function activate(context) {
                         if (result.action === "REJECT" && result.violations?.length > 0) {
                             for (const v of result.violations) {
                                 violations.push({
-                                    file: relativePath,
+                                    file: fileRelativePath,
                                     line: v.line_number || 0,
                                     rule: v.rule_name || v.rule_id,
                                     reason: v.violation,
@@ -815,51 +912,86 @@ function activate(context) {
                         
                         processed++;
                         
+                        // Smart token-aware latency (except for the last file)
+                        if (i < auditableFiles.length - 1) {
+                            // Load system rules for token estimation
+                            const systemRules = await loadSystemRules();
+                            const systemPrompt = systemRules || '';
+                            
+                            // Token estimation: ~4 characters per token
+                            const estimatedTokens = (systemPrompt.length + code.length) / 4;
+                            
+                            // Target: 30,000 tokens per minute
+                            const TARGET_TPM = 30000;
+                            
+                            // Calculate dynamic delay in milliseconds
+                            let delayMs = (estimatedTokens / TARGET_TPM) * 60000;
+                            
+                            // Minimum 300ms safety net for RPM limits
+                            delayMs = Math.max(delayMs, 300);
+                            
+                            console.log(`[TREPAN FOLDER AUDIT] Smart latency: ${Math.round(delayMs)}ms (${Math.round(estimatedTokens)} tokens)`);
+                            await new Promise(resolve => setTimeout(resolve, delayMs));
+                        }
+                        
                     } catch (err) {
-                        console.error(`[TREPAN FOLDER AUDIT] Error on ${relativePath}: ${err.message}`);
-                        errors.push(relativePath);
+                        const errorMsg = `${err.name}: ${err.message}`;
+                        console.error(`[TREPAN FOLDER AUDIT] Exception on ${fileRelativePath}:`, err);
+                        console.error(`[TREPAN FOLDER AUDIT] Stack trace:`, err.stack);
+                        errors.push(fileRelativePath);
+                        errorDetails[fileRelativePath] = errorMsg;
                         processed++;
                     }
                 }
             });
             
             // Show results in output channel
-            const outputChannel = vscode.window.createOutputChannel("Trepan — Folder Audit");
-            outputChannel.clear();
-            outputChannel.appendLine(`🛡️ TREPAN FOLDER AUDIT RESULTS`);
-            outputChannel.appendLine(`${'='.repeat(60)}`);
-            outputChannel.appendLine(`Mode: ${isPowerMode ? "☁️ Power Mode (Cloud API)" : "⚡ Local Mode (Llama)"}`);
-            outputChannel.appendLine(`Files scanned: ${processed}`);
-            outputChannel.appendLine(`Files skipped: ${skipped}`);
-            outputChannel.appendLine(`Violations found: ${violations.length}`);
-            outputChannel.appendLine(`Errors: ${errors.length}`);
-            outputChannel.appendLine(`${'='.repeat(60)}\n`);
+            const auditOutputChannel = vscode.window.createOutputChannel("Trepan — Folder Audit");
+            auditOutputChannel.clear();
+            auditOutputChannel.appendLine(`🛡️ TREPAN FOLDER AUDIT RESULTS`);
+            auditOutputChannel.appendLine(`${'='.repeat(60)}`);
+            auditOutputChannel.appendLine(`Folder: ${relativePath}`);
+            auditOutputChannel.appendLine(`Mode: ${isPowerMode ? "☁️ Power Mode (Cloud API)" : "⚡ Local Mode (Llama)"}`);
+            auditOutputChannel.appendLine(`Model: ${currentModel}`);
+            auditOutputChannel.appendLine(`Inter-file latency: ${interFileLatency}ms`);
+            auditOutputChannel.appendLine(`Files scanned: ${processed}`);
+            auditOutputChannel.appendLine(`Files skipped: ${skipped}`);
+            auditOutputChannel.appendLine(`Violations found: ${violations.length}`);
+            auditOutputChannel.appendLine(`Errors: ${errors.length}`);
+            auditOutputChannel.appendLine(`${'='.repeat(60)}\n`);
+            
+            // Group violations by file for reporting
+            const byFile = {};
+            for (const v of violations) {
+                if (!byFile[v.file]) byFile[v.file] = [];
+                byFile[v.file].push(v);
+            }
             
             if (violations.length === 0) {
-                outputChannel.appendLine("✅ No violations found. Codebase is clean.");
+                auditOutputChannel.appendLine("✅ No violations found. Codebase is clean.");
             } else {
-                outputChannel.appendLine(`🚨 ${violations.length} VIOLATION(S) DETECTED:\n`);
-                const byFile = {};
-                for (const v of violations) {
-                    if (!byFile[v.file]) byFile[v.file] = [];
-                    byFile[v.file].push(v);
-                }
+                auditOutputChannel.appendLine(`🚨 ${violations.length} VIOLATION(S) DETECTED:\n`);
                 for (const [file, fileViolations] of Object.entries(byFile)) {
-                    outputChannel.appendLine(`📄 ${file}`);
+                    auditOutputChannel.appendLine(`📄 ${file}`);
                     for (const v of fileViolations) {
-                        outputChannel.appendLine(`   Line ${v.line} [${v.confidence}] ${v.rule}`);
-                        outputChannel.appendLine(`   → ${v.reason}`);
+                        auditOutputChannel.appendLine(`   Line ${v.line} [${v.confidence}] ${v.rule}`);
+                        auditOutputChannel.appendLine(`   → ${v.reason}`);
                     }
-                    outputChannel.appendLine('');
+                    auditOutputChannel.appendLine('');
                 }
             }
             
             if (errors.length > 0) {
-                outputChannel.appendLine(`\n⚠️ Failed to audit ${errors.length} file(s):`);
-                errors.forEach(f => outputChannel.appendLine(`   • ${f}`));
+                auditOutputChannel.appendLine(`\n⚠️ Failed to audit ${errors.length} file(s):`);
+                errors.forEach(f => {
+                    auditOutputChannel.appendLine(`   • ${f}`);
+                    if (errorDetails[f]) {
+                        auditOutputChannel.appendLine(`     Error: ${errorDetails[f]}`);
+                    }
+                });
             }
             
-            outputChannel.show();
+            auditOutputChannel.show();
             
             // Summary notification
             if (violations.length === 0) {
@@ -1088,6 +1220,12 @@ function activate(context) {
                         vscode.window.showInformationMessage(`✅ Model updated to: ${newModel}`);
                         console.log(`[TREPAN BYOK] ${provider} model updated to:`, newModel);
                         
+                        // Refresh webview to show new model
+                        trepanSidebarProvider.sendMessage({
+                            type: 'updateModelBadge',
+                            modelId: newModel
+                        });
+                        
                     } else if (action.action === "test") {
                         // Test Connection
                         console.log(`[TREPAN BYOK] Testing ${provider} connection...`);
@@ -1222,6 +1360,12 @@ function activate(context) {
                 );
 
                 console.log(`[TREPAN BYOK] Configuration complete. Provider: ${provider}, Model: ${modelId}`);
+
+                // Refresh webview to show new model
+                trepanSidebarProvider.sendMessage({
+                    type: 'updateModelBadge',
+                    modelId: modelId
+                });
 
             } catch (error) {
                 console.error("[TREPAN BYOK] Configuration error:", error);
@@ -1966,6 +2110,30 @@ function detectCorrectLineNumber(reportedLineNumber, violatingSnippet, document)
     }
 }
 
+// ─── System Rules Loader ─────────────────────────────────────────────────────
+
+/**
+ * Load system_rules.md from the project's .trepan folder
+ * @param {string} projectPath - Absolute path to project root
+ * @returns {string} - Contents of system_rules.md or empty string if not found
+ */
+function loadSystemRules(projectPath) {
+    try {
+        const systemRulesPath = path.join(projectPath, '.trepan', 'system_rules.md');
+        if (fs.existsSync(systemRulesPath)) {
+            const content = fs.readFileSync(systemRulesPath, 'utf-8');
+            console.log(`[TREPAN RULES] Loaded system_rules.md (${content.length} chars)`);
+            return content;
+        } else {
+            console.warn(`[TREPAN RULES] system_rules.md not found at: ${systemRulesPath}`);
+            return '';
+        }
+    } catch (error) {
+        console.error(`[TREPAN RULES] Error loading system_rules.md:`, error);
+        return '';
+    }
+}
+
 // ─── Cloud API Call (Power Mode - Multi-Provider) ────────────────────────────
 
 async function callCloudAPI(context, payload) {
@@ -2009,6 +2177,14 @@ async function callCloudAPI(context, payload) {
         }
         
         console.log(`[TREPAN POWER MODE] Calling ${config.displayName} with model: ${modelId} (V${useV2Prompts ? '2' : '1'} prompts)`);
+        
+        // ═══ LOAD SYSTEM RULES FROM PROJECT ═══
+        const projectPath = payload.project_path || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        const systemRules = loadSystemRules(projectPath);
+        
+        if (!systemRules) {
+            console.warn('[TREPAN POWER MODE] No system_rules.md found - using empty ruleset');
+        }
         
         // ═══ REQUIREMENT 1: LINE NUMBER INJECTION ═══
         // Inject line numbers into code before sending to Cloud API
@@ -2142,13 +2318,8 @@ Return ONLY valid JSON in this exact format:
     ]
 }
 
-CRITICAL SECURITY RULES:
-- RULE_3: HARDCODED_SECRETS - REJECT if hardcoded secrets, API keys, or passwords are found
-- RULE_5: EVAL_INJECTION - REJECT if eval() or exec() is used with user input
-- RULE_6: SHELL_INJECTION - REJECT if subprocess/os.system is used with shell=True
-- RULE_7: SQL_INJECTION - REJECT if SQL queries use string concatenation
-- RULE_8: PHI_PROTECTION - REJECT if sensitive data (SSN, credit card, medical info) reaches an insecure sink
-- RULE_10: LOGGING_GATE - REJECT if sensitive data reaches logging functions without sanitization
+PROJECT-SPECIFIC SECURITY RULES:
+${systemRules || 'No custom rules defined. Use general security best practices.'}
 
 DATA FLOW ANALYSIS REQUIREMENTS:
 1. Identify the source of sensitive data (variable definition, user input, database query)
@@ -2556,14 +2727,21 @@ async function updateStatusBar(context, state = 'idle') {
         return;
     }
     
-    // Priority 2: Handle active audit state
+    // Priority 2: Handle active audit state (with yellow spinner)
     if (state === 'auditing') {
-        setStatus('checking');
-        console.log(`[TREPAN STATUS] ✅ Status bar set to auditing`);
+        // During audit, show yellow spinner but preserve mode identity
+        if (mode === 'cloud') {
+            statusBarItem.text = `$(sync~spin) Auditing...`;
+            statusBarItem.color = new vscode.ThemeColor('terminal.ansiYellow');
+            statusBarItem.tooltip = `Trepan: Auditing code with Power Mode`;
+        } else {
+            setStatus('checking');
+        }
+        console.log(`[TREPAN STATUS] ✅ Status bar set to auditing (mode: ${mode})`);
         return;
     }
     
-    // Priority 3: If server is online and Power Mode is active, show Power Mode with exact model
+    // Priority 3: If server is online and Power Mode is active, show Power Mode identity
     if (mode === 'cloud') {
         const displayName = providerDisplayNames[provider];
         
@@ -2575,24 +2753,23 @@ async function updateStatusBar(context, state = 'idle') {
         const keyName = provider === 'openrouter' ? 'openrouter_api_key' : 'groq_api_key';
         const apiKey = await context?.secrets.get(keyName);
         
+        // Always show Power Mode base state with zap icon and clear any yellow color
+        statusBarItem.color = undefined; // Clear yellow color from auditing state
         if (modelId && apiKey) {
-            // Show provider and exact model name
             setStatus(
                 'powerMode',
-                `$(zap) Trepan: Power Mode [${displayName}: ${modelId}]`,
-                `Trepan Power Mode — using ${displayName} with ${modelId}`
+                `$(zap) Trepan: Power Mode`,
+                `Trepan Power Mode — ${displayName}: ${modelId}`
             );
             console.log(`[TREPAN STATUS] ✅ Status bar set to Power Mode with ${displayName}: ${modelId}`);
         } else if (apiKey) {
-            // Has key but no model selected (shouldn't happen, but handle gracefully)
             setStatus(
                 'powerMode',
-                `$(zap) Trepan: Power Mode [${displayName}]`,
-                `Trepan Power Mode — using ${displayName} cloud AI`
+                `$(zap) Trepan: Power Mode`,
+                `Trepan Power Mode — ${displayName}`
             );
             console.log(`[TREPAN STATUS] ✅ Status bar set to Power Mode with ${displayName} (no model specified)`);
         } else {
-            // No API key configured
             setStatus(
                 'powerMode',
                 `$(zap) Trepan: Power Mode [No API Key]`,
@@ -2601,7 +2778,8 @@ async function updateStatusBar(context, state = 'idle') {
             console.log(`[TREPAN STATUS] ⚠️ Status bar set to Power Mode but no API key found`);
         }
     } else {
-        // Priority 4: Server online, Local Mode
+        // Priority 4: Server online, Local Mode - clear any yellow color
+        statusBarItem.color = undefined;
         setStatus('online');
         console.log(`[TREPAN STATUS] ✅ Status bar set to online (local mode)`);
     }
@@ -2985,6 +3163,66 @@ class TrepanSidebarProvider {
                 vscode.env.clipboard.writeText(prompt);
                 vscode.window.showInformationMessage(`📋 Fix prompt for '${relativePath}' copied to clipboard! Paste it to your IDE Agent.`);
             }
+
+            if (message.command === 'run_workspace_audit') {
+                console.log('[TREPAN WEBVIEW] Executing trepan.auditEntireFolder command');
+                try {
+                    await vscode.commands.executeCommand('trepan.auditEntireFolder');
+                    console.log('[TREPAN WEBVIEW] Workspace audit started successfully');
+                } catch (error) {
+                    console.error('[TREPAN WEBVIEW] Workspace audit failed:', error);
+                    vscode.window.showErrorMessage(`Failed to start workspace audit: ${error.message}`);
+                }
+                return;
+            }
+
+            if (message.command === 'toggle_cpu_gpu') {
+                console.log('[TREPAN WEBVIEW] Executing trepan.toggleProcessor command');
+                try {
+                    await vscode.commands.executeCommand('trepan.toggleProcessor');
+                    console.log('[TREPAN WEBVIEW] CPU/GPU toggle executed successfully');
+                } catch (error) {
+                    console.error('[TREPAN WEBVIEW] CPU/GPU toggle failed:', error);
+                    vscode.window.showErrorMessage(`Failed to toggle CPU/GPU: ${error.message}`);
+                }
+                return;
+            }
+
+            if (message.command === 'initialize_project') {
+                console.log('[TREPAN WEBVIEW] Executing trepan.initializeProject command');
+                try {
+                    await vscode.commands.executeCommand('trepan.initializeProject');
+                    console.log('[TREPAN WEBVIEW] Project initialization started successfully');
+                } catch (error) {
+                    console.error('[TREPAN WEBVIEW] Project initialization failed:', error);
+                    vscode.window.showErrorMessage(`Failed to initialize project: ${error.message}`);
+                }
+                return;
+            }
+
+            if (message.command === 'update_model') {
+                const { model } = message;
+                console.log('[TREPAN WEBVIEW] Updating model to:', model);
+                const context = global.trepanContext;
+                const provider = context?.globalState.get('trepan.provider') || 'openrouter';
+                const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
+                await context?.globalState.update(modelKey, model);
+                vscode.window.showInformationMessage(`Model updated to: ${model}`);
+                this.sendMessage({ type: 'updateModelBadge', modelId: model });
+                return;
+            }
+
+            if (message.command === 'toggle_mode') {
+                console.log('[TREPAN WEBVIEW] Executing trepan.togglePowerMode command from settings');
+                try {
+                    await vscode.commands.executeCommand('trepan.togglePowerMode');
+                    console.log('[TREPAN WEBVIEW] Power mode toggled successfully from settings');
+                } catch (error) {
+                    console.error('[TREPAN WEBVIEW] Power mode toggle failed:', error);
+                    vscode.window.showErrorMessage(`Failed to toggle power mode: ${error.message}`);
+                }
+                return;
+            }
         });
     }
     sendMessage(message, forceFocus = false) {
@@ -3021,14 +3259,14 @@ class TrepanSidebarProvider {
         const keyName = provider === 'openrouter' ? 'openrouter_api_key' : 'groq_api_key';
         const apiKey = await context?.secrets.get(keyName);
         
-        // Build model badge HTML (only for Power Mode)
+        // Build model badge HTML (only for Power Mode) - WITHOUT provider prefix
         let modelBadgeHtml = '';
         if (mode === 'cloud') {
             if (apiKey && modelId) {
-                const providerName = provider === 'openrouter' ? 'OpenRouter' : 'Groq';
-                modelBadgeHtml = `<span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background-color: #333; color: #ccc; vertical-align: middle; margin-left: 8px;">${providerName}: ${modelId}</span>`;
+                // Show only the model ID, no provider prefix
+                modelBadgeHtml = `<span id="model-badge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background-color: #333; color: #ccc; vertical-align: middle; margin-left: 8px;">${modelId}</span>`;
             } else if (!apiKey) {
-                modelBadgeHtml = `<span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; color: #ff5555; border: 1px solid #ff5555; vertical-align: middle; margin-left: 8px;">No API Key Detected</span>`;
+                modelBadgeHtml = `<span id="model-badge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; color: #ff5555; border: 1px solid #ff5555; vertical-align: middle; margin-left: 8px;">No API Key Detected</span>`;
             }
         }
         
@@ -3164,14 +3402,78 @@ class TrepanSidebarProvider {
     <div id="content">
         <div class="header-container">
             <h2>🏛️ Trepan Vault Access${modelBadgeHtml}</h2>
-            <div style="display: flex; gap: 8px; align-items: center;">
-                <button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()">
-                    <span id="mode-text">Local</span>
-                </button>
-                <button id="settings-gear" class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button>
-            </div>
+            <button id="settings-gear" class="settings-gear" title="Open Settings" onclick="window.openSettings()">⚙️</button>
         </div>
         <p>Awaiting architectural changes...</p>
+    </div>
+    
+    <div id="settings-panel" style="display: none; padding: 0; margin-top: 15px;">
+        <div style="background: #1e1e1e; border-radius: 6px; overflow: hidden;">
+            <div style="padding: 15px; border-bottom: 1px solid #333;">
+                <h3 style="margin: 0; color: var(--vscode-editor-foreground);">⚙️ Trepan Settings</h3>
+            </div>
+            
+            <details style="border-bottom: 1px solid #333;">
+                <summary style="padding: 14px 15px; cursor: pointer; list-style: none; background: #1e1e1e; transition: background 0.2s; user-select: none;" onmouseover="this.style.background='#252525'" onmouseout="this.style.background='#1e1e1e'">
+                    <span style="font-weight: 500; color: var(--vscode-editor-foreground);">🔧 API & Engine</span>
+                </summary>
+                <div style="padding: 15px; background: #181818; border-left: 3px solid #4ec9b0;">
+                    <div style="margin-bottom: 12px;">
+                        <button onclick="window.configureBYOK()" style="width: 100%; padding: 10px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 500;">Configure API Key</button>
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 6px; font-size: 0.85em; color: #ccc;">Model Selection:</label>
+                        <select id="model-select" onchange="window.updateModel()" style="width: 100%; padding: 8px; background: #252525; color: var(--vscode-input-foreground); border: 1px solid #333; border-radius: 4px; font-size: 0.9em;">
+                            <option value="meta-llama/llama-4-scout-17b-16e-instruct">Llama-4-Scout (Fast)</option>
+                            <option value="meta-llama/llama-3.1-70b-instruct">Llama-3-70B (Accurate)</option>
+                        </select>
+                    </div>
+                </div>
+            </details>
+            
+            <details style="border-bottom: 1px solid #333;">
+                <summary style="padding: 14px 15px; cursor: pointer; list-style: none; background: #1e1e1e; transition: background 0.2s; user-select: none;" onmouseover="this.style.background='#252525'" onmouseout="this.style.background='#1e1e1e'">
+                    <span style="font-weight: 500; color: var(--vscode-editor-foreground);">🔀 Mode Selection</span>
+                </summary>
+                <div style="padding: 15px; background: #181818; border-left: 3px solid #dcdcaa;">
+                    <div style="display: flex; gap: 10px;">
+                        <button id="mode-local-btn" onclick="window.setMode('local')" style="flex: 1; padding: 10px; background: #252525; color: white; border: 1px solid #333; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 500; transition: background 0.2s;" onmouseover="this.style.background='#2d2d2d'" onmouseout="this.style.background='#252525'">Local Mode</button>
+                        <button id="mode-cloud-btn" onclick="window.setMode('cloud')" style="flex: 1; padding: 10px; background: #252525; color: white; border: 1px solid #333; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 500; transition: background 0.2s;" onmouseover="this.style.background='#2d2d2d'" onmouseout="this.style.background='#252525'">Cloud Power Mode</button>
+                    </div>
+                </div>
+            </details>
+            
+            <details style="border-bottom: 1px solid #333;">
+                <summary style="padding: 14px 15px; cursor: pointer; list-style: none; background: #1e1e1e; transition: background 0.2s; user-select: none;" onmouseover="this.style.background='#252525'" onmouseout="this.style.background='#1e1e1e'">
+                    <span style="font-weight: 500; color: var(--vscode-editor-foreground);">⚡ Hardware Acceleration</span>
+                </summary>
+                <div style="padding: 15px; background: #181818; border-left: 3px solid #ce9178;">
+                    <button id="toggle-cpu-gpu-btn" onclick="window.toggleCpuGpu()" style="width: 100%; padding: 10px; background: #252525; color: white; border: 1px solid #333; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 500; transition: background 0.2s;" onmouseover="this.style.background='#2d2d2d'" onmouseout="this.style.background='#252525'">Toggle CPU/GPU</button>
+                </div>
+            </details>
+            
+            <details style="border-bottom: 1px solid #333;">
+                <summary style="padding: 14px 15px; cursor: pointer; list-style: none; background: #1e1e1e; transition: background 0.2s; user-select: none;" onmouseover="this.style.background='#252525'" onmouseout="this.style.background='#1e1e1e'">
+                    <span style="font-weight: 500; color: var(--vscode-editor-foreground);">📁 Project Management</span>
+                </summary>
+                <div style="padding: 15px; background: #181818; border-left: 3px solid #569cd6;">
+                    <button id="initialize-project-btn" onclick="window.initializeProject()" style="width: 100%; padding: 10px; background: #252525; color: white; border: 1px solid #333; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 500; transition: background 0.2s;" onmouseover="this.style.background='#2d2d2d'" onmouseout="this.style.background='#252525'">Initialize Trepan</button>
+                </div>
+            </details>
+            
+            <details style="border-bottom: 1px solid #333;">
+                <summary style="padding: 14px 15px; cursor: pointer; list-style: none; background: #1e1e1e; transition: background 0.2s; user-select: none;" onmouseover="this.style.background='#252525'" onmouseout="this.style.background='#1e1e1e'">
+                    <span style="font-weight: 500; color: var(--vscode-editor-foreground);">🚀 Workspace Actions</span>
+                </summary>
+                <div style="padding: 15px; background: #181818; border-left: 3px solid #f48771;">
+                    <button onclick="window.runWorkspaceAudit()" style="width: 100%; padding: 10px; background: #f48771; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 0.9em; transition: background 0.2s;" onmouseover="this.style.background='#e67660'" onmouseout="this.style.background='#f48771'">Run Full Workspace Audit</button>
+                </div>
+            </details>
+            
+            <div style="padding: 15px;">
+                <button onclick="window.closeSettings()" style="width: 100%; padding: 8px; background: transparent; color: #ccc; border: 1px solid #333; border-radius: 4px; cursor: pointer; font-size: 0.9em; transition: all 0.2s;" onmouseover="this.style.background='#252525'; this.style.borderColor='#555'" onmouseout="this.style.background='transparent'; this.style.borderColor='#333'">Close Settings</button>
+            </div>
+        </div>
     </div>
     <script>
         // Make vscode global so inline onclick handlers can access it
@@ -3186,20 +3488,58 @@ class TrepanSidebarProvider {
             vscode.postMessage({ command: 'configure_byok' });
         };
         
-        // Global function for mode toggle
-        window.toggleMode = function() {
-            console.log('toggleMode called');
-            const btn = document.getElementById('mode-toggle');
-            const modeText = document.getElementById('mode-text');
-            if (btn && modeText) {
-                vscode.postMessage({ command: 'toggle_power_mode' });
-                // Toggle button text (will be updated by extension message)
-                if (modeText.textContent === 'Local') {
-                    modeText.textContent = 'Power ⚡';
-                } else {
-                    modeText.textContent = 'Local';
-                }
+        // Global function for opening settings panel
+        window.openSettings = function() {
+            const panel = document.getElementById('settings-panel');
+            const content = document.getElementById('content');
+            if (panel && content) {
+                panel.style.display = 'block';
+                content.style.display = 'none';
             }
+        };
+        
+        // Global function for closing settings panel
+        window.closeSettings = function() {
+            const panel = document.getElementById('settings-panel');
+            const content = document.getElementById('content');
+            if (panel && content) {
+                panel.style.display = 'none';
+                content.style.display = 'block';
+            }
+        };
+        
+        // Global function for updating model
+        window.updateModel = function() {
+            const select = document.getElementById('model-select');
+            if (select) {
+                const model = select.value;
+                console.log('updateModel called with:', model);
+                vscode.postMessage({ command: 'update_model', model: model });
+            }
+        };
+        
+        // Global function for setting mode
+        window.setMode = function(mode) {
+            console.log('setMode called with:', mode);
+            vscode.postMessage({ command: 'toggle_mode' });
+        };
+        
+        // Global function for running workspace audit
+        window.runWorkspaceAudit = function() {
+            console.log('runWorkspaceAudit called');
+            vscode.postMessage({ command: 'run_workspace_audit' });
+        };
+        
+        // Global function for toggling CPU/GPU
+        window.toggleCpuGpu = function() {
+            console.log('toggleCpuGpu called');
+            vscode.postMessage({ command: 'toggle_cpu_gpu' });
+        };
+        
+        // Global function for initializing project
+        window.initializeProject = function() {
+            console.log('initializeProject called');
+            vscode.postMessage({ command: 'initialize_project' });
         };
         
         document.getElementById('resign-btn').addEventListener('click', () => {
@@ -3263,6 +3603,19 @@ class TrepanSidebarProvider {
 
         window.addEventListener('message', event => {
             const message = event.data;
+            
+            // Handle model badge update
+            if (message.type === 'updateModelBadge') {
+                const badge = document.getElementById('model-badge');
+                if (badge && message.modelId) {
+                    badge.textContent = message.modelId;
+                    badge.style.color = '#ccc';
+                    badge.style.backgroundColor = '#333';
+                    badge.style.border = 'none';
+                    console.log('[WEBVIEW] Model badge updated to:', message.modelId);
+                }
+                return;
+            }
             
             if (message.type === 'reset') {
                 document.body.classList.remove('compromised');

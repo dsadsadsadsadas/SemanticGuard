@@ -32,7 +32,7 @@ Built for developers suffering from the **Vibe Coding Hangover**: that moment yo
   - Clear speed/accuracy tradeoffs displayed
 
 - **📁 Full Folder Audit** (v2.3.1): Scan your entire codebase in one command
-  - `Ctrl+Shift+P` → "Trepan: Audit Entire Folder"
+  - Click the ⚙️ Gear Icon in Trepan Vault UI → "Run Full Workspace Audit"
   - Works in both Local and Power Mode
   - Results displayed in dedicated Output panel
 
@@ -153,7 +153,7 @@ Then install the **Trepan VS Code Extension** from the Marketplace (or from the 
 ---
 ## Buttons !
 
-**🎯 Local Mode - Switching Audit Models (Command Palette)**
+**🎯 Local Mode - Switching Audit Models**
 
 For Local Mode (100% privacy), switch between different local models:
 
@@ -161,15 +161,18 @@ For Local Mode (100% privacy), switch between different local models:
 - **🧠 Smart Mode (DeepSeek-R1:7b)**: ~10-15s per audit. Better reasoning for security reviews.
 
 To switch local models:
-1. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
-2. Type `Trepan: Select Audit Model`
-3. Choose your preferred local model
+1. Click the ⚙️ Gear Icon in the Trepan Vault UI
+2. Select your preferred model from the dropdown in the "Engine & API" section
 
 The selected model persists across VS Code sessions.
 
+**Note:** All configuration is now centralized in the Settings UI (⚙️ Gear Icon).
+
+---
+
 **🚀 Power Mode - Cloud API Configuration (UI Panel)**
 
-For Power Mode (cloud-based, 3-4x faster), configure through the Trepan UI:
+For Power Mode (cloud-based, 3-4x faster), configure through the Trepan UI panel:
 
 **Setup via UI Panel:**
 1. Open the **Trepan Vault panel** in VS Code sidebar
@@ -178,9 +181,22 @@ For Power Mode (cloud-based, 3-4x faster), configure through the Trepan UI:
 4. Enter your API key and choose a model
 5. Click the **"Local"** button to toggle to **"Power ⚡"** mode
 
+**Switching Models in Power Mode:**
+- Click the **⚙️ gear icon** again to change provider or model
+- Select "Model" from the settings menu
+- Choose from preset models or enter a custom model ID
+
 **Supported Providers:**
 - **OpenRouter**: Access to Claude 3.5 Sonnet, GPT-4o, and 100+ models
 - **Groq**: Ultra-fast inference with Llama models (up to 10x faster)
+
+**Performance:**
+- **⚡ Cloud Average**: ~1.5 seconds per audit (3-4x faster than local!)
+- **OpenRouter (Claude 3.5)**: ~1-2 seconds per audit
+- **Groq (Llama4 Scout)**: ~0.5-1 second per audit (fastest!)
+- **Local (Llama 3.1:8b)**: ~4-6 seconds per audit
+
+**Note:** All configuration is now centralized in the Settings UI (⚙️ Gear Icon).
 
 **Setup:**
 1. Click the ⚙️ gear icon in the Trepan Vault panel (VS Code sidebar)
@@ -194,14 +210,8 @@ For Power Mode (cloud-based, 3-4x faster), configure through the Trepan UI:
 5. Trepan tests the connection and saves your credentials securely
 
 **Toggle Power Mode:**
-- Click the "Local" button in the Trepan Vault panel to switch to "Power ⚡"
-- Or use Command Palette: `Trepan: Toggle Power Mode`
-
-**Performance:**
-- **⚡ Cloud Average**: ~1.5 seconds per audit (3-4x faster than local!)
-- **OpenRouter (Claude 3.5)**: ~1-2 seconds per audit
-- **Groq (Llama 70B)**: ~0.5-1 second per audit (fastest!)
-- **Local (Llama 3.1:8b)**: ~4-6 seconds per audit
+- Click the ⚙️ Gear Icon in the Trepan Vault panel
+- Use the "Mode Selection" section to switch between Local and Cloud Power Mode
 
 **Benefits:**
 - ⚡ **Blazing fast**: ~1.5s average (3-4x faster than local models)
@@ -230,8 +240,9 @@ For Power Mode (cloud-based, 3-4x faster), configure through the Trepan UI:
 
 **Switch CPU/GPU**
 
-1. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
-2. Type `Trepan: Switch CPU/GPU`
+To switch between CPU and GPU modes:
+1. Click the ⚙️ Gear Icon in the Trepan Vault UI
+2. Select "Switch CPU/GPU" from the settings menu
 3. Choose your preferred mode
 
 The selected mode persists across VS Code sessions.
@@ -239,7 +250,7 @@ The selected mode persists across VS Code sessions.
 
 ## ⚡ Project Initialization
 
-Starting a new project? Open the VS Code Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **`Trepan: Initialize Project`**.
+Starting a new project? Click the ⚙️ Gear Icon in the Trepan Vault UI and select **"Initialize Project"**.
 
 Choose a mode that matches your context:
 
