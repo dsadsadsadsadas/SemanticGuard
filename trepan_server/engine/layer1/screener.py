@@ -81,11 +81,11 @@ REGEX_RULES = [
     ),
     (
         "L1-006",
-        "Print With Sensitive Data",
-        r'print\s*\([^)]*(?:req\.(?:body|password|token|secret)|request\.(?:body|password|token|secret)|\.body|\.password|\.token|\.secret)[^)]*\)',
+        "Print With Request Data",
+        r'print\s*\([^)]*(?:req\.|request\.|body|params|query|password|token|secret)[^)]*\)',
         "HIGH",
-        "print() called with sensitive data (password, token, secret, body).",
-        "Remove debug prints or use a secure logger that redacts sensitive fields."
+        "print() called with request or sensitive data.",
+        "Remove debug prints or use a secure logger."
     ),
     (
         "L1-007",
