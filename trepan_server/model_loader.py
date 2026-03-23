@@ -24,10 +24,10 @@ def ensure_ollama_alive():
     """Check if Ollama is running, and attempt to start it if not."""
     url = "http://localhost:11434"
     try:
-        resp = requests.get(url, timeout=2)
+        resp = requests.get(url, timeout=5)
         if resp.status_code == 200:
             return True
-    except requests.exceptions.ConnectionError:
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         pass
 
     logger.info("⚙️  Ollama not responding. Attempting to start 'ollama serve'...")
@@ -51,16 +51,19 @@ def ensure_ollama_alive():
             **kwargs
         )
         
-        # Wait up to 10 seconds for it to wake up
-        for i in range(10):
+        # Wait up to 30 seconds for it to wake up (Windows can be slow)
+        logger.info("⏳ Waiting for Ollama to start (up to 30s)...")
+        for i in range(30):
             time.sleep(1)
             try:
-                resp = requests.get(url, timeout=2)
+                resp = requests.get(url, timeout=5)
                 if resp.status_code == 200:
-                    logger.info("✅ Ollama revived successfully.")
+                    logger.info(f"✅ Ollama started successfully after {i+1} seconds.")
                     return True
-            except requests.exceptions.ConnectionError:
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
                 continue
+        
+        logger.error("❌ Ollama failed to start within 30 seconds.")
     except Exception as e:
         logger.error(f"❌ Failed to auto-start Ollama: {e}")
         

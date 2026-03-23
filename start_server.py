@@ -37,11 +37,11 @@ def ensure_ollama_running():
     """Ensure Ollama service is running, auto-starting it if needed."""
     # Check if already running
     try:
-        resp = requests.get(OLLAMA_URL, timeout=2)
-        if resp.status_code == 200 and "Ollama is running" in resp.text:
+        resp = requests.get(OLLAMA_URL, timeout=5)
+        if resp.status_code == 200:
             print("✅ Ollama service is already running.")
             return True
-    except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
+    except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout, requests.exceptions.Timeout):
         pass
 
     # Not running — attempt to start it automatically
@@ -65,20 +65,21 @@ def ensure_ollama_running():
         print("❌ Error: 'ollama' command not found. Is Ollama installed and in your PATH?")
         print("   Download it from: https://ollama.com")
         return False
-    # Wait up to 30 seconds for Ollama to become ready
-    print("⏳ Waiting for Ollama to start", end="", flush=True)
-    for _ in range(30):
+    
+    # Wait up to 45 seconds for Ollama to become ready (Windows can be slow)
+    print("⏳ Waiting for Ollama to start (up to 45s)", end="", flush=True)
+    for i in range(45):
         time.sleep(1)
         print(".", end="", flush=True)
         try:
-            resp = requests.get(OLLAMA_URL, timeout=2)
-            if resp.status_code == 200 and "Ollama is running" in resp.text:
-                print("\n✅ Ollama started successfully.")
+            resp = requests.get(OLLAMA_URL, timeout=5)
+            if resp.status_code == 200:
+                print(f"\n✅ Ollama started successfully after {i+1} seconds.")
                 return True
-        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout, requests.exceptions.Timeout):
             pass
 
-    print("\n❌ Timed out waiting for Ollama to start (30s).")
+    print("\n❌ Timed out waiting for Ollama to start (45s).")
     print("   Try running 'ollama serve' manually in another terminal, then re-run start_server.py.")
     return False
 
