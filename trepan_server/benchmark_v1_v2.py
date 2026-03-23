@@ -21,7 +21,7 @@ from typing import Dict, Any, List
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODELS = {
     "1": {"name": "llama-3.3-70b-versatile", "display": "Llama 3.3 70B Versatile", "tpm": 12000},
-    "2": {"name": "llama-4-scout-17b-16e-instruct", "display": "Llama 4 Scout 17B", "tpm": 30000}
+    "2": {"name": "meta-llama/llama-4-scout-17b-16e-instruct", "display": "Llama 4 Scout 17B", "tpm": 30000}
 }
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"

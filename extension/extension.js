@@ -923,7 +923,7 @@ function activate(context) {
                     groq: {
                         keyName: "groq_api_key",
                         modelKey: "groq_model",
-                        defaultModel: "llama-4-scout-17b-16e-instruct",
+                        defaultModel: "meta-llama/llama-4-scout-17b-16e-instruct",
                         keyPlaceholder: "gsk_...",
                         displayName: "Groq"
                     }
@@ -1017,9 +1017,9 @@ function activate(context) {
                         const modelPresets = provider === "groq" ? [
                             {
                                 label: "$(zap) Llama 4 Scout 17B",
-                                description: "llama-4-scout-17b-16e-instruct",
+                                description: "meta-llama/llama-4-scout-17b-16e-instruct",
                                 detail: "Recommended: Fast (30K TPM), 96% accuracy on security tests",
-                                modelId: "llama-4-scout-17b-16e-instruct"
+                                modelId: "meta-llama/llama-4-scout-17b-16e-instruct"
                             },
                             {
                                 label: "$(symbol-namespace) Llama 3.3 70B Versatile",
@@ -1131,9 +1131,9 @@ function activate(context) {
                 const modelPresets = provider === "groq" ? [
                     {
                         label: "$(zap) Llama 4 Scout 17B",
-                        description: "llama-4-scout-17b-16e-instruct",
+                        description: "meta-llama/llama-4-scout-17b-16e-instruct",
                         detail: "Recommended: Fast (30K TPM), 96% accuracy on security tests",
-                        modelId: "llama-4-scout-17b-16e-instruct"
+                        modelId: "meta-llama/llama-4-scout-17b-16e-instruct"
                     },
                     {
                         label: "$(symbol-namespace) Llama 3.3 70B Versatile",
