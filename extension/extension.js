@@ -1731,6 +1731,42 @@ async function evaluateSave(document) {
                             pillars: pillars
                         });
                         
+                        // ═══ REQUIREMENT 5: FALLBACK LINE NUMBER DETECTION ═══
+                        // Process violations to correct line numbers using fallback logic
+                        if (cloudResult.violations && Array.isArray(cloudResult.violations)) {
+                            console.log(`[TREPAN FALLBACK] Processing ${cloudResult.violations.length} violations`);
+                            
+                            cloudResult.violations = cloudResult.violations.map(violation => {
+                                const reportedLine = violation.line_number;
+                                const violatingSnippet = violation.violating_snippet;
+                                
+                                // Apply fallback detection if violating_snippet is provided
+                                if (violatingSnippet) {
+                                    const correctedLine = detectCorrectLineNumber(
+                                        reportedLine,
+                                        violatingSnippet,
+                                        document
+                                    );
+                                    
+                                    // Update violation with corrected line number
+                                    return {
+                                        ...violation,
+                                        line_number: correctedLine,
+                                        original_line_number: reportedLine, // Keep original for debugging
+                                        line_corrected: correctedLine !== reportedLine
+                                    };
+                                } else {
+                                    console.warn(`[TREPAN FALLBACK] No violating_snippet for violation at line ${reportedLine}`);
+                                    return violation;
+                                }
+                            });
+                            
+                            const correctedCount = cloudResult.violations.filter(v => v.line_corrected).length;
+                            if (correctedCount > 0) {
+                                console.log(`[TREPAN FALLBACK] ✓ Corrected ${correctedCount} line numbers using fallback logic`);
+                            }
+                        }
+                        
                         data = cloudResult;
                         console.log("[TREPAN TRAFFIC COP] Cloud API result:", data.action);
                     } catch (cloudError) {
@@ -1835,6 +1871,101 @@ async function evaluateSave(document) {
 }
 
 
+// ─── Line Number Injection Helper (Requirement 1) ───────────────────────────
+
+/**
+ * Inject line numbers into code before sending to Cloud API
+ * Format: ${lineNumber} | ${lineContent}
+ * @param {string} code - Raw code content
+ * @returns {string} - Line-numbered code
+ */
+function injectLineNumbers(code) {
+    if (!code || typeof code !== 'string') {
+        console.warn('[TREPAN LINE INJECTION] Invalid code input, returning empty string');
+        return '';
+    }
+    
+    const lines = code.split('\n');
+    const numberedLines = lines.map((line, index) => {
+        const lineNumber = index + 1; // 1-based line numbers
+        return `${lineNumber} | ${line}`;
+    });
+    
+    return numberedLines.join('\n');
+}
+
+/**
+ * Remove line number prefix from a code snippet
+ * @param {string} snippet - Code snippet potentially with line number prefix
+ * @returns {string} - Cleaned snippet
+ */
+function removeLineNumberPrefix(snippet) {
+    if (!snippet || typeof snippet !== 'string') {
+        return snippet;
+    }
+    
+    // Remove pattern: "123 | " from the beginning
+    return snippet.replace(/^\d+\s*\|\s*/, '').trim();
+}
+
+/**
+ * Detect correct line number using fallback logic (Requirement 5)
+ * @param {number} reportedLineNumber - Line number reported by AI
+ * @param {string} violatingSnippet - The exact code snippet with violation
+ * @param {vscode.TextDocument} document - VS Code document
+ * @returns {number} - Corrected line number (1-based)
+ */
+function detectCorrectLineNumber(reportedLineNumber, violatingSnippet, document) {
+    try {
+        // Validate inputs
+        if (!violatingSnippet || typeof violatingSnippet !== 'string') {
+            console.warn('[TREPAN FALLBACK] No violating_snippet provided, using reported line number');
+            return reportedLineNumber;
+        }
+        
+        // Clean the snippet (remove line number prefix if present)
+        const cleanSnippet = removeLineNumberPrefix(violatingSnippet);
+        
+        if (!cleanSnippet) {
+            console.warn('[TREPAN FALLBACK] Empty snippet after cleaning, using reported line number');
+            return reportedLineNumber;
+        }
+        
+        // First, check if reported line number is correct
+        if (reportedLineNumber >= 1 && reportedLineNumber <= document.lineCount) {
+            const reportedLine = document.lineAt(reportedLineNumber - 1); // Convert to 0-based
+            const reportedLineText = reportedLine.text.trim();
+            const cleanSnippetTrimmed = cleanSnippet.trim();
+            
+            if (reportedLineText === cleanSnippetTrimmed || reportedLineText.includes(cleanSnippetTrimmed)) {
+                console.log(`[TREPAN FALLBACK] ✓ Reported line ${reportedLineNumber} matches snippet`);
+                return reportedLineNumber;
+            }
+        }
+        
+        // Fallback: Search for snippet in document
+        console.log(`[TREPAN FALLBACK] Line ${reportedLineNumber} doesn't match, searching for snippet...`);
+        const documentText = document.getText();
+        const snippetIndex = documentText.indexOf(cleanSnippet);
+        
+        if (snippetIndex === -1) {
+            console.warn(`[TREPAN FALLBACK] ⚠ Snippet not found in document: "${cleanSnippet.substring(0, 50)}..."`);
+            return reportedLineNumber; // Use reported line as fallback
+        }
+        
+        // Convert character offset to line number
+        const position = document.positionAt(snippetIndex);
+        const correctedLineNumber = position.line + 1; // Convert to 1-based
+        
+        console.log(`[TREPAN FALLBACK] ✓ Corrected line number: ${reportedLineNumber} → ${correctedLineNumber}`);
+        return correctedLineNumber;
+        
+    } catch (error) {
+        console.error('[TREPAN FALLBACK] Error in fallback detection:', error);
+        return reportedLineNumber; // Safe fallback
+    }
+}
+
 // ─── Cloud API Call (Power Mode - Multi-Provider) ────────────────────────────
 
 async function callCloudAPI(context, payload) {
@@ -1878,6 +2009,12 @@ async function callCloudAPI(context, payload) {
         }
         
         console.log(`[TREPAN POWER MODE] Calling ${config.displayName} with model: ${modelId} (V${useV2Prompts ? '2' : '1'} prompts)`);
+        
+        // ═══ REQUIREMENT 1: LINE NUMBER INJECTION ═══
+        // Inject line numbers into code before sending to Cloud API
+        const originalCode = payload.code_snippet;
+        const numberedCode = injectLineNumbers(originalCode);
+        console.log(`[TREPAN LINE INJECTION] Injected line numbers into ${originalCode.split('\n').length} lines`);
         
         // Build the prompt based on version
         let systemPrompt, userPrompt;
@@ -1947,7 +2084,7 @@ Filename: ${payload.filename}
 
 Code:
 \`\`\`
-${payload.code_snippet}
+${numberedCode}
 \`\`\`
 
 Follow the 5 required reasoning steps in order:
@@ -1959,9 +2096,23 @@ Follow the 5 required reasoning steps in order:
 
 Provide your analysis in the required JSON format.`;
         } else {
-            // V1 Legacy Prompt System
+            // ═══ REQUIREMENT 2 & 3: ENHANCED SYSTEM PROMPT ═══
+            // V1 Legacy Prompt System with Line Number and Rule Name Instructions
             systemPrompt = `You are Trepan, a security-focused code auditor. Analyze the provided code for security violations and architectural drift.
 
+IMPORTANT INSTRUCTIONS FOR LINE NUMBERS:
+- The code you receive has line numbers prepended in the format: \${lineNumber} | \${lineContent}
+- You MUST use the exact line numbers shown in the code
+- DO NOT calculate or infer line numbers independently
+- Report the line number exactly as it appears before the pipe character (|)
+
+IMPORTANT INSTRUCTIONS FOR RULE NAMES:
+- Use ONLY the exact rule names provided in the system instructions
+- Rule names follow the format: RULE_X: RULE_NAME (e.g., 'RULE_8: PHI_PROTECTION')
+- DO NOT invent generic rule names like 'security_violation' or 'data_exposure'
+- If you're unsure which rule applies, use the closest matching rule from the provided list
+
+REQUIRED OUTPUT FORMAT:
 Return ONLY valid JSON in this exact format:
 {
     "action": "ACCEPT or REJECT",
@@ -1969,10 +2120,11 @@ Return ONLY valid JSON in this exact format:
     "reasoning": "Brief explanation",
     "violations": [
         {
-            "rule_id": "string",
-            "line_number": number,
+            "rule_id": "string (exact rule name from instructions)",
+            "line_number": number (exact line number from prepended format),
             "violation": "description",
-            "confidence": "HIGH or LOW"
+            "confidence": "HIGH or LOW",
+            "violating_snippet": "the exact line of code containing the violation (without the line number prefix)"
         }
     ]
 }
@@ -1990,10 +2142,10 @@ Filename: ${payload.filename}
 
 Code:
 \`\`\`
-${payload.code_snippet}
+${numberedCode}
 \`\`\`
 
-Provide your analysis in JSON format.`;
+Provide your analysis in JSON format. Remember to use exact line numbers from the code and exact rule names from the instructions.`;
         }
 
         // Build headers based on provider
