@@ -2106,23 +2106,36 @@ IMPORTANT INSTRUCTIONS FOR LINE NUMBERS:
 - DO NOT calculate or infer line numbers independently
 - Report the line number exactly as it appears before the pipe character (|)
 
-IMPORTANT INSTRUCTIONS FOR RULE NAMES:
-- Use ONLY the exact rule names provided in the system instructions
-- Rule names follow the format: RULE_X: RULE_NAME (e.g., 'RULE_8: PHI_PROTECTION')
-- DO NOT invent generic rule names like 'security_violation' or 'data_exposure'
+STRICT RULE NOMENCLATURE (CRITICAL):
+- You are operating under a strict custom rulebook
+- You MUST map every violation to the exact Rule ID provided in the system context
+- Examples of valid rule names: 'RULE_8: PHI_PROTECTION', 'RULE_10: LOGGING_GATE', 'RULE_3: HARDCODED_SECRETS'
+- Under NO circumstances are you allowed to invent, guess, or generate generic rule names
+- DO NOT use generic names like 'security_violation', 'data_exposure', 'sensitive_data_exposure'
 - If you're unsure which rule applies, use the closest matching rule from the provided list
+- If no exact rule matches, state "RULE_UNKNOWN: [description]" rather than inventing a rule name
+
+SINK VERIFICATION MANDATE (CRITICAL):
+- You must perform rigorous End-to-End Taint Analysis
+- Defining sensitive data in a variable is NOT a vulnerability
+- A vulnerability ONLY exists if that exact sensitive data flows into an insecure sink
+- Insecure sinks include: print(), console.log(), os.popen(), HTTP response bodies, database queries, file writes
+- If an object contains sensitive data, but that specific data is stripped or unreferenced before the final output/return, YOU MUST NOT FLAG IT
+- Verify the exact keys/fields being returned before claiming data exposure
+- Example: If user_data = {"ssn": "123-45-6789", "name": "John"} but only {"name": "John"} is returned, this is SAFE
+- You must trace the data flow from source to sink and confirm the sensitive field actually reaches the output
 
 REQUIRED OUTPUT FORMAT:
 Return ONLY valid JSON in this exact format:
 {
     "action": "ACCEPT or REJECT",
     "drift_score": 0.0 to 1.0,
-    "reasoning": "Brief explanation",
+    "reasoning": "Brief explanation with data flow analysis",
     "violations": [
         {
             "rule_id": "string (exact rule name from instructions)",
             "line_number": number (exact line number from prepended format),
-            "violation": "description",
+            "violation": "description with data flow path",
             "confidence": "HIGH or LOW",
             "violating_snippet": "the exact line of code containing the violation (without the line number prefix)"
         }
@@ -2130,11 +2143,19 @@ Return ONLY valid JSON in this exact format:
 }
 
 CRITICAL SECURITY RULES:
-- REJECT if hardcoded secrets, API keys, or passwords are found
-- REJECT if eval() or exec() is used with user input
-- REJECT if subprocess/os.system is used with shell=True
-- REJECT if SQL queries use string concatenation
-- REJECT if sensitive data reaches print/console.log without sanitization`;
+- RULE_3: HARDCODED_SECRETS - REJECT if hardcoded secrets, API keys, or passwords are found
+- RULE_5: EVAL_INJECTION - REJECT if eval() or exec() is used with user input
+- RULE_6: SHELL_INJECTION - REJECT if subprocess/os.system is used with shell=True
+- RULE_7: SQL_INJECTION - REJECT if SQL queries use string concatenation
+- RULE_8: PHI_PROTECTION - REJECT if sensitive data (SSN, credit card, medical info) reaches an insecure sink
+- RULE_10: LOGGING_GATE - REJECT if sensitive data reaches logging functions without sanitization
+
+DATA FLOW ANALYSIS REQUIREMENTS:
+1. Identify the source of sensitive data (variable definition, user input, database query)
+2. Trace the data through all transformations (assignments, function calls, filtering)
+3. Identify the final sink (return statement, print, log, HTTP response)
+4. Verify that the sensitive field actually reaches the sink
+5. Only flag if the sensitive data is present in the final output`;
 
             userPrompt = `Analyze this code for security violations:
 
@@ -2145,7 +2166,11 @@ Code:
 ${numberedCode}
 \`\`\`
 
-Provide your analysis in JSON format. Remember to use exact line numbers from the code and exact rule names from the instructions.`;
+Provide your analysis in JSON format. Remember to:
+1. Use exact line numbers from the code
+2. Use exact rule names from the instructions (e.g., RULE_8: PHI_PROTECTION)
+3. Perform complete data flow analysis from source to sink
+4. Only flag violations where sensitive data actually reaches an insecure sink`;
         }
 
         // Build headers based on provider
