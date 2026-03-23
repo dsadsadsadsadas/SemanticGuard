@@ -2269,15 +2269,16 @@ async def evaluate(req: EvaluateRequest):
         f"file={req.filename}"
     )
 
-    # ── DEBUG LOGGING: Track data transmission ──
+    # ── PERFORMANCE LOGGING: Track data transmission ──
     logger.info(
-        f"[TREPAN DEBUG] Returning response: action={result['verdict']}, "
+        f"[TREPAN] Returning response: action={result['verdict']}, "
         f"drift_score={result['score']:.2f}, raw_output_length={len(result['reasoning'])}"
     )
 
-    # DIAGNOSTIC: expose parser violations and raw output for debugging
-    logger.info(f"[VIOLATION DEBUG] violations={result['violations']}")
-    logger.info(f"[RAW OUTPUT DEBUG] raw_output={result['raw_output']!r}")
+    # DIAGNOSTIC: expose parser violations for debugging
+    logger.info(f"[VIOLATIONS] count={len(result['violations'])}")
+    if result['violations']:
+        logger.info(f"[RAW OUTPUT] length={len(result['raw_output'])}")
     return EvaluateResponse(
         action=result['verdict'],
         drift_score=result['score'],
@@ -2639,9 +2640,9 @@ async def evaluate_pillar(req: EvaluatePillarRequest):
     else:
         _trace_sync_logger.info(f"REJECT VERDICT — vault NOT updated for '{req.filename}' (score={result['score']})")
 
-    # ── DEBUG LOGGING: Track data transmission ──
+    # ── PERFORMANCE LOGGING: Track data transmission ──
     logger.info(
-        f"[TREPAN DEBUG] Returning response: action={result['verdict']}, "
+        f"[TREPAN] Returning response: action={result['verdict']}, "
         f"drift_score={result['score']:.2f}, reasoning_length={len(result['reasoning'])}, "
         f"vault_updated={vault_updated}"
     )

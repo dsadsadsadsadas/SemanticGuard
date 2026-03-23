@@ -2,7 +2,7 @@
   "name": "trepan-gatekeeper",
   "displayName": "Trepan Gatekeeper 🛡️",
   "description": "Architectural airbag — blocks file saves that violate your project's .trepan/ pillar rules.",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "publisher": "trepansec",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -56,8 +56,8 @@
         "category": "Trepan"
       },
       {
-        "command": "trepan.auditEntireFile",
-        "title": "Trepan: Audit Entire File",
+        "command": "trepan.auditEntireFolder",
+        "title": "Trepan: Audit Entire Folder",
         "category": "Trepan"
       },
       {

@@ -33,7 +33,12 @@ Built for developers suffering from the **Vibe Coding Hangover**: that moment yo
   
 - **🧪 26-Case Adversarial Benchmark**: Comprehensive test suite validates prompt effectiveness
 
-**Upgrade**: Install `trepan-gatekeeper-2.3.0.vsix` and enjoy faster, more accurate security audits.
+- **📁 Full Folder Audit** (v2.3.1): Scan your entire codebase in one command
+  - `Ctrl+Shift+P` → "Trepan: Audit Entire Folder"
+  - Works in both Local and Power Mode
+  - Results displayed in dedicated Output panel
+
+**Upgrade**: Install `trepan-gatekeeper-2.3.1.vsix` and enjoy faster, more accurate security audits.
 
 ---
 
@@ -120,7 +125,7 @@ cd trepan
 
 # 2. Install the VS Code Extension
 cd extension
-code --install-extension trepan-gatekeeper-2.3.0.vsix
+code --install-extension trepan-gatekeeper-2.3.1.vsix
 ```
 
 **That's it!** Configure your cloud API key in the extension and start auditing. No Ollama, no Python server needed.

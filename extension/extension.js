@@ -152,7 +152,7 @@ const _lastAuditedContent = new Map(); // key: document.uri.toString(), value: s
 const _lastSentContent = new Map(); // key: document.uri.toString(), value: string
 const DIFF_CONTEXT_LINES = 10; // lines of context above and below each changed region
 const LARGE_FILE_THRESHOLD = 150; // lines — files above this use diff mode
-const FIRST_AUDIT_LINE_LIMIT = 120; // Files above this skip first-save audit
+const FIRST_AUDIT_LINE_LIMIT = 200; // Files above this skip first-save audit
 
 // Model selection state
 let _selectedModel = "llama3.1:8b"; // Default to Fast mode
@@ -680,12 +680,198 @@ function activate(context) {
         }
     );
 
-    const fullAuditCmd = vscode.commands.registerCommand(
-        "trepan.auditEntireFile",
+    const auditFolderCmd = vscode.commands.registerCommand(
+        "trepan.auditEntireFolder",
         async () => {
-            vscode.window.showInformationMessage(
-                "🛡️ Trepan: Full file audit coming in version 2.0. Use Save to audit changes."
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders) {
+                vscode.window.showErrorMessage("Trepan: No workspace folder open.");
+                return;
+            }
+            
+            const rootPath = workspaceFolders[0].uri;
+            const context = global.trepanContext;
+            const isPowerMode = context?.globalState.get('trepan.mode') === 'cloud';
+            const serverUrl = getServerUrl();
+            
+            // Warn about cost if Power Mode
+            if (isPowerMode) {
+                const confirm = await vscode.window.showWarningMessage(
+                    "🔍 Trepan: Full folder audit will send every file to the Cloud API. This may incur API costs. Continue?",
+                    "Audit Entire Folder",
+                    "Cancel"
+                );
+                if (confirm !== "Audit Entire Folder") return;
+            }
+            
+            // File extensions to audit
+            const AUDITABLE_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rb', '.php'];
+            
+            // Directories to skip
+            const SKIP_DIRS = new Set([
+                'node_modules', '.git', 'dist', 'build', 'venv', '.venv',
+                '__pycache__', '.trepan', 'trepan_vault', 'coverage', '.next'
+            ]);
+            
+            // Collect all files
+            const allFiles = await vscode.workspace.findFiles(
+                '**/*',
+                `{${[...SKIP_DIRS].map(d => `**/${d}/**`).join(',')}}`
             );
+            
+            const auditableFiles = allFiles.filter(f => 
+                AUDITABLE_EXTENSIONS.some(ext => f.fsPath.endsWith(ext))
+            );
+            
+            if (auditableFiles.length === 0) {
+                vscode.window.showInformationMessage("Trepan: No auditable files found in workspace.");
+                return;
+            }
+            
+            const modeLabel = isPowerMode ? "☁️ Cloud" : "⚡ Local";
+            vscode.window.showInformationMessage(
+                `🛡️ Trepan: Starting folder audit of ${auditableFiles.length} files [${modeLabel} Mode]...`
+            );
+            
+            const violations = [];
+            const errors = [];
+            let processed = 0;
+            let skipped = 0;
+            
+            // Progress notification
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: "🛡️ Trepan: Auditing folder...",
+                cancellable: true
+            }, async (progress, token) => {
+                
+                for (const fileUri of auditableFiles) {
+                    if (token.isCancellationRequested) {
+                        console.log("[TREPAN FOLDER AUDIT] Cancelled by user");
+                        break;
+                    }
+                    
+                    const fileName = fileUri.fsPath.split(/[/\\]/).pop();
+                    const relativePath = vscode.workspace.asRelativePath(fileUri);
+                    
+                    progress.report({
+                        message: `${processed + 1}/${auditableFiles.length} — ${relativePath}`,
+                        increment: 100 / auditableFiles.length
+                    });
+                    
+                    try {
+                        const document = await vscode.workspace.openTextDocument(fileUri);
+                        const code = document.getText();
+                        
+                        if (!code.trim()) {
+                            skipped++;
+                            continue;
+                        }
+                        
+                        // Skip very large files over 500 lines in local mode
+                        const lineCount = code.split('\n').length;
+                        if (!isPowerMode && lineCount > 500) {
+                            console.log(`[TREPAN FOLDER AUDIT] Skipping large file: ${relativePath} (${lineCount} lines)`);
+                            skipped++;
+                            continue;
+                        }
+                        
+                        const pillars = getPillars(vscode.workspace.workspaceFolders[0].uri.fsPath);
+                        const processorMode = "GPU";
+                        
+                        const response = await fetchWithTimeout(`${serverUrl}/evaluate`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                filename: fileName,
+                                code_snippet: code,
+                                pillars: pillars,
+                                project_path: vscode.workspace.workspaceFolders[0].uri.fsPath,
+                                processor_mode: processorMode,
+                                model_name: _selectedModel,
+                                power_mode: isPowerMode
+                            }),
+                        }, 60000);
+                        
+                        if (!response.ok) {
+                            errors.push(relativePath);
+                            processed++;
+                            continue;
+                        }
+                        
+                        const result = await response.json();
+                        
+                        if (result.action === "REJECT" && result.violations?.length > 0) {
+                            for (const v of result.violations) {
+                                violations.push({
+                                    file: relativePath,
+                                    line: v.line_number || 0,
+                                    rule: v.rule_name || v.rule_id,
+                                    reason: v.violation,
+                                    confidence: v.confidence
+                                });
+                            }
+                        }
+                        
+                        processed++;
+                        
+                    } catch (err) {
+                        console.error(`[TREPAN FOLDER AUDIT] Error on ${relativePath}: ${err.message}`);
+                        errors.push(relativePath);
+                        processed++;
+                    }
+                }
+            });
+            
+            // Show results in output channel
+            const outputChannel = vscode.window.createOutputChannel("Trepan — Folder Audit");
+            outputChannel.clear();
+            outputChannel.appendLine(`🛡️ TREPAN FOLDER AUDIT RESULTS`);
+            outputChannel.appendLine(`${'='.repeat(60)}`);
+            outputChannel.appendLine(`Mode: ${isPowerMode ? "☁️ Power Mode (Cloud API)" : "⚡ Local Mode (Llama)"}`);
+            outputChannel.appendLine(`Files scanned: ${processed}`);
+            outputChannel.appendLine(`Files skipped: ${skipped}`);
+            outputChannel.appendLine(`Violations found: ${violations.length}`);
+            outputChannel.appendLine(`Errors: ${errors.length}`);
+            outputChannel.appendLine(`${'='.repeat(60)}\n`);
+            
+            if (violations.length === 0) {
+                outputChannel.appendLine("✅ No violations found. Codebase is clean.");
+            } else {
+                outputChannel.appendLine(`🚨 ${violations.length} VIOLATION(S) DETECTED:\n`);
+                const byFile = {};
+                for (const v of violations) {
+                    if (!byFile[v.file]) byFile[v.file] = [];
+                    byFile[v.file].push(v);
+                }
+                for (const [file, fileViolations] of Object.entries(byFile)) {
+                    outputChannel.appendLine(`📄 ${file}`);
+                    for (const v of fileViolations) {
+                        outputChannel.appendLine(`   Line ${v.line} [${v.confidence}] ${v.rule}`);
+                        outputChannel.appendLine(`   → ${v.reason}`);
+                    }
+                    outputChannel.appendLine('');
+                }
+            }
+            
+            if (errors.length > 0) {
+                outputChannel.appendLine(`\n⚠️ Failed to audit ${errors.length} file(s):`);
+                errors.forEach(f => outputChannel.appendLine(`   • ${f}`));
+            }
+            
+            outputChannel.show();
+            
+            // Summary notification
+            if (violations.length === 0) {
+                vscode.window.showInformationMessage(
+                    `✅ Trepan: Folder audit complete — ${processed} files clean`
+                );
+            } else {
+                const fileCount = Object.keys(byFile).length;
+                vscode.window.showWarningMessage(
+                    `⚠️ Trepan: Found ${violations.length} violation(s) in ${fileCount} files — see Output panel`
+                );
+            }
         }
     );
 
@@ -827,23 +1013,75 @@ function activate(context) {
                         console.log(`[TREPAN BYOK] ${provider} API key updated`);
                         
                     } else if (action.action === "editModel") {
-                        // Edit Model
-                        const newModel = await vscode.window.showInputBox({
-                            prompt: `Enter ${config.displayName} Model ID`,
-                            placeHolder: config.defaultModel,
-                            value: existingModel,
-                            ignoreFocusOut: true,
-                            validateInput: (value) => {
-                                if (!value || value.trim().length === 0) {
-                                    return "Model ID cannot be empty";
-                                }
-                                return null;
+                        // Edit Model - Show preset list + custom option
+                        const modelPresets = provider === "groq" ? [
+                            {
+                                label: "$(zap) Llama 4 Scout 17B",
+                                description: "llama-4-scout-17b-16e-instruct",
+                                detail: "Recommended: Fast (30K TPM), 96% accuracy on security tests",
+                                modelId: "llama-4-scout-17b-16e-instruct"
+                            },
+                            {
+                                label: "$(symbol-namespace) Llama 3.3 70B Versatile",
+                                description: "llama-3.3-70b-versatile",
+                                detail: "Slower (12K TPM) but larger model",
+                                modelId: "llama-3.3-70b-versatile"
+                            },
+                            {
+                                label: "$(edit) Custom Model ID",
+                                description: "Enter a different model",
+                                detail: "Specify any Groq model ID manually",
+                                modelId: "custom"
                             }
+                        ] : [
+                            {
+                                label: "$(cloud) Claude 3.5 Sonnet",
+                                description: "anthropic/claude-3.5-sonnet",
+                                detail: "Recommended: Best accuracy",
+                                modelId: "anthropic/claude-3.5-sonnet"
+                            },
+                            {
+                                label: "$(edit) Custom Model ID",
+                                description: "Enter a different model",
+                                detail: "Specify any OpenRouter model ID manually",
+                                modelId: "custom"
+                            }
+                        ];
+                        
+                        const modelChoice = await vscode.window.showQuickPick(modelPresets, {
+                            placeHolder: `Select ${config.displayName} model or choose custom`,
+                            title: `🔧 ${config.displayName} Model Selection`
                         });
                         
-                        if (!newModel) {
-                            console.log("[TREPAN BYOK] Model update cancelled");
+                        if (!modelChoice) {
+                            console.log("[TREPAN BYOK] Model selection cancelled");
                             return;
+                        }
+                        
+                        let newModel;
+                        
+                        if (modelChoice.modelId === "custom") {
+                            // Custom model input
+                            newModel = await vscode.window.showInputBox({
+                                prompt: `Enter ${config.displayName} Model ID`,
+                                placeHolder: config.defaultModel,
+                                value: existingModel,
+                                ignoreFocusOut: true,
+                                validateInput: (value) => {
+                                    if (!value || value.trim().length === 0) {
+                                        return "Model ID cannot be empty";
+                                    }
+                                    return null;
+                                }
+                            });
+                            
+                            if (!newModel) {
+                                console.log("[TREPAN BYOK] Custom model input cancelled");
+                                return;
+                            }
+                        } else {
+                            // Preset model selected
+                            newModel = modelChoice.modelId;
                         }
                         
                         await context.globalState.update(config.modelKey, newModel);
@@ -889,27 +1127,80 @@ function activate(context) {
                 
                 console.log(`[TREPAN BYOK] ${provider} API key received, length:`, apiKey.length);
 
-                // Step 3: Prompt for Model ID
-                const modelId = await vscode.window.showInputBox({
-                    prompt: `Enter ${config.displayName} Model ID`,
-                    placeHolder: config.defaultModel,
-                    value: config.defaultModel,
-                    ignoreFocusOut: true,
-                    validateInput: (value) => {
-                        if (!value || value.trim().length === 0) {
-                            return "Model ID cannot be empty";
-                        }
-                        return null;
+                // Step 3: Select Model - Show preset list + custom option
+                const modelPresets = provider === "groq" ? [
+                    {
+                        label: "$(zap) Llama 4 Scout 17B",
+                        description: "llama-4-scout-17b-16e-instruct",
+                        detail: "Recommended: Fast (30K TPM), 96% accuracy on security tests",
+                        modelId: "llama-4-scout-17b-16e-instruct"
+                    },
+                    {
+                        label: "$(symbol-namespace) Llama 3.3 70B Versatile",
+                        description: "llama-3.3-70b-versatile",
+                        detail: "Slower (12K TPM) but larger model",
+                        modelId: "llama-3.3-70b-versatile"
+                    },
+                    {
+                        label: "$(edit) Custom Model ID",
+                        description: "Enter a different model",
+                        detail: "Specify any Groq model ID manually",
+                        modelId: "custom"
                     }
+                ] : [
+                    {
+                        label: "$(cloud) Claude 3.5 Sonnet",
+                        description: "anthropic/claude-3.5-sonnet",
+                        detail: "Recommended: Best accuracy",
+                        modelId: "anthropic/claude-3.5-sonnet"
+                    },
+                    {
+                        label: "$(edit) Custom Model ID",
+                        description: "Enter a different model",
+                        detail: "Specify any OpenRouter model ID manually",
+                        modelId: "custom"
+                    }
+                ];
+                
+                const modelChoice = await vscode.window.showQuickPick(modelPresets, {
+                    placeHolder: `Select ${config.displayName} model or choose custom`,
+                    title: `🔧 ${config.displayName} Model Selection`
                 });
-
-                if (!modelId) {
-                    console.log("[TREPAN BYOK] Model ID input cancelled");
+                
+                if (!modelChoice) {
+                    console.log("[TREPAN BYOK] Model selection cancelled");
                     vscode.window.showInformationMessage("BYOK configuration cancelled.");
                     return;
                 }
                 
-                console.log(`[TREPAN BYOK] ${provider} model ID received:`, modelId);
+                let modelId;
+                
+                if (modelChoice.modelId === "custom") {
+                    // Custom model input
+                    modelId = await vscode.window.showInputBox({
+                        prompt: `Enter ${config.displayName} Model ID`,
+                        placeHolder: config.defaultModel,
+                        value: config.defaultModel,
+                        ignoreFocusOut: true,
+                        validateInput: (value) => {
+                            if (!value || value.trim().length === 0) {
+                                return "Model ID cannot be empty";
+                            }
+                            return null;
+                        }
+                    });
+                    
+                    if (!modelId) {
+                        console.log("[TREPAN BYOK] Custom model input cancelled");
+                        vscode.window.showInformationMessage("BYOK configuration cancelled.");
+                        return;
+                    }
+                } else {
+                    // Preset model selected
+                    modelId = modelChoice.modelId;
+                }
+                
+                console.log(`[TREPAN BYOK] ${provider} model selected:`, modelId);
 
                 // Step 4: Test the connection
                 console.log(`[TREPAN BYOK] Testing ${provider} connection...`);
@@ -1087,7 +1378,7 @@ function activate(context) {
         }
     );
 
-    context.subscriptions.push(askCommand, openLedgerCommand, reviewChangesCommand, initializeProjectCommand, toggleProcessorCommand, selectModelCmd, fullAuditCmd, configureBYOKCmd, togglePowerModeCmd, toggleV2PromptsCmd, debugReasoningCmd);
+    context.subscriptions.push(askCommand, openLedgerCommand, reviewChangesCommand, initializeProjectCommand, toggleProcessorCommand, selectModelCmd, auditFolderCmd, configureBYOKCmd, togglePowerModeCmd, toggleV2PromptsCmd, debugReasoningCmd);
 
     // Periodic server health check
     checkServerHealth();
