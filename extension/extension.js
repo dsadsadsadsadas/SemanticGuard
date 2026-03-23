@@ -753,8 +753,12 @@ function activate(context) {
                 targetFolder = selectedFolder[0];
             }
             
-            const context = global.trepanContext;
-            const isPowerMode = context?.globalState.get('trepan.mode') === 'cloud';
+            const extensionContext = global.trepanContext;
+            if (!extensionContext) {
+                vscode.window.showErrorMessage("Trepan: Extension context not available. Please reload VS Code.");
+                return;
+            }
+            const isPowerMode = extensionContext.globalState.get('trepan.mode') === 'cloud';
             
             // Get server URL
             const cfg = vscode.workspace.getConfiguration("trepan");
@@ -769,9 +773,9 @@ function activate(context) {
             // Get current model for latency calculation
             let currentModel = _selectedModel; // Local mode model
             if (isPowerMode) {
-                const provider = context?.globalState.get('trepan.provider') || 'openrouter';
+                const provider = extensionContext.globalState.get('trepan.provider') || 'openrouter';
                 const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
-                currentModel = context?.globalState.get(modelKey) || '';
+                currentModel = extensionContext.globalState.get(modelKey) || '';
             }
             
             // Determine latency based on model
@@ -1681,7 +1685,7 @@ async function evaluateSave(document) {
 
         console.log(`[TREPAN META-GATE] Pillar file save detected: ${fileName}`);
 
-        updateStatusBar(context, 'auditing');
+        updateStatusBar(extensionContext, 'auditing');
         trepanSidebarProvider.sendMessage({ type: 'scanning', title: 'Meta-Gate Audit: ' + fileName }, true);
         
         try {
@@ -1708,7 +1712,7 @@ async function evaluateSave(document) {
 
             if (!res.ok) {
                 console.warn(`Trepan: Meta-Gate server returned ${res.status} — failing open`);
-                updateStatusBar(context, 'idle');
+                updateStatusBar(extensionContext, 'idle');
                 return [];
             }
 
@@ -1738,12 +1742,12 @@ async function evaluateSave(document) {
             }
 
             setStatus("accepted");
-            setTimeout(() => updateStatusBar(context, 'idle'), 2000);
+            setTimeout(() => updateStatusBar(extensionContext, 'idle'), 2000);
             _lastAuditedContent.set(fileKey, currentContent);
             return [];
         } catch (err) {
             console.error("Trepan Meta-Gate error:", err);
-            updateStatusBar(context, 'idle');
+            updateStatusBar(extensionContext, 'idle');
             return [];
         }
     } else {
@@ -1755,8 +1759,12 @@ async function evaluateSave(document) {
         const previousContent = _lastAuditedContent.get(fileKey);
 
         // ── CHECK MODE EARLY: Power Mode needs full context ───────────────
-        const context = global.trepanContext;
-        const isPowerMode = context?.globalState.get('trepan.mode') === 'cloud';
+        const extensionContext = global.trepanContext;
+        if (!extensionContext) {
+            console.error('[TREPAN] Extension context not available');
+            return; // Fail-open: allow save if context unavailable
+        }
+        const isPowerMode = extensionContext.globalState.get('trepan.mode') === 'cloud';
 
         let codeContent;
         
@@ -1813,7 +1821,7 @@ async function evaluateSave(document) {
 
         console.log(`[TREPAN AIRBAG] Document save detected: ${fileName}`);
 
-        updateStatusBar(context, 'auditing');
+        updateStatusBar(extensionContext, 'auditing');
         trepanSidebarProvider.sendMessage({ type: 'scanning', title: 'Airbag Audit: ' + fileName }, true);
 
         try {
@@ -1853,7 +1861,7 @@ async function evaluateSave(document) {
 
                 if (!layer1Response.ok) {
                     console.warn(`Trepan: Layer 1 server returned ${layer1Response.status} — failing open`);
-                    updateStatusBar(context, 'idle');
+                    updateStatusBar(extensionContext, 'idle');
                     return [];
                 }
 
@@ -1869,7 +1877,7 @@ async function evaluateSave(document) {
                     console.log("[TREPAN TRAFFIC COP] Layer 1 passed — calling Cloud API");
                     
                     try {
-                        const cloudResult = await callCloudAPI(context, {
+                        const cloudResult = await callCloudAPI(extensionContext, {
                             filename: fileName,
                             code_snippet: codeContent,
                             pillars: pillars
@@ -1935,7 +1943,7 @@ async function evaluateSave(document) {
                         if (fallbackResponse.ok) {
                             data = await fallbackResponse.json();
                         } else {
-                            updateStatusBar(context, 'idle');
+                            updateStatusBar(extensionContext, 'idle');
                             return [];
                         }
                     }
@@ -1963,7 +1971,7 @@ async function evaluateSave(document) {
 
                 if (!res.ok) {
                     console.warn(`Trepan: Airbag server returned ${res.status} — failing open`);
-                    updateStatusBar(context, 'idle');
+                    updateStatusBar(extensionContext, 'idle');
                     return [];
                 }
 
@@ -2003,12 +2011,12 @@ async function evaluateSave(document) {
             }
 
             setStatus("accepted");
-            setTimeout(() => updateStatusBar(context, 'idle'), 2000);
+            setTimeout(() => updateStatusBar(extensionContext, 'idle'), 2000);
             _lastAuditedContent.set(fileKey, currentContent);
             return [];
         } catch (err) {
             console.error("Trepan Airbag error:", err);
-            updateStatusBar(context, 'idle');
+            updateStatusBar(extensionContext, 'idle');
             return [];
         }
     }
@@ -2420,8 +2428,8 @@ Provide your analysis in JSON format. Remember to:
 // ─── V2 Response Processing and Validation ──────────────────────────────────
 
 async function processV2Response(v2Response, providerName, payload) {
-    const context = global.trepanContext;
-    const debugMode = context?.globalState.get('trepan.debug_reasoning') || false;
+    const extensionContext = global.trepanContext;
+    const debugMode = extensionContext?.globalState.get('trepan.debug_reasoning') || false;
     
     if (debugMode) {
         console.log(`[TREPAN V2 DEBUG] ═══════════════════════════════════════`);
@@ -3203,10 +3211,14 @@ class TrepanSidebarProvider {
             if (message.command === 'update_model') {
                 const { model } = message;
                 console.log('[TREPAN WEBVIEW] Updating model to:', model);
-                const context = global.trepanContext;
-                const provider = context?.globalState.get('trepan.provider') || 'openrouter';
+                const extensionContext = global.trepanContext;
+                if (!extensionContext) {
+                    vscode.window.showErrorMessage('Extension context not available');
+                    return;
+                }
+                const provider = extensionContext.globalState.get('trepan.provider') || 'openrouter';
                 const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
-                await context?.globalState.update(modelKey, model);
+                await extensionContext.globalState.update(modelKey, model);
                 vscode.window.showInformationMessage(`Model updated to: ${model}`);
                 this.sendMessage({ type: 'updateModelBadge', modelId: model });
                 return;
@@ -3247,13 +3259,13 @@ class TrepanSidebarProvider {
     }
     async _getHtmlForWebview() {
         // Get current mode and model information
-        const context = global.trepanContext;
-        const mode = context?.globalState.get('trepan.mode') || 'local';
-        const provider = context?.globalState.get('trepan.provider') || 'openrouter';
+        const extensionContext = global.trepanContext;
+        const mode = extensionContext?.globalState.get('trepan.mode') || 'local';
+        const provider = extensionContext?.globalState.get('trepan.provider') || 'openrouter';
         
         // Get model name
         const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
-        const modelId = context?.globalState.get(modelKey);
+        const modelId = extensionContext?.globalState.get(modelKey);
         
         // Check if API key exists
         const keyName = provider === 'openrouter' ? 'openrouter_api_key' : 'groq_api_key';
