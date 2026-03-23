@@ -11,6 +11,32 @@ Built for developers suffering from the **Vibe Coding Hangover**: that moment yo
 
 ---
 
+## 🎉 What's New in v2.3.0
+
+**Power Mode Enhancements - Production Ready**
+
+- **🎯 V2 Prompt System**: 96% accuracy on adversarial security tests (up from 77%)
+  - Zero false positives on safe code patterns
+  - Catches hardcoded credentials (AWS keys, API tokens, passwords)
+  - Detects sensitive data in logs (passwords, PII, credit cards)
+  - Identifies SQL injection via environment variables
+  
+- **⚡ Llama 4 Scout 17B**: Now the default Groq model
+  - 2.5x faster than Llama 3.3 70B (30K vs 12K tokens/minute)
+  - Same 96% accuracy in security analysis
+  - 0.7s average response time
+  
+- **🎨 Improved Model Selection UI**: 
+  - Quick-pick menu with recommended models
+  - Custom model input for power users
+  - Clear speed/accuracy tradeoffs displayed
+  
+- **🧪 26-Case Adversarial Benchmark**: Comprehensive test suite validates prompt effectiveness
+
+**Upgrade**: Install `trepan-gatekeeper-2.3.0.vsix` and enjoy faster, more accurate security audits.
+
+---
+
 ## 🎬 See Trepan in Action (Local Mode)
 
 ![Trepan catching a security violation in VS Code](images/trepan_demo.gif)
@@ -94,7 +120,7 @@ cd trepan
 
 # 2. Install the VS Code Extension
 cd extension
-code --install-extension trepan-gatekeeper-2.2.2.vsix
+code --install-extension trepan-gatekeeper-2.3.0.vsix
 ```
 
 **That's it!** Configure your cloud API key in the extension and start auditing. No Ollama, no Python server needed.
@@ -116,7 +142,7 @@ python start_server.py
 
 # 4. Install the VS Code Extension
 cd extension
-code --install-extension trepan-gatekeeper-2.2.2.vsix
+code --install-extension trepan-gatekeeper-2.2.3.vsix
 ```
 
 Then install the **Trepan VS Code Extension** from the Marketplace (or from the `/extension` folder). Every file save is now audited in real-time.
