@@ -3269,7 +3269,7 @@ class TrepanSidebarProvider {
         
         // Check if API key exists
         const keyName = provider === 'openrouter' ? 'openrouter_api_key' : 'groq_api_key';
-        const apiKey = await context?.secrets.get(keyName);
+        const apiKey = await extensionContext?.secrets.get(keyName);
         
         // Build model badge HTML (only for Power Mode) - WITHOUT provider prefix
         let modelBadgeHtml = '';
