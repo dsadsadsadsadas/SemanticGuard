@@ -74,7 +74,11 @@ GROQ_MODELS = {
 # ─── Token Bucket Rate Limiter ──────────────────────────────────────────────
 
 class TokenBucket:
-    """Self-Healing Token Bucket with 429 Recovery"""
+    """Mathematical Proactive Throttling with TPM-Based Governor
+    
+    Uses formula: Delay = (File_Tokens / TPM_Limit) * 60
+    Adds 10% safety buffer to account for network jitter.
+    """
     
     def __init__(self, max_rpm: int, max_tpm: int):
         self.max_rpm = max_rpm
@@ -85,6 +89,7 @@ class TokenBucket:
         self.token_history = deque(maxlen=60)  # Track tokens used in last 60 seconds
         self.rate_limit_hit_time = None  # Track when we hit a 429 error
         self.rate_limit_recovery_time = 10  # Wait 10 seconds after 429 before retrying
+        self.safety_buffer = 1.10  # 10% safety buffer for network jitter
         
     def refill(self):
         """Refill buckets based on elapsed time"""
@@ -120,6 +125,46 @@ class TokenBucket:
             return 0.0
         
         return remaining
+    
+    def calculate_proactive_delay(self, estimated_tokens: int) -> float:
+        """Calculate proactive delay using TPM-based governor formula.
+        
+        Formula: Delay = (File_Tokens / TPM_Limit) * 60
+        With 10% safety buffer: Delay * 1.10
+        
+        Args:
+            estimated_tokens: Number of tokens for this file
+            
+        Returns:
+            Delay in seconds (with safety buffer applied)
+        """
+        # Base delay: (tokens / TPM_limit) * 60 seconds
+        base_delay = (estimated_tokens / self.max_tpm) * 60
+        
+        # Apply 10% safety buffer for network jitter
+        delay_with_buffer = base_delay * self.safety_buffer
+        
+        return delay_with_buffer
+    
+    async def wait_for_capacity(self, estimated_tokens: int) -> float:
+        """Proactively wait before making a request.
+        
+        Uses mathematical throttling to prevent 429 errors.
+        Returns the actual wait time.
+        """
+        # Check if we're in recovery mode from a 429 error
+        recovery_wait = self.get_recovery_wait_time()
+        if recovery_wait > 0:
+            await asyncio.sleep(recovery_wait)
+            return recovery_wait
+        
+        # Calculate proactive delay based on token count
+        delay = self.calculate_proactive_delay(estimated_tokens)
+        
+        if delay > 0:
+            await asyncio.sleep(delay)
+        
+        return delay
     
     def can_request(self, estimated_tokens: int = 1000) -> Tuple[bool, float]:
         """Check if we can make a request. Returns (can_request, wait_time)
@@ -489,11 +534,10 @@ SAFE - No exploitable vulnerabilities detected.
 Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
     
     async def audit_file(self, file_path: Path) -> Dict:
-        """Audit a single file with self-healing 429 recovery
+        """Audit a single file with mathematical proactive throttling
         
-        🔴 FIX #1: Use asyncio.to_thread() to make requests.post non-blocking
-        🔴 FIX #2: Pre-consume tokens in can_request(), refund after API call
-        🔴 FIX #3: Self-healing retry logic for 429 errors (up to 3 retries)
+        Uses TPM-based governor formula: Delay = (File_Tokens / TPM_Limit) * 60
+        Adds 10% safety buffer to prevent 429 errors.
         """
         max_retries = 3
         retry_count = 0
@@ -507,20 +551,12 @@ Be AGGRESSIVE about exploitability. Be CONSERVATIVE about false positives."""
                 # Estimate tokens (rough: 1 token ≈ 4 chars)
                 estimated_tokens = len(code) // 4 + 500
                 
-                # Wait for rate limit (tokens already pre-consumed in can_request)
-                can_request, wait_time = self.rate_limiter.can_request(estimated_tokens)
-                if not can_request:
-                    print(f"{colored(f'⏳ Rate limit: waiting {wait_time:.2f}s', Colors.YELLOW)}")
-                    await asyncio.sleep(wait_time)
-                    # Retry after waiting
-                    can_request, wait_time = self.rate_limiter.can_request(estimated_tokens)
-                    if not can_request:
-                        return {
-                            "file": str(file_path),
-                            "status": "error",
-                            "error": "Rate limit exceeded after retry",
-                            "latency": 0
-                        }
+                # PROACTIVE THROTTLING: Calculate and wait based on token count
+                wait_time = await self.rate_limiter.wait_for_capacity(estimated_tokens)
+                
+                # Print throttling info for visibility
+                if wait_time > 0:
+                    print(f"{colored(f'[Wait: {wait_time:.1f}s for {estimated_tokens:,} tokens]', Colors.CYAN)}")
                 
                 # Make API call (non-blocking via asyncio.to_thread)
                 start_time = time.time()
