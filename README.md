@@ -53,14 +53,13 @@ You ask an AI for "Feature A." It gives you "Feature A," but it also:
 ---
 
 ## 🚀 Quick Start (60 Seconds)
-## 🚀 Quick Start (60 Seconds)
 
 > **Note:** SemantGuard repository is **lightweight** (~50MB). Models are downloaded separately only if you choose Local Mode.
 
 ### 1️⃣ Clone & Install
 
 ```bash
-git clone https://github.com/yourusername/semantguard.git
+git clone https://github.com/dsadsadsadsadas/SemantGuard
 cd semantguard
 pip install -r requirements.txt
 ```
@@ -76,7 +75,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 
 ```bash
 # Install VS Code extension
-code --install-extension extension/semantguard-gatekeeper-2.3.8.vsix
+code --install-extension extension/semantguard-gatekeeper-x.x.x.vsix  (Place the Most Recent Version)
 ```
 
 Then in VS Code, click **"Initialize Project"** in the sidebar and choose a persona:
@@ -134,9 +133,6 @@ SemantGuard isn't just a prompt; it's a **state machine**. It tracks your projec
 
 **Important:** Model files are NEVER included in the Git repository. They are downloaded on-demand when you choose Local Mode and stored in Ollama's directory.
 
----
-
-## 📦 Installation & SetupDeepSeek | Llama 4 Scout / Claude 3.5 |
 
 ---
 
@@ -228,10 +224,6 @@ ollama serve
 ## 📚 Documentation
 
 - [Architecture Overview](docs/ARCHITECTURE.md)
-- [API Reference](docs/API.md)
-- [Contributing Guide](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
-
 ---
 
 ## 🤝 Get Involved
@@ -254,7 +246,7 @@ This project is licensed under the GNU Affero General Public License v3.0. See [
 
 ## 🌟 Star History
 
-If SemantGuard helped you catch a drift, give us a star! ⭐
+If SemantGuard helped you catch a drift, give it a star! ⭐
 
 ---
 
@@ -262,6 +254,6 @@ If SemantGuard helped you catch a drift, give us a star! ⭐
 
 **Made with 🛡️ by developer, for developers**
 
-[Report Bug](https://github.com/dsadsadsadsadas/SemantGuard) · [Request Feature](https://github.com/dsadsadsadsadas/SemantGuardissues) 
+[Report Bug](https://github.com/dsadsadsadsadas/SemantGuard) 
 
 </div>
