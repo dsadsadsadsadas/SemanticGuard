@@ -78,11 +78,6 @@ curl -fsSL https://ollama.com/install.sh | sh
 code --install-extension extension/SemanticGuard-gatekeeper-x.x.x.vsix  (Check the Most Recent Version)
 ```
 
-Then in VS Code, click **"Initialize Project"** in the sidebar and choose a persona:
-
-- 🚀 **Solo-Indie**: Focuses on clean naming and small functions
-- 🏗️ **Architect**: Enforces DI and interface-driven design
-- 🛡️ **Fortress**: Strict security, input sanitization, and statelessness
 **Power Mode (Cloud-Based):**
 ```bash
 # Start server (no model download needed)
