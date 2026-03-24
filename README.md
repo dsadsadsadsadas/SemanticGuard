@@ -22,8 +22,7 @@ Think of it as an architectural airbag that deploys before bad code hits your re
 
 ---
 
-## 🎬 See SemantGuard in Action
-
+## 🎬 See SemantGuard in Action (Local Mode)
 ![SemantGuard Demo](images/SM_demo.gif)
 
 ---
