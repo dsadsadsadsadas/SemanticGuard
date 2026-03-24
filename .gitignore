@@ -140,3 +140,4 @@ extension/*.vsix
 *.bmp
 *_no_bg.png
 temp.*
+.git.backup
