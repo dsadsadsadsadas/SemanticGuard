@@ -75,7 +75,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 
 ```bash
 # Install VS Code extension
-code --install-extension extension/semantguard-gatekeeper-x.x.x.vsix  (Place the Most Recent Version)
+code --install-extension extension/semantguard-gatekeeper-x.x.x.vsix  (Check the Most Recent Version)
 ```
 
 Then in VS Code, click **"Initialize Project"** in the sidebar and choose a persona:
@@ -150,32 +150,6 @@ Unlike traditional scanners that only hunt for bugs, SemantGuard enforces your *
 
 > **"Stop the loop. Guard the intent."**
 
----
-
-## 📦 Installation & Setup
-
-### Prerequisites
-
-- VS Code 1.74.0 or higher
-- Python 3.8+ (for local server)
-- Ollama (for local mode) OR API key (for power mode)
-
-### Full Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/semantguard.git
-cd semantguard
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Start the local server (if using local mode)
-python start_server.py
-
-# Install the VS Code extension
-code --install-extension extension/semantguard-gatekeeper-2.3.8.vsix
-```
 
 ---
 
