@@ -22,8 +22,12 @@ Think of it as an architectural airbag that deploys before bad code hits your re
 
 ---
 
-## View SemantGuard Live !
-(semantGuard)[images\trepan_demo.gif]
+## 🎬 See SemantGuard in Action
+
+![SemantGuard Demo](../images/SM_demo.gif)
+
+---
+
 ## 🚨 The Problem: Context Drift
 
 You ask an AI for "Feature A." It gives you "Feature A," but it also:
