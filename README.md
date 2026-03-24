@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ SemantGuard
+# 🛡️ SemanticGuard
 
 ### The Architectural Seatbelt for AI-Assisted Coding
 
@@ -8,22 +8,22 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC?logo=visual-studio-code)](https://code.visualstudio.com/)
-[![Privacy First](https://img.shields.io/badge/Privacy-First-green)](https://github.com/dsadsadsadsadas/SemantGuard)
+[![Privacy First](https://img.shields.io/badge/Privacy-First-green)](https://github.com/dsadsadsadsadas/SemanticGuard)
 
 </div>
 
 ---
 
-## 🎯 What is SemantGuard?
+## 🎯 What is SemanticGuard?
 
-SemantGuard is a VS Code extension that acts as a **mandatory enforcement layer** between your AI IDE and your codebase. While tools like Semgrep catch patterns, **SemantGuard catches intent violations**.
+SemanticGuard is a VS Code extension that acts as a **mandatory enforcement layer** between your AI IDE and your codebase. While tools like Semgrep catch patterns, **SemanticGuard catches intent violations**.
 
 Think of it as an architectural airbag that deploys before bad code hits your repository.
 
 ---
 
-## 🎬 See SemantGuard in Action (Local Mode)
-![SemantGuard Demo](images/SM_demo.gif)
+## 🎬 See SemanticGuard in Action (Local Mode)
+![SemanticGuard Demo](images/SM_demo.gif)
 
 ---
 
@@ -36,7 +36,7 @@ You ask an AI for "Feature A." It gives you "Feature A," but it also:
 - ❌ Leaks PII into logs because "it seemed faster"
 
 **Standard linters won't catch this** because the code is syntactically perfect.  
-**SemantGuard catches it** because the code is semantically wrong.
+**SemanticGuard catches it** because the code is semantically wrong.
 
 ---
 
@@ -48,19 +48,19 @@ You ask an AI for "Feature A." It gives you "Feature A," but it also:
 | 🔒 **Privacy-First** | Can Run 100% locally via Ollama (Llama 3.1/DeepSeek) by default |
 | ⚡ **Power Mode** | Switch to Cloud (Groq/OpenRouter) for 3x faster audits (sub-1s) using your own API keys |
 | 🛡️ **Intent Verification** | Catches hardcoded secrets, unsafe data flows, and "hallucinated" architecture |
-| 📁 **The Vault** | A versioned `.semantguard/` directory that stores your project's rules, history, and resolutions |
+| 📁 **The Vault** | A versioned `.SemanticGuard/` directory that stores your project's rules, history, and resolutions |
 
 ---
 
 ## 🚀 Quick Start (60 Seconds)
 
-> **Note:** SemantGuard repository is **lightweight** (~50MB). Models are downloaded separately only if you choose Local Mode.
+> **Note:** SemanticGuard repository is **lightweight** (~50MB). Models are downloaded separately only if you choose Local Mode.
 
 ### 1️⃣ Clone & Install
 
 ```bash
-git clone https://github.com/dsadsadsadsadas/SemantGuard
-cd semantguard
+git clone https://github.com/dsadsadsadsadas/SemanticGuard
+cd SemanticGuard
 pip install -r requirements.txt
 ```
 
@@ -75,7 +75,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 
 ```bash
 # Install VS Code extension
-code --install-extension extension/semantguard-gatekeeper-x.x.x.vsix  (Check the Most Recent Version)
+code --install-extension extension/SemanticGuard-gatekeeper-x.x.x.vsix  (Check the Most Recent Version)
 ```
 
 Then in VS Code, click **"Initialize Project"** in the sidebar and choose a persona:
@@ -103,10 +103,10 @@ Click **"Initialize Project"** in the sidebar. Choose a persona:
 
 ## 🏛️ The "Six Pillars" Architecture
 
-SemantGuard isn't just a prompt; it's a **state machine**. It tracks your project via:
+SemanticGuard isn't just a prompt; it's a **state machine**. It tracks your project via:
 
 ```
-.semantguard/
+.SemanticGuard/
 ├── golden_state.md    # What is allowed (ONLY Allowed)
 ├── system_rules.md    # What is forbidden ( NEVER Allowed)
 ├── done_tasks.md      # Tasks that are done
@@ -141,15 +141,15 @@ SemantGuard isn't just a prompt; it's a **state machine**. It tracks your projec
 
 ## 📐 Architectural Integrity (Golden State)
 
-Unlike traditional scanners that only hunt for bugs, SemantGuard enforces your **Golden State**—the core architectural plan of your project. It detects **Context Drift** before it becomes technical debt.
+Unlike traditional scanners that only hunt for bugs, SemanticGuard enforces your **Golden State**—the core architectural plan of your project. It detects **Context Drift** before it becomes technical debt.
 
 ### How It Works
 
-1. **Instruction**: Place a `golden_state.md` in your `.semantguard/` directory defining your "Must-Have" tools, frameworks, and patterns.
+1. **Instruction**: Place a `golden_state.md` in your `.SemanticGuard/` directory defining your "Must-Have" tools, frameworks, and patterns.
 
-2. **Enforcement**: On every save, SemantGuard audits the diff against your plan.
+2. **Enforcement**: On every save, SemanticGuard audits the diff against your plan.
 
-3. **The Result**: If your plan mandates FastAPI but the AI suggests Flask, SemantGuard blocks the save and alerts you to the drift.
+3. **The Result**: If your plan mandates FastAPI but the AI suggests Flask, SemanticGuard blocks the save and alerts you to the drift.
 
 > **"Stop the loop. Guard the intent."**
 
@@ -162,7 +162,7 @@ Unlike traditional scanners that only hunt for bugs, SemantGuard enforces your *
 
 1. **Write code** in your AI IDE (Cursor, Windsurf, etc.)
 2. **Save the file** (Ctrl+S / Cmd+S)
-3. **SemantGuard audits** the changes against your rules
+3. **SemanticGuard audits** the changes against your rules
 4. **Accept or Reject** based on the drift score
 
 ### Drift Score Interpretation
@@ -190,7 +190,7 @@ ollama serve
 
 ### Power Mode Setup
 
-1. Open SemantGuard sidebar
+1. Open SemanticGuard sidebar
 2. Click ⚙️ **Settings**
 3. Select **"Configure API Key"**
 4. Choose provider (Groq or OpenRouter)
@@ -205,7 +205,7 @@ ollama serve
 
 ## 🤝 Get Involved
 
-Built by **Ethan Baron**. If SemantGuard caught a drift for you, let me know!
+Built by **Ethan Baron**. If SemanticGuard caught a drift for you, let me know!
 
 - 🐦 **X**: [@Jsaaaron91633](https://x.com/Jsaaaron91633)
 - 💼 **LinkedIn**: [Ethan Baron](https://www.linkedin.com/in/ethan-baron-b77965374/)
@@ -223,7 +223,7 @@ This project is licensed under the GNU Affero General Public License v3.0. See [
 
 ## 🌟 Star History
 
-If SemantGuard helped you catch a drift, give it a star! ⭐
+If SemanticGuard helped you catch a drift, give it a star! ⭐
 
 ---
 
@@ -231,6 +231,6 @@ If SemantGuard helped you catch a drift, give it a star! ⭐
 
 **Made with 🛡️ by developer, for developers**
 
-[Report Bug](https://github.com/dsadsadsadsadas/SemantGuard) 
+[Report Bug](https://github.com/dsadsadsadsadas/SemanticGuard) 
 
 </div>
