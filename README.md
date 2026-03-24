@@ -107,10 +107,13 @@ SemantGuard isn't just a prompt; it's a **state machine**. It tracks your projec
 
 ```
 .semantguard/
-├── golden_state.md    # What is allowed
-├── system_rules.md    # What is forbidden
-├── task_logs.md       # Pending and completed work
-└── resolutions.md     # Memory of past bugs (never fix them twice)
+├── golden_state.md    # What is allowed (ONLY Allowed)
+├── system_rules.md    # What is forbidden ( NEVER Allowed)
+├── done_tasks.md      # Tasks that are done
+├── pending_tasks.md   # Pending Tasks
+├── problems_and_resolutions.md #Problems that occured and their Fix
+├── Walkthrough.md #What Happend Throughout the Audit
+└── 
 ```
 
 ---
