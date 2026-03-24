@@ -75,7 +75,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 
 ```bash
 # Install VS Code extension
-code --install-extension extension/SemanticGuard-gatekeeper-x.x.x.vsix  (Check the Most Recent Version)
+code --install-extension extension/SemanticGuard-gatekeeper-2.4.1.vsix  
 ```
 
 **Power Mode (Cloud-Based):**
