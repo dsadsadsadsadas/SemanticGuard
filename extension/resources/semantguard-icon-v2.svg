@@ -1,0 +1,23 @@
+<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .shield { fill: #2d2d3d; stroke: #6366f1; stroke-width: 1.5; }
+      .eye-outer { fill: none; stroke: #8b5cf6; stroke-width: 1.2; }
+      .iris { fill: #a78bfa; }
+      .pupil { fill: #c4b5fd; }
+      .glow { fill: #8b5cf6; opacity: 0.3; }
+    </style>
+  </defs>
+  
+  <!-- Glow effect -->
+  <ellipse cx="14" cy="14" rx="12" ry="12" class="glow"/>
+  
+  <!-- Shield outline -->
+  <path d="M14 3 L22 6 L22 13 Q22 19 14 25 Q6 19 6 13 L6 6 Z" class="shield"/>
+  
+  <!-- Eye -->
+  <ellipse cx="14" cy="14" rx="6" ry="4" class="eye-outer"/>
+  <circle cx="14" cy="14" r="2.5" class="iris"/>
+  <circle cx="14" cy="14" r="1.2" class="pupil"/>
+  <circle cx="14.5" cy="13.5" r="0.5" fill="white" opacity="0.9"/>
+</svg>

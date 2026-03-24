@@ -22,12 +22,11 @@ Think of it as an architectural airbag that deploys before bad code hits your re
 
 ---
 
-## See SemantGuard in Action
+## View SemantGuard Live !
+(semantGuard)[images\trepan_demo.gif]
+## 🚨 The Problem: Context Drift
 
-![SemantGuard Demo](images/SM_demo.gif)
-
----
-
+You ask an AI for "Feature A." It gives you "Feature A," but it also:
 
 - ❌ Reintroduces a security vulnerability you fixed last week
 - ❌ Ignores your architectural boundaries (e.g., puts DB logic in the View)
@@ -43,7 +42,7 @@ Think of it as an architectural airbag that deploys before bad code hits your re
 | Feature | Description |
 |---------|-------------|
 | 🧠 **Semantic Auditing** | Uses LLMs to verify code against your project's unique "Golden State" |
-| 🔒 **Privacy-First** | Runs 100% locally via Ollama (Llama 3.1/DeepSeek) by default |
+| 🔒 **Privacy-First** | Can Run 100% locally via Ollama (Llama 3.1/DeepSeek) by default |
 | ⚡ **Power Mode** | Switch to Cloud (Groq/OpenRouter) for 3x faster audits (sub-1s) using your own API keys |
 | 🛡️ **Intent Verification** | Catches hardcoded secrets, unsafe data flows, and "hallucinated" architecture |
 | 📁 **The Vault** | A versioned `.semantguard/` directory that stores your project's rules, history, and resolutions |
@@ -51,24 +50,45 @@ Think of it as an architectural airbag that deploys before bad code hits your re
 ---
 
 ## 🚀 Quick Start (60 Seconds)
+## 🚀 Quick Start (60 Seconds)
 
-### 1️⃣ Install the Extension
+> **Note:** SemantGuard repository is **lightweight** (~50MB). Models are downloaded separately only if you choose Local Mode.
+
+### 1️⃣ Clone & Install
 
 ```bash
-code --install-extension semantguard-gatekeeper-2.3.8.vsix
+git clone https://github.com/yourusername/semantguard.git
+cd semantguard
+pip install -r requirements.txt
 ```
 
 ### 2️⃣ Choose Your Engine
 
-**Local (Private):**
+**Local Mode (Privacy-First):**
 ```bash
-# Install Ollama
-ollama pull llama3.1:8b
+# Install Ollama (one-time setup)
+curl -fsSL https://ollama.com/install.sh | sh
+
+### 3️⃣ Install Extension & Initialize
+
+```bash
+# Install VS Code extension
+code --install-extension extension/semantguard-gatekeeper-2.3.8.vsix
 ```
 
-**Power (Fast):**  
-Click the ⚙️ **Gear Icon** in the SemantGuard sidebar and add your Groq or OpenRouter API key.
+Then in VS Code, click **"Initialize Project"** in the sidebar and choose a persona:
 
+- 🚀 **Solo-Indie**: Focuses on clean naming and small functions
+- 🏗️ **Architect**: Enforces DI and interface-driven design
+- 🛡️ **Fortress**: Strict security, input sanitization, and statelessness
+**Power Mode (Cloud-Based):**
+```bash
+# Start server (no model download needed)
+python start_server.py
+
+# Then configure API key in VS Code extension
+# Click ⚙️ Gear Icon → Configure API Key
+```
 ### 3️⃣ Initialize
 
 Click **"Initialize Project"** in the sidebar. Choose a persona:
@@ -98,9 +118,22 @@ SemantGuard isn't just a prompt; it's a **state machine**. It tracks your projec
 | Feature | Local Mode | Power Mode ⚡ |
 |---------|-----------|--------------|
 | **Speed** | 4-6s / audit | 0.5s - 1.5s / audit |
-| **Privacy** | 100% Offline | API-based |
-| **Best For** | Enterprise / Sensitive | Prototyping / Speed |
-| **Model** | Llama 3.1 / DeepSeek | Llama 4 Scout / Claude 3.5 |
+---
+
+## 📦 Repository Size
+
+| Component | Size | Notes |
+|-----------|------|-------|
+| **Git Clone** | ~50MB | Code only - lightweight! |
+| **Ollama Model** (optional) | ~4.7GB | Downloaded separately, not in repo |
+| **Total for Local Mode** | ~50MB + 4.7GB | Model stored in `~/.ollama/`, not in Git |
+| **Total for Power Mode** | ~50MB | No model download needed |
+
+**Important:** Model files are NEVER included in the Git repository. They are downloaded on-demand when you choose Local Mode and stored in Ollama's directory.
+
+---
+
+## 📦 Installation & SetupDeepSeek | Llama 4 Scout / Claude 3.5 |
 
 ---
 
@@ -203,8 +236,8 @@ ollama serve
 Built by **Ethan Baron**. If SemantGuard caught a drift for you, let me know!
 
 - 🐦 **X**: [@Jsaaaron91633](https://x.com/Jsaaaron91633)
-- 💼 **LinkedIn**: [Ethan Baron](https://linkedin.com/in/ethan-baron)
-- 📧 **Email**: ethan@semantguard.dev
+- 💼 **LinkedIn**: [Ethan Baron](https://www.linkedin.com/in/ethan-baron-b77965374/)
+- 📧 **Email**: ethan.baron.home@gmail.com
 
 ---
 
@@ -224,8 +257,8 @@ If SemantGuard helped you catch a drift, give us a star! ⭐
 
 <div align="center">
 
-**Made with 🛡️ by developers, for developers**
+**Made with 🛡️ by developer, for developers**
 
-[Report Bug](https://github.com/yourusername/semantguard/issues) · [Request Feature](https://github.com/yourusername/semantguard/issues) · [Documentation](https://semantguard.dev)
+[Report Bug](https://github.com/dsadsadsadsadas/SemantGuard) · [Request Feature](https://github.com/dsadsadsadsadas/SemantGuardissues) 
 
 </div>

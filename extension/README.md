@@ -1,44 +1,36 @@
 <div align="center">
 
-# 🛡️ SemantGuard Gatekeeper
+# 🛡️ SemantGuard
 
-### VS Code Extension: The Architectural Seatbelt for AI-Assisted Coding
+### The Architectural Seatbelt for AI-Assisted Coding
 
 **Stop "Vibe Coding" from drifting into architectural debt.**
 
-[![Version](https://img.shields.io/badge/version-2.3.8-blue.svg)](https://marketplace.visualstudio.com/items?itemName=trepansec.semantguard-gatekeeper)
-[![VS Code](https://img.shields.io/badge/VS%20Code-1.74.0+-007ACC?logo=visual-studio-code)](https://code.visualstudio.com/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC?logo=visual-studio-code)](https://code.visualstudio.com/)
+[![Privacy First](https://img.shields.io/badge/Privacy-First-green)](https://github.com/dsadsadsadsadas/SemantGuard)
 
 </div>
 
 ---
 
-## 🎬 See SemantGuard in Action
-
-![SemantGuard Demo](../images/SM_demo.gif)
-
----
-
 ## 🎯 What is SemantGuard?
 
-SemantGuard is a VS Code extension that acts as a **mandatory enforcement layer** between your AI IDE and your codebase. 
+SemantGuard is a VS Code extension that acts as a **mandatory enforcement layer** between your AI IDE and your codebase. While tools like Semgrep catch patterns, **SemantGuard catches intent violations**.
 
-While tools like Semgrep catch patterns, **SemantGuard catches intent violations**.
-
-> Think of it as an architectural airbag that deploys before bad code hits your repository.
+Think of it as an architectural airbag that deploys before bad code hits your repository.
 
 ---
 
+## View SemantGuard Live !
+(semantGuard)[images\trepan_demo.gif]
 ## 🚨 The Problem: Context Drift
 
 You ask an AI for "Feature A." It gives you "Feature A," but it also:
 
-```diff
 - ❌ Reintroduces a security vulnerability you fixed last week
 - ❌ Ignores your architectural boundaries (e.g., puts DB logic in the View)
 - ❌ Leaks PII into logs because "it seemed faster"
-```
 
 **Standard linters won't catch this** because the code is syntactically perfect.  
 **SemantGuard catches it** because the code is semantically wrong.
@@ -47,44 +39,167 @@ You ask an AI for "Feature A." It gives you "Feature A," but it also:
 
 ## ✨ Key Features
 
-### 🧠 Semantic Auditing
-Uses LLMs to verify code against your project's unique "Golden State"
-
-### 🔒 Privacy-First
-Runs 100% locally via Ollama (Llama 3.1/DeepSeek) by default
-
-### ⚡ Power Mode
-Switch to Cloud (Groq/OpenRouter) for 3x faster audits (sub-1s) using your own API keys
-
-### 🛡️ Intent Verification
-Catches hardcoded secrets, unsafe data flows, and "hallucinated" architecture
-
-### 📁 The Vault
-A versioned `.semantguard/` directory that stores your project's rules, history, and resolutions
+| Feature | Description |
+|---------|-------------|
+| 🧠 **Semantic Auditing** | Uses LLMs to verify code against your project's unique "Golden State" |
+| 🔒 **Privacy-First** | Can Run 100% locally via Ollama (Llama 3.1/DeepSeek) by default |
+| ⚡ **Power Mode** | Switch to Cloud (Groq/OpenRouter) for 3x faster audits (sub-1s) using your own API keys |
+| 🛡️ **Intent Verification** | Catches hardcoded secrets, unsafe data flows, and "hallucinated" architecture |
+| 📁 **The Vault** | A versioned `.semantguard/` directory that stores your project's rules, history, and resolutions |
 
 ---
 
 ## 🚀 Quick Start (60 Seconds)
+## 🚀 Quick Start (60 Seconds)
 
-### 1️⃣ Install the Extension
+> **Note:** SemantGuard repository is **lightweight** (~50MB). Models are downloaded separately only if you choose Local Mode.
 
-**From VS Code Marketplace:**
-```
-Search for "SemantGuard Gatekeeper" in VS Code Extensions
-```
+### 1️⃣ Clone & Install
 
-**Or install manually:**
 ```bash
-code --install-extension semantguard-gatekeeper-2.3.8.vsix
+git clone https://github.com/yourusername/semantguard.git
+cd semantguard
+pip install -r requirements.txt
 ```
 
 ### 2️⃣ Choose Your Engine
 
-<table>
-<tr>
-<td width="50%">
+**Local Mode (Privacy-First):**
+```bash
+# Install Ollama (one-time setup)
+curl -fsSL https://ollama.com/install.sh | sh
 
-#### 🏠 Local Mode (Private)
+### 3️⃣ Install Extension & Initialize
+
+```bash
+# Install VS Code extension
+code --install-extension extension/semantguard-gatekeeper-2.3.8.vsix
+```
+
+Then in VS Code, click **"Initialize Project"** in the sidebar and choose a persona:
+
+- 🚀 **Solo-Indie**: Focuses on clean naming and small functions
+- 🏗️ **Architect**: Enforces DI and interface-driven design
+- 🛡️ **Fortress**: Strict security, input sanitization, and statelessness
+**Power Mode (Cloud-Based):**
+```bash
+# Start server (no model download needed)
+python start_server.py
+
+# Then configure API key in VS Code extension
+# Click ⚙️ Gear Icon → Configure API Key
+```
+### 3️⃣ Initialize
+
+Click **"Initialize Project"** in the sidebar. Choose a persona:
+
+- 🚀 **Solo-Indie**: Focuses on clean naming and small functions
+- 🏗️ **Architect**: Enforces DI and interface-driven design
+- 🛡️ **Fortress**: Strict security, input sanitization, and statelessness
+
+---
+
+## 🏛️ The "Six Pillars" Architecture
+
+SemantGuard isn't just a prompt; it's a **state machine**. It tracks your project via:
+
+```
+.semantguard/
+├── golden_state.md    # What is allowed
+├── system_rules.md    # What is forbidden
+├── task_logs.md       # Pending and completed work
+└── resolutions.md     # Memory of past bugs (never fix them twice)
+```
+
+---
+
+## ⚖️ Performance & Privacy
+
+| Feature | Local Mode | Power Mode ⚡ |
+|---------|-----------|--------------|
+| **Speed** | 4-6s / audit | 0.5s - 1.5s / audit |
+---
+
+## 📦 Repository Size
+
+| Component | Size | Notes |
+|-----------|------|-------|
+| **Git Clone** | ~50MB | Code only - lightweight! |
+| **Ollama Model** (optional) | ~4.7GB | Downloaded separately, not in repo |
+| **Total for Local Mode** | ~50MB + 4.7GB | Model stored in `~/.ollama/`, not in Git |
+| **Total for Power Mode** | ~50MB | No model download needed |
+
+**Important:** Model files are NEVER included in the Git repository. They are downloaded on-demand when you choose Local Mode and stored in Ollama's directory.
+
+---
+
+## 📦 Installation & SetupDeepSeek | Llama 4 Scout / Claude 3.5 |
+
+---
+
+## 📐 Architectural Integrity (Golden State)
+
+Unlike traditional scanners that only hunt for bugs, SemantGuard enforces your **Golden State**—the core architectural plan of your project. It detects **Context Drift** before it becomes technical debt.
+
+### How It Works
+
+1. **Instruction**: Place a `golden_state.md` in your `.semantguard/` directory defining your "Must-Have" tools, frameworks, and patterns.
+
+2. **Enforcement**: On every save, SemantGuard audits the diff against your plan.
+
+3. **The Result**: If your plan mandates FastAPI but the AI suggests Flask, SemantGuard blocks the save and alerts you to the drift.
+
+> **"Stop the loop. Guard the intent."**
+
+---
+
+## 📦 Installation & Setup
+
+### Prerequisites
+
+- VS Code 1.74.0 or higher
+- Python 3.8+ (for local server)
+- Ollama (for local mode) OR API key (for power mode)
+
+### Full Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/semantguard.git
+cd semantguard
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Start the local server (if using local mode)
+python start_server.py
+
+# Install the VS Code extension
+code --install-extension extension/semantguard-gatekeeper-2.3.8.vsix
+```
+
+---
+
+## 🎮 Usage
+
+### Basic Workflow
+
+1. **Write code** in your AI IDE (Cursor, Windsurf, etc.)
+2. **Save the file** (Ctrl+S / Cmd+S)
+3. **SemantGuard audits** the changes against your rules
+4. **Accept or Reject** based on the drift score
+
+### Drift Score Interpretation
+
+- 🟢 **0.0 - 0.3**: Healthy (Auto-accept)
+- 🟡 **0.3 - 0.6**: Warning (Review recommended)
+- 🔴 **0.6 - 1.0**: Critical (Auto-reject)
+
+---
+
+## 🛠️ Configuration
+
+### Local Mode Setup
 
 ```bash
 # Install Ollama
@@ -93,222 +208,36 @@ curl -fsSL https://ollama.com/install.sh | sh
 # Pull the model
 ollama pull llama3.1:8b
 
-# Start server
+# Start Ollama server
 ollama serve
 ```
 
-**Best for:**
-- Enterprise environments
-- Sensitive codebases
-- Offline development
+### Power Mode Setup
 
-</td>
-<td width="50%">
-
-#### ⚡ Power Mode (Fast)
-
-1. Click ⚙️ **Gear Icon** in sidebar
-2. Select **"Configure API Key"**
-3. Choose provider:
-   - Groq (fastest)
-   - OpenRouter (most models)
-4. Enter your API key
-
-**Best for:**
-- Rapid prototyping
-- Personal projects
-- Speed-critical workflows
-
-</td>
-</tr>
-</table>
-
-### 3️⃣ Initialize Your Project
-
-Click **"Initialize Project"** in the SemantGuard sidebar and choose a persona:
-
-| Persona | Focus | Best For |
-|---------|-------|----------|
-| 🚀 **Solo-Indie** | Clean naming, small functions | Solo developers, startups |
-| 🏗️ **Architect** | DI, interface-driven design | Enterprise teams |
-| 🛡️ **Fortress** | Security, input sanitization | Security-critical apps |
+1. Open SemantGuard sidebar
+2. Click ⚙️ **Settings**
+3. Select **"Configure API Key"**
+4. Choose provider (Groq or OpenRouter)
+5. Enter your API key
 
 ---
 
-## 🏛️ The "Six Pillars" Architecture
+## 📚 Documentation
 
-SemantGuard isn't just a prompt; it's a **state machine** that tracks your project:
-
-```
-.semantguard/
-├── 📜 golden_state.md    # What is allowed
-├── 🚫 system_rules.md    # What is forbidden
-├── 📋 task_logs.md       # Pending and completed work
-├── 🔍 resolutions.md     # Memory of past bugs
-├── 📊 audit_history.json # Historical drift scores
-└── 🔒 .semantguard.lock  # Vault signature
-```
+- [Architecture Overview](docs/ARCHITECTURE.md)
+- [API Reference](docs/API.md)
+- [Contributing Guide](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
 
 ---
 
-## ⚖️ Performance & Privacy
+## 🤝 Get Involved
 
-| Feature | Local Mode 🏠 | Power Mode ⚡ |
-|---------|--------------|--------------|
-| **Speed** | 4-6s / audit | 0.5-1.5s / audit |
-| **Privacy** | 100% Offline | API-based |
-| **Cost** | Free | ~$0.001 / audit |
-| **Best For** | Enterprise / Sensitive | Prototyping / Speed |
-| **Models** | Llama 3.1, DeepSeek | Llama 4 Scout, Claude 3.5 |
+Built by **Ethan Baron**. If SemantGuard caught a drift for you, let me know!
 
----
-
-## 📐 How It Works: Architectural Integrity
-
-Unlike traditional scanners that only hunt for bugs, SemantGuard enforces your **Golden State**—the core architectural plan of your project.
-
-### The Workflow
-
-```mermaid
-graph LR
-    A[Write Code] --> B[Save File]
-    B --> C{SemantGuard Audit}
-    C -->|Drift < 0.3| D[✅ Auto-Accept]
-    C -->|Drift 0.3-0.6| E[⚠️ Warning Modal]
-    C -->|Drift > 0.6| F[🚫 Block Save]
-    E --> G[Review & Decide]
-    F --> H[Modify Code]
-```
-
-### Drift Score Interpretation
-
-- 🟢 **0.0 - 0.3**: Healthy (Auto-accept)
-- 🟡 **0.3 - 0.6**: Warning (Review recommended)
-- 🔴 **0.6 - 1.0**: Critical (Auto-reject)
-
-### Example: Catching Intent Drift
-
-**Your Golden State says:**
-```markdown
-## Backend Framework
-- **Required**: FastAPI
-- **Forbidden**: Flask, Django
-```
-
-**AI suggests:**
-```python
-from flask import Flask  # ❌ Drift detected!
-app = Flask(__name__)
-```
-
-**SemantGuard blocks the save:**
-```
-🚨 Context Drift Detected (Score: 0.85)
-
-Violation: Flask usage detected
-Golden State mandates: FastAPI only
-Recommendation: Rewrite using FastAPI
-```
-
-> **"Stop the loop. Guard the intent."**
-
----
-
-## 🎮 Usage Guide
-
-### Basic Commands
-
-| Command | Description |
-|---------|-------------|
-| `SemantGuard: Initialize Project` | Set up `.semantguard/` vault |
-| `SemantGuard: Toggle Airbag On/Off` | Enable/disable enforcement |
-| `SemantGuard: Show Server Status` | Check connection to inference server |
-| `SemantGuard: Configure Power Mode` | Set up API keys |
-| `SemantGuard: Audit Entire Folder` | Run full workspace audit |
-
-### Keyboard Shortcuts
-
-- `Ctrl+Shift+G` (Windows/Linux) or `Cmd+Shift+G` (Mac): Toggle SemantGuard
-- `Ctrl+Shift+A` (Windows/Linux) or `Cmd+Shift+A` (Mac): Ask SemantGuard
-
----
-
-## 🛠️ Configuration
-
-### Extension Settings
-
-```json
-{
-  "semantguard.enabled": true,
-  "semantguard.serverUrl": "http://127.0.0.1:8001",
-  "semantguard.timeoutMs": 300000,
-  "semantguard.enforcementMode": "Soft",
-  "semantguard.processor_mode": "GPU",
-  "semantguard.excludePatterns": [
-    "**/node_modules/**",
-    "**/.git/**",
-    "**/*.md",
-    "**/*.json"
-  ]
-}
-```
-
-### Enforcement Modes
-
-- **Soft**: Allows saves on network timeout (fail-open)
-- **Strict**: Blocks saves on network timeout (fail-closed)
-
----
-
-## 📊 Sidebar Features
-
-### Vault Access Panel
-
-- **Real-time drift monitoring**
-- **Audit history visualization**
-- **Quick access to pillar files**
-- **Model selection dropdown**
-- **Settings gear for configuration**
-
-### Drift Meter
-
-Visual representation of your code's alignment with the Golden State:
-
-```
-Drift Score: 0.15 🟢 HEALTHY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
----
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-**Extension not activating?**
-```bash
-# Check if server is running
-curl http://127.0.0.1:8001/health
-
-# Restart Ollama
-ollama serve
-```
-
-**Slow audits?**
-- Switch to Power Mode with Groq
-- Use GPU acceleration (Settings → Toggle CPU/GPU)
-- Reduce context window in `system_rules.md`
-
-**False positives?**
-- Refine your `golden_state.md`
-- Add exceptions to `system_rules.md`
-- Use "Update Rules" button in rejection modal
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
+- 🐦 **X**: [@Jsaaaron91633](https://x.com/Jsaaaron91633)
+- 💼 **LinkedIn**: [Ethan Baron](https://www.linkedin.com/in/ethan-baron-b77965374/)
+- 📧 **Email**: ethan.baron.home@gmail.com
 
 ---
 
@@ -316,24 +245,20 @@ We welcome contributions! See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelin
 
 **AGPLv3** — Keep it open.
 
-This extension is licensed under the GNU Affero General Public License v3.0.
+This project is licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE) for details.
 
 ---
 
-## 🌟 Support
+## 🌟 Star History
 
-Built by **Ethan Baron**. If SemantGuard caught a drift for you, let me know!
-
-- 🐦 **X**: [@Jsaaaron91633](https://x.com/Jsaaaron91633)
-- 💼 **LinkedIn**: [Ethan Baron](https://linkedin.com/in/ethan-baron)
-- 🐛 **Issues**: [GitHub Issues](https://github.com/yourusername/semantguard/issues)
+If SemantGuard helped you catch a drift, give us a star! ⭐
 
 ---
 
 <div align="center">
 
-**Made with 🛡️ by developers, for developers**
+**Made with 🛡️ by developer, for developers**
 
-[⭐ Star on GitHub](https://github.com/yourusername/semantguard) · [📖 Documentation](https://semantguard.dev) · [💬 Discord](https://discord.gg/semantguard)
+[Report Bug](https://github.com/dsadsadsadsadas/SemantGuard) · [Request Feature](https://github.com/dsadsadsadsadas/SemantGuardissues) 
 
 </div>

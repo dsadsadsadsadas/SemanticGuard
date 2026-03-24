@@ -2,7 +2,7 @@
   "name": "semantguard-gatekeeper",
   "displayName": "SemantGuard Gatekeeper 🛡️",
   "description": "Architectural airbag — blocks file saves that violate your project's .semantguard/ pillar rules.",
-  "version": "2.3.8",
+  "version": "2.4.1",
   "publisher": "trepansec",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -106,7 +106,7 @@
         {
           "id": "semantguard-sidebar",
           "title": "SemantGuard Architect",
-          "icon": "resources/trepan-shield.svg"
+          "icon": "resources/semantguard-icon-v2.svg"
         }
       ]
     },
