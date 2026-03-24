@@ -131,24 +131,6 @@ SemanticGuard isn't just a prompt; it's a **state machine**. It tracks your proj
 
 **Important:** Model files are NEVER included in the Git repository. They are downloaded on-demand when you choose Local Mode and stored in Ollama's directory.
 
-
----
-
-## 📐 Architectural Integrity (Golden State)
-
-Unlike traditional scanners that only hunt for bugs, SemanticGuard enforces your **Golden State**—the core architectural plan of your project. It detects **Context Drift** before it becomes technical debt.
-
-### How It Works
-
-1. **Instruction**: Place a `golden_state.md` in your `.SemanticGuard/` directory defining your "Must-Have" tools, frameworks, and patterns.
-
-2. **Enforcement**: On every save, SemanticGuard audits the diff against your plan.
-
-3. **The Result**: If your plan mandates FastAPI but the AI suggests Flask, SemanticGuard blocks the save and alerts you to the drift.
-
-> **"Stop the loop. Guard the intent."**
-
-
 ---
 
 ## 🎮 Usage
