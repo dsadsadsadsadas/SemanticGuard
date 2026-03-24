@@ -1,0 +1,4 @@
+*.vsix
+*.bmp
+*_no_bg.png
+extension/icons/icon512.png

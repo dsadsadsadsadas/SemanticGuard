@@ -1,0 +1,142 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+trepan_beta_test/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.agent/
+.qodo/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+*.jsonl
+
+# Node modules
+node_modules/
+extension/node_modules/
+
+# Model files and training artifacts
+Trepan_Model_V2/
+trepan-v2/
+trepan-v2_gguf/
+unsloth_compiled_cache/
+llama.cpp/
+
+# Test directories
+test_init_pillars/
+tmp/
+
+# Test files and outputs
+test_*.py
+*_test.py
+run_*.py
+run_*.txt
+*_results.txt
+*_output*.txt
+qc*.py
+qc*.js
+cool.js
+crash_test.js
+secret_test.py
+verify_*.txt
+stage*.txt
+step_configs.txt
+live_audit_out.txt
+deepseek_results.txt
+
+# Temporary markdown files
+*_FIX.md
+*_SUMMARY.md
+*_COMPARISON.md
+*_RESULTS.md
+*_NOTES.md
+check_*.md
+BYOK_*.md
+MULTI_PROVIDER_*.md
+PERFORMANCE_TRACKING_*.md
+
+# Benchmark files (keep trepan_benchmark.py)
+trepan_*_benchmark.py
+auto_isolation_test.py
+manual_isolation_test.py
+
+# Extension build artifacts
+extension/*.vsix
+extension/run_output*.txt
+
+# Batch files
+*.bat
+
+# Media
+*.mp4
+*.mov
+*.avi
+
+# Trepan specific
+.trepan/trepan_vault/
+.trepan/walkthrough_*.md
+
+# Stress test folder (local development only)
+st/
+
+# Large model files (should use Git LFS or external storage)
+*.safetensors
+*.gguf
+*.bin
+*.pt
+*.pth
+*.onnx
+*.h5
+*.pb
+
+# Model directories
+semantguard-v2/
+semantguard-v2_gguf/
+SemantGuard_Model_V2/
+
+# Extension build artifacts
+*.vsix
+extension/*.vsix
+
+# Large media files
+*.mp4
+*.mov
+*.avi
+
+# Temporary files
+*.bmp
+*_no_bg.png
+temp.*

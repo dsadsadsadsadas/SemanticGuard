@@ -1,0 +1,176 @@
+{
+  "name": "semantguard-gatekeeper",
+  "displayName": "SemantGuard Gatekeeper 🛡️",
+  "description": "Architectural airbag — blocks file saves that violate your project's .semantguard/ pillar rules.",
+  "version": "2.3.8",
+  "publisher": "trepansec",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dsadsadsadsadas/SemantGuard"
+  },
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "icon": "icons/icon128.png",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "semantguard.status",
+        "title": "SemantGuard: Show Server Status"
+      },
+      {
+        "command": "semantguard.toggleEnabled",
+        "title": "SemantGuard: Toggle Airbag On/Off"
+      },
+      {
+        "command": "semantguard.askGatekeeper",
+        "title": "🛡️ Ask SemantGuard"
+      },
+      {
+        "command": "semantguard.openLedger",
+        "title": "🛡️ Open SemantGuard Ledger"
+      },
+      {
+        "command": "semantguard.reviewWithLedger",
+        "title": "🔍 SemantGuard: Review Changes vs. Walkthrough"
+      },
+      {
+        "command": "semantguard.initializeProject",
+        "title": "⚡ SemantGuard: Initialize Project"
+      },
+      {
+        "command": "semantguard.toggleProcessor",
+        "title": "🛡️ SemantGuard: Toggle CPU/GPU Mode"
+      },
+      {
+        "command": "semantguard.selectModel",
+        "title": "SemantGuard: Select Audit Model",
+        "category": "SemantGuard"
+      },
+      {
+        "command": "semantguard.auditEntireFolder",
+        "title": "SemantGuard: Audit Entire Folder",
+        "category": "SemantGuard"
+      },
+      {
+        "command": "semantguard.configureBYOK",
+        "title": "🚀 SemantGuard: Configure Power Mode (BYOK)",
+        "category": "SemantGuard"
+      },
+      {
+        "command": "semantguard.togglePowerMode",
+        "title": "⚡ SemantGuard: Toggle Power Mode",
+        "category": "SemantGuard"
+      },
+      {
+        "command": "semantguard.toggleV2Prompts",
+        "title": "🧪 SemantGuard: Toggle V2 Prompts (Experimental)",
+        "category": "SemantGuard"
+      },
+      {
+        "command": "semantguard.debugReasoning",
+        "title": "🔍 SemantGuard: Toggle Debug Reasoning",
+        "category": "SemantGuard"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "semantguard.askGatekeeper",
+          "group": "navigation"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "semantguard.reviewWithLedger",
+          "group": "inline"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "semantguard.reviewWithLedger",
+          "group": "navigation"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "semantguard-sidebar",
+          "title": "SemantGuard Architect",
+          "icon": "resources/trepan-shield.svg"
+        }
+      ]
+    },
+    "views": {
+      "semantguard-sidebar": [
+        {
+          "id": "semantguard.explorer",
+          "name": "Logic Gate Status",
+          "type": "webview"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SemantGuard Gatekeeper",
+      "properties": {
+        "semantguard.serverUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8001",
+          "description": "URL of the SemantGuard inference server"
+        },
+        "semantguard.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable the save airbag"
+        },
+        "semantguard.timeoutMs": {
+          "type": "number",
+          "default": 300000,
+          "description": "Max ms to wait for server response before failing open"
+        },
+        "semantguard.excludePatterns": {
+          "type": "array",
+          "default": [
+            "**/node_modules/**",
+            "**/.git/**",
+            "**/*.md",
+            "**/*.json",
+            "**/*.lock"
+          ],
+          "description": "Glob patterns to skip evaluation (always allowed to save)"
+        },
+        "semantguard.enforcementMode": {
+          "type": "string",
+          "default": "Soft",
+          "enum": [
+            "Soft",
+            "Strict"
+          ],
+          "description": "If Strict, network timeouts or server unreachability will rigorously block the save instead of allowing an open-fail."
+        },
+        "semantguard.processor_mode": {
+          "type": "string",
+          "default": "GPU",
+          "enum": [
+            "GPU",
+            "CPU"
+          ],
+          "description": "Processor to use for inference (GPU for speed, CPU for battery/resource saving)"
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "fast-check": "^3.15.0"
+  }
+}

@@ -1,0 +1,268 @@
+/* 🛡️ SemantGuard Gatekeeper — Extension Styles */
+
+/* ─── Checking Badge ──────────────────────────────────────────────────────── */
+
+.semantguard-badge {
+  position: fixed;
+  bottom: 80px;
+  right: 24px;
+  z-index: 9998;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+  animation: semantguard-slide-in 0.2s ease;
+}
+
+.semantguard-badge--checking {
+  background: rgba(30, 30, 46, 0.92);
+  border: 1px solid rgba(99, 102, 241, 0.5);
+  color: #a5b4fc;
+}
+
+.semantguard-badge--accept {
+  background: rgba(20, 83, 45, 0.92);
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  color: #4ade80;
+  animation: semantguard-slide-in 0.2s ease, semantguard-fade-out 0.4s ease 1.4s forwards;
+}
+
+/* ─── Spinner ─────────────────────────────────────────────────────────────── */
+
+.semantguard-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(165,180,252,0.3);
+  border-top-color: #a5b4fc;
+  border-radius: 50%;
+  animation: semantguard-spin 0.8s linear infinite;
+}
+
+@keyframes semantguard-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Modal Overlay ───────────────────────────────────────────────────────── */
+
+#semantguard-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: semantguard-fadeoverlay 0.2s ease;
+}
+
+.semantguard-modal {
+  background: #13131f;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.1),
+    0 32px 64px rgba(0,0,0,0.6),
+    0 0 80px rgba(239, 68, 68, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  transform: translateY(24px);
+  opacity: 0;
+  transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease;
+}
+
+.semantguard-modal--enter {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* ─── Modal Header ────────────────────────────────────────────────────────── */
+
+.semantguard-modal__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.semantguard-modal__icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.semantguard-modal__title {
+  margin: 0;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #f87171;
+  letter-spacing: -0.01em;
+}
+
+/* ─── Drift Score Bar ─────────────────────────────────────────────────────── */
+
+.semantguard-modal__score-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.semantguard-modal__score-label {
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.semantguard-modal__score-bar-wrap {
+  flex: 1;
+  height: 8px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.semantguard-modal__score-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow: 0 0 8px currentColor;
+}
+
+.semantguard-modal__score-value {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  min-width: 38px;
+  text-align: right;
+}
+
+/* ─── Content Sections ────────────────────────────────────────────────────── */
+
+.semantguard-modal__section {
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.semantguard-modal__section h3 {
+  margin: 0 0 10px;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.semantguard-modal__code {
+  margin: 0;
+  padding: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #d1d5db;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.semantguard-modal__code--prompt {
+  color: #93c5fd;
+  border-color: rgba(147, 197, 253, 0.15);
+  background: rgba(59, 130, 246, 0.06);
+}
+
+/* ─── Footer Buttons ──────────────────────────────────────────────────────── */
+
+.semantguard-modal__footer {
+  display: flex;
+  gap: 10px;
+  padding: 16px 24px 20px;
+  flex-wrap: wrap;
+}
+
+.semantguard-btn {
+  flex: 1;
+  min-width: 140px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.semantguard-btn--secondary {
+  background: rgba(255,255,255,0.08);
+  color: #d1d5db;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.semantguard-btn--secondary:hover {
+  background: rgba(255,255,255,0.13);
+  color: #f9fafb;
+  border-color: rgba(255,255,255,0.2);
+}
+
+.semantguard-btn--danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.semantguard-btn--danger:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.2);
+}
+
+/* ─── Animations ──────────────────────────────────────────────────────────── */
+
+@keyframes semantguard-slide-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes semantguard-fade-out {
+  to { opacity: 0; transform: translateY(-8px); }
+}
+
+@keyframes semantguard-fadeoverlay {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ─── Scrollbar Styling ───────────────────────────────────────────────────── */
+
+.semantguard-modal::-webkit-scrollbar,
+.semantguard-modal__code::-webkit-scrollbar { width: 4px; }
+.semantguard-modal::-webkit-scrollbar-track,
+.semantguard-modal__code::-webkit-scrollbar-track { background: transparent; }
+.semantguard-modal::-webkit-scrollbar-thumb,
+.semantguard-modal__code::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }

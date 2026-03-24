@@ -1,0 +1,146 @@
+test_decorator_sink (test_sink_registry.TestSinkRegistry.test_decorator_sink) ... ERROR
+test_known_middleware (test_sink_registry.TestSinkRegistry.test_known_middleware) ... ERROR
+test_malformed_config_fallback (test_sink_registry.TestSinkRegistry.test_malformed_config_fallback) ... \u26a0\ufe0f Malformed JSON in sinks.config.json: Expecting property name enclosed in double quotes: line 1 column 3 (char 2). Falling back to default sinks.
+ERROR
+test_pattern_sink (test_sink_registry.TestSinkRegistry.test_pattern_sink) ... ERROR
+test_unknown_function (test_sink_registry.TestSinkRegistry.test_unknown_function) ... ERROR
+test_user_defined_sink (test_sink_registry.TestSinkRegistry.test_user_defined_sink) ... ERROR
+
+======================================================================
+ERROR: test_decorator_sink (test_sink_registry.TestSinkRegistry.test_decorator_sink)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\test_sink_registry.py", line 34, in test_decorator_sink
+    self.assertTrue(sink_registry.is_sink(node))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\sink_registry.py", line 68, in is_sink
+    if isinstance(node, ast.Call):
+                        ^^^
+UnboundLocalError: cannot access local variable 'ast' where it is not associated with a value
+
+======================================================================
+ERROR: test_known_middleware (test_sink_registry.TestSinkRegistry.test_known_middleware)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\test_sink_registry.py", line 24, in test_known_middleware
+    self.assertTrue(sink_registry.is_sink(node))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\sink_registry.py", line 68, in is_sink
+    if isinstance(node, ast.Call):
+                        ^^^
+UnboundLocalError: cannot access local variable 'ast' where it is not associated with a value
+
+======================================================================
+ERROR: test_malformed_config_fallback (test_sink_registry.TestSinkRegistry.test_malformed_config_fallback)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\test_sink_registry.py", line 75, in test_malformed_config_fallback
+    self.assertTrue(sink_registry.is_sink(node))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\sink_registry.py", line 68, in is_sink
+    if isinstance(node, ast.Call):
+                        ^^^
+UnboundLocalError: cannot access local variable 'ast' where it is not associated with a value
+
+======================================================================
+ERROR: test_pattern_sink (test_sink_registry.TestSinkRegistry.test_pattern_sink)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\test_sink_registry.py", line 39, in test_pattern_sink
+    self.assertTrue(sink_registry.is_sink(node))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\sink_registry.py", line 68, in is_sink
+    if isinstance(node, ast.Call):
+                        ^^^
+UnboundLocalError: cannot access local variable 'ast' where it is not associated with a value
+
+======================================================================
+ERROR: test_unknown_function (test_sink_registry.TestSinkRegistry.test_unknown_function)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\test_sink_registry.py", line 29, in test_unknown_function
+    self.assertFalse(sink_registry.is_sink(node))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\sink_registry.py", line 68, in is_sink
+    if isinstance(node, ast.Call):
+                        ^^^
+UnboundLocalError: cannot access local variable 'ast' where it is not associated with a value
+
+======================================================================
+ERROR: test_user_defined_sink (test_sink_registry.TestSinkRegistry.test_user_defined_sink)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\test_sink_registry.py", line 59, in test_user_defined_sink
+    self.assertTrue(sink_registry.is_sink(node))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\sink_registry.py", line 68, in is_sink
+    if isinstance(node, ast.Call):
+                        ^^^
+UnboundLocalError: cannot access local variable 'ast' where it is not associated with a value
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.011s
+
+FAILED (errors=6)
+
+--- DETAILED ERRORS ---
+ERROR: test_decorator_sink (test_sink_registry.TestSinkRegistry.test_decorator_sink)
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\test_sink_registry.py", line 34, in test_decorator_sink
+    self.assertTrue(sink_registry.is_sink(node))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\sink_registry.py", line 68, in is_sink
+    if isinstance(node, ast.Call):
+                        ^^^
+UnboundLocalError: cannot access local variable 'ast' where it is not associated with a value
+
+ERROR: test_known_middleware (test_sink_registry.TestSinkRegistry.test_known_middleware)
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\test_sink_registry.py", line 24, in test_known_middleware
+    self.assertTrue(sink_registry.is_sink(node))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\sink_registry.py", line 68, in is_sink
+    if isinstance(node, ast.Call):
+                        ^^^
+UnboundLocalError: cannot access local variable 'ast' where it is not associated with a value
+
+ERROR: test_malformed_config_fallback (test_sink_registry.TestSinkRegistry.test_malformed_config_fallback)
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\test_sink_registry.py", line 75, in test_malformed_config_fallback
+    self.assertTrue(sink_registry.is_sink(node))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\sink_registry.py", line 68, in is_sink
+    if isinstance(node, ast.Call):
+                        ^^^
+UnboundLocalError: cannot access local variable 'ast' where it is not associated with a value
+
+ERROR: test_pattern_sink (test_sink_registry.TestSinkRegistry.test_pattern_sink)
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\test_sink_registry.py", line 39, in test_pattern_sink
+    self.assertTrue(sink_registry.is_sink(node))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\sink_registry.py", line 68, in is_sink
+    if isinstance(node, ast.Call):
+                        ^^^
+UnboundLocalError: cannot access local variable 'ast' where it is not associated with a value
+
+ERROR: test_unknown_function (test_sink_registry.TestSinkRegistry.test_unknown_function)
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\test_sink_registry.py", line 29, in test_unknown_function
+    self.assertFalse(sink_registry.is_sink(node))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\sink_registry.py", line 68, in is_sink
+    if isinstance(node, ast.Call):
+                        ^^^
+UnboundLocalError: cannot access local variable 'ast' where it is not associated with a value
+
+ERROR: test_user_defined_sink (test_sink_registry.TestSinkRegistry.test_user_defined_sink)
+Traceback (most recent call last):
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\test_sink_registry.py", line 59, in test_user_defined_sink
+    self.assertTrue(sink_registry.is_sink(node))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\Documents\Projects\SemantGuard\semantguard_server\sink_registry.py", line 68, in is_sink
+    if isinstance(node, ast.Call):
+                        ^^^
+UnboundLocalError: cannot access local variable 'ast' where it is not associated with a value
+
