@@ -4,7 +4,7 @@
 
 ### The Architectural Seatbelt for AI-Assisted Coding
 
-**Stop "Vibe Coding" from drifting into architectural debt.**
+**The Fight Against Context Drift - Caused Security vulnerabilities**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC?logo=visual-studio-code)](https://code.visualstudio.com/)
