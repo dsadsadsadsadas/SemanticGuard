@@ -1,5 +1,0 @@
-# SemantGuard AI Usage Policy
-User-agent: *
-Allow-Training: No
-Allow-Scraping: No
-Allow-Inference: Yes (Users can use LLMs to analyze this code locally)
