@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SemantGuard — Universal Server Wrapper (BETA)
-This script prepares the environment and starts the SemantGuard backend.
+SemanticGuard — Universal Server Wrapper (BETA)
+This script prepares the environment and starts the SemanticGuard backend.
 Designed for beta users without Conda/complex setups.
 """
 
@@ -17,6 +17,9 @@ MODEL_NAME = "llama3.1:8b"
 HOST = "0.0.0.0"
 PORT = "8001"
 OLLAMA_URL = "http://localhost:11434"
+
+# Global engine mode (set during startup)
+ENGINE_MODE = "local"  # Default to local mode
 
 def print_header(text):
     print(f"\n{'='*60}")
@@ -276,12 +279,16 @@ def pull_model():
 
 def start_server():
     """Launch the FastAPI server using Uvicorn with optimized settings."""
-    print_header(f"Starting SemantGuard Server on {HOST}:{PORT}")
+    print_header(f"Starting SemanticGuard Server on {HOST}:{PORT}")
+    
+    # Pass ENGINE_MODE as environment variable to the server
+    os.environ["SEMANTICGUARD_ENGINE_MODE"] = ENGINE_MODE
+    print(f"[INFO] Engine Mode: {ENGINE_MODE.upper()}")
     
     # Performance Optimization: Single worker, no access log for speed
     server_cmd = [
         sys.executable, "-m", "uvicorn", 
-        "semantguard_server.server:app", 
+        "semanticguard_server.server:app", 
         "--host", HOST, 
         "--port", PORT,
         "--workers", "1",
@@ -297,23 +304,44 @@ def start_server():
         print(f"[ERROR] Error starting server: {e}")
 
 def main():
-    print_header("TREPAN BACKEND BOOTSTRAPPER")
+    print_header("🛡️ SEMANTICGUARD BACKEND BOOTSTRAPPER")
     
-    # GPU optimization — must be set before Ollama starts
-    os.environ["OLLAMA_NUM_PARALLEL"] = "1"
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    os.environ["OLLAMA_GPU_OVERHEAD"] = "0"
-    print("[INFO] GPU optimization flags set")
+    # ─── Boot Mode Selection ───────────────────────────────────────────────
+    print("\n🛡️ Welcome to SemanticGuard")
+    print("Choose your engine mode:")
+    print("[1] Local Mode (100% Offline, uses Ollama)")
+    print("    Note: Requires downloading Llama 3.1 8B model (~4.7 GB)")
+    print("[2] Power Mode ⚡ (Cloud API / BYOK, skips Ollama)")
     
-    if not check_ollama_installed():
-        sys.exit(1)
+    choice = input("> ").strip()
     
-    if not ensure_ollama_running():
-        sys.exit(1)
+    # Set global engine mode
+    global ENGINE_MODE
+    if choice == "2":
+        ENGINE_MODE = "power"
+        print("\n[INFO] ⚡ Power Mode selected — Ollama checks skipped")
+        print("[INFO] Layer 1 AST screener will run, Layer 2+ uses Cloud API")
+    else:
+        ENGINE_MODE = "local"
+        print("\n[INFO] 🏠 Local Mode selected — Full Ollama stack required")
         
-    if not pull_model():
-        sys.exit(1)
+        # GPU optimization — must be set before Ollama starts
+        os.environ["OLLAMA_NUM_PARALLEL"] = "1"
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+        os.environ["OLLAMA_GPU_OVERHEAD"] = "0"
+        print("[INFO] GPU optimization flags set")
         
+        # Only run Ollama checks in Local Mode
+        if not check_ollama_installed():
+            sys.exit(1)
+        
+        if not ensure_ollama_running():
+            sys.exit(1)
+            
+        if not pull_model():
+            sys.exit(1)
+    
+    # Start server with engine mode
     start_server()
 
 if __name__ == "__main__":

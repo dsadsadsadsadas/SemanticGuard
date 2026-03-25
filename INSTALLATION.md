@@ -1,8 +1,8 @@
-# 🛡️ SemantGuard Installation Guide
+# 🛡️ SemanticGuard Installation Guide
 
 ## Quick Start
 
-SemantGuard is **lightweight by design** - the repository contains only the code (~50MB). Models are downloaded separately based on your choice.
+SemanticGuard is **lightweight by design** - the repository contains only the code (~50MB). Models are downloaded separately based on your choice.
 
 ---
 
@@ -22,8 +22,8 @@ SemantGuard is **lightweight by design** - the repository contains only the code
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/semantguard.git
-   cd semantguard
+   git clone https://github.com/yourusername/semanticguard.git
+   cd semanticguard
    ```
 
 2. **Install Python dependencies**
@@ -54,7 +54,7 @@ SemantGuard is **lightweight by design** - the repository contains only the code
 
 6. **Install VS Code extension**
    ```bash
-   code --install-extension extension/semantguard-gatekeeper-2.3.8.vsix
+   code --install-extension extension/semanticguard-gatekeeper-2.3.8.vsix
    ```
 
 ---
@@ -65,8 +65,8 @@ SemantGuard is **lightweight by design** - the repository contains only the code
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/semantguard.git
-   cd semantguard
+   git clone https://github.com/yourusername/semanticguard.git
+   cd semanticguard
    ```
 
 2. **Install Python dependencies**
@@ -81,12 +81,12 @@ SemantGuard is **lightweight by design** - the repository contains only the code
 
 4. **Install VS Code extension**
    ```bash
-   code --install-extension extension/semantguard-gatekeeper-2.3.8.vsix
+   code --install-extension extension/semanticguard-gatekeeper-2.3.8.vsix
    ```
 
 5. **Configure API Key**
    - Open VS Code
-   - Click the SemantGuard icon in the sidebar
+   - Click the SemanticGuard icon in the sidebar
    - Click ⚙️ Settings
    - Select "Configure API Key"
    - Choose provider:
@@ -114,9 +114,9 @@ SemantGuard is **lightweight by design** - the repository contains only the code
 
 ### Minimal Install (Power Mode)
 ```
-semantguard/
+semanticguard/
 ├── extension/              # VS Code extension (~2MB)
-├── semantguard_server/     # Python server (~5MB)
+├── semanticguard_server/     # Python server (~5MB)
 ├── requirements.txt        # Python dependencies
 └── start_server.py         # Server launcher
 ```
@@ -124,9 +124,9 @@ semantguard/
 
 ### Full Install (Local Mode)
 ```
-semantguard/
+semanticguard/
 ├── extension/              # VS Code extension (~2MB)
-├── semantguard_server/     # Python server (~5MB)
+├── semanticguard_server/     # Python server (~5MB)
 ├── requirements.txt        # Python dependencies
 ├── start_server.py         # Server launcher
 └── ~/.ollama/models/       # Models (downloaded separately)
@@ -176,13 +176,13 @@ ollama list  # Should show llama3.1:8b or deepseek-coder
 
 ## Uninstallation
 
-### Remove SemantGuard
+### Remove SemanticGuard
 ```bash
 # Remove repository
-rm -rf semantguard/
+rm -rf semanticguard/
 
 # Remove VS Code extension
-code --uninstall-extension trepansec.semantguard-gatekeeper
+code --uninstall-extension trepansec.semanticguard-gatekeeper
 ```
 
 ### Remove Ollama Models (Optional)
@@ -205,7 +205,7 @@ rmdir /s %USERPROFILE%\.ollama\  # Windows
 
 - Read the [README](README.md) for feature overview
 - Check [ARCHITECTURE.md](docs/ARCHITECTURE.md) for technical details
-- Join our [Discord](https://discord.gg/semantguard) for support
+- Join our [Discord](https://discord.gg/semanticguard) for support
 
 ---
 

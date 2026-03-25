@@ -1,10 +1,10 @@
 "use strict";
 
 /**
- * 🛡️ SemantGuard Gatekeeper — VS Code Airbag Extension
+ * 🛡️ SemanticGuard Gatekeeper — VS Code Airbag Extension
  *
  * Hooks into onWillSaveTextDocument. When a file is about to be saved,
- * it sends the code + .semantguard/ pillars to the local SemantGuard inference server.
+ * it sends the code + .semanticguard/ pillars to the local SemanticGuard inference server.
  * If the server returns REJECT, the save is physically blocked in VS Code.
  *
  * Fail-open: if the server is offline or slow, the save proceeds normally.
@@ -43,7 +43,7 @@ async function getWSLIP() {
 
         return null;
     } catch (error) {
-        console.log(`[SEMANTGUARD WSL] Could not get WSL IP: ${error.message}`);
+        console.log(`[SEMANTICGUARD WSL] Could not get WSL IP: ${error.message}`);
         return null;
     }
 }
@@ -58,16 +58,16 @@ async function discoverServerURL(basePort = 8001) {
         try {
             const res = await fetchWithTimeout(`${discoveredServerUrl}/health`, {}, 2000);
             if (res.ok) {
-                console.log(`[SEMANTGUARD WSL] ✅ Using cached URL: ${discoveredServerUrl}`);
+                console.log(`[SEMANTICGUARD WSL] ✅ Using cached URL: ${discoveredServerUrl}`);
                 return discoveredServerUrl;
             }
         } catch (error) {
-            console.log(`[SEMANTGUARD WSL] ❌ Cached URL failed: ${discoveredServerUrl}, rediscovering...`);
+            console.log(`[SEMANTICGUARD WSL] ❌ Cached URL failed: ${discoveredServerUrl}, rediscovering...`);
             discoveredServerUrl = null;
         }
     }
 
-    const cfg = vscode.workspace.getConfiguration("semantguard");
+    const cfg = vscode.workspace.getConfiguration("semanticguard");
     const configuredUrl = cfg.get("serverUrl");
 
     let targetPorts = [basePort]; // Try basePort (8001) first
@@ -86,14 +86,14 @@ async function discoverServerURL(basePort = 8001) {
     targetPorts = [...new Set(targetPorts)];
 
     // Print the primary port in the diagnostic run
-    console.log(`[SEMANTGUARD WSL] Target Port: ${targetPorts[0]}`);
+    console.log(`[SEMANTICGUARD WSL] Target Port: ${targetPorts[0]}`);
 
     const candidateURLs = [];
 
     // Add WSL IP if available
     const wslIP = await getWSLIP();
     if (wslIP) {
-        console.log(`[SEMANTGUARD WSL] Discovered WSL IP: ${wslIP}`);
+        console.log(`[SEMANTICGUARD WSL] Discovered WSL IP: ${wslIP}`);
     }
 
     // Generate candidates for all target ports
@@ -105,7 +105,7 @@ async function discoverServerURL(basePort = 8001) {
         }
     }
 
-    console.log(`[SEMANTGUARD WSL] Testing connection URLs: ${candidateURLs.join(', ')}`);
+    console.log(`[SEMANTICGUARD WSL] Testing connection URLs: ${candidateURLs.join(', ')}`);
 
     // We implement a robust retry mechanism (hammering localhost) to wake up sleeping WSL network adapters.
     const MAX_RETRIES = 3;
@@ -113,14 +113,14 @@ async function discoverServerURL(basePort = 8001) {
     for (const url of candidateURLs) {
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-                console.log(`[SEMANTGUARD WSL] Testing (Attempt ${attempt}/${MAX_RETRIES}): ${url}`);
+                console.log(`[SEMANTICGUARD WSL] Testing (Attempt ${attempt}/${MAX_RETRIES}): ${url}`);
                 // Increased timeout to 5000ms to tolerate slow WSL bridge wake-ups
                 const res = await fetchWithTimeout(`${url}/health`, {}, 5000);
 
                 if (res.ok) {
                     const data = await res.json();
-                    console.log(`[SEMANTGUARD WSL] ✅ Connected to: ${url}`);
-                    console.log(`[SEMANTGUARD WSL] Server status: ${JSON.stringify(data)}`);
+                    console.log(`[SEMANTICGUARD WSL] ✅ Connected to: ${url}`);
+                    console.log(`[SEMANTICGUARD WSL] Server status: ${JSON.stringify(data)}`);
 
                     // Cache the successful URL
                     discoveredServerUrl = url;
@@ -129,14 +129,14 @@ async function discoverServerURL(basePort = 8001) {
             } catch (error) {
                 // Wait briefly before retrying this specific URL
                 if (attempt < MAX_RETRIES) {
-                    console.log(`[SEMANTGUARD WSL] ⚠️ Attempt ${attempt} failed on ${url}, retrying in 500ms...`);
+                    console.log(`[SEMANTICGUARD WSL] ⚠️ Attempt ${attempt} failed on ${url}, retrying in 500ms...`);
                     await new Promise(resolve => setTimeout(resolve, 500));
                 }
             }
         }
     }
 
-    console.log(`[SEMANTGUARD WSL] ❌ All connection attempts failed after ${MAX_RETRIES} retries. (Tested ports: ${targetPorts.join(', ')})`);
+    console.log(`[SEMANTICGUARD WSL] ❌ All connection attempts failed after ${MAX_RETRIES} retries. (Tested ports: ${targetPorts.join(', ')})`);
     return null;
 }
 
@@ -195,30 +195,30 @@ const saveEvaluationQueue = new SaveQueue();
  */
 async function detectPivot(document, projectRoot) {
     try {
-        console.log('[SEMANTGUARD PIVOT] Checking for pivots in:', document.fileName);
+        console.log('[SEMANTICGUARD PIVOT] Checking for pivots in:', document.fileName);
 
         // 1. Get git diff for this file
         const diff = await getGitDiff(document.fileName, projectRoot);
         if (!diff) {
-            console.log('[SEMANTGUARD PIVOT] No git diff available');
+            console.log('[SEMANTICGUARD PIVOT] No git diff available');
             return;
         }
 
         // 2. Detect removed technologies
         const removedTechs = detectRemovedTechs(diff);
         if (removedTechs.length === 0) {
-            console.log('[SEMANTGUARD PIVOT] No technologies removed');
+            console.log('[SEMANTICGUARD PIVOT] No technologies removed');
             return;
         }
 
-        console.log('[SEMANTGUARD PIVOT] Removed technologies:', removedTechs);
+        console.log('[SEMANTICGUARD PIVOT] Removed technologies:', removedTechs);
 
         // 3. Read problems_and_resolutions.md
         const problems = await readProblemsFile(projectRoot);
         const unresolvedProblems = problems.filter(p => p.status === 'UNRESOLVED');
 
         if (unresolvedProblems.length === 0) {
-            console.log('[SEMANTGUARD PIVOT] No unresolved problems found');
+            console.log('[SEMANTICGUARD PIVOT] No unresolved problems found');
             return;
         }
 
@@ -235,14 +235,14 @@ async function detectPivot(document, projectRoot) {
         // 5. If pivots detected, trigger evolution
         if (pivots.length > 0) {
             for (const pivot of pivots) {
-                console.log(`[SEMANTGUARD PIVOT] 🔄 PIVOT DETECTED: Removed ${pivot.tech} after problem`);
+                console.log(`[SEMANTICGUARD PIVOT] 🔄 PIVOT DETECTED: Removed ${pivot.tech} after problem`);
 
                 // Call /evolve_memory
                 await triggerEvolution(projectRoot, pivot.tech);
             }
         }
     } catch (error) {
-        console.error('[SEMANTGUARD PIVOT] Error detecting pivot:', error);
+        console.error('[SEMANTICGUARD PIVOT] Error detecting pivot:', error);
     }
 }
 
@@ -266,7 +266,7 @@ async function getGitDiff(fileName, projectRoot) {
 
         return stdout;
     } catch (error) {
-        console.log('[SEMANTGUARD PIVOT] Git diff failed:', error.message);
+        console.log('[SEMANTICGUARD PIVOT] Git diff failed:', error.message);
         return null;
     }
 }
@@ -309,11 +309,11 @@ function detectRemovedTechs(diff) {
  */
 async function readProblemsFile(projectRoot) {
     try {
-        const problemsPath = path.join(projectRoot, '.semantguard', 'problems_and_resolutions.md');
+        const problemsPath = path.join(projectRoot, '.semanticguard', 'problems_and_resolutions.md');
         const content = fs.readFileSync(problemsPath, 'utf-8');
         return parseProblems(content);
     } catch (error) {
-        console.log('[SEMANTGUARD PIVOT] Could not read problems file:', error.message);
+        console.log('[SEMANTICGUARD PIVOT] Could not read problems file:', error.message);
         return [];
     }
 }
@@ -347,7 +347,7 @@ function parseProblems(content) {
  */
 async function triggerEvolution(projectRoot, tech) {
     try {
-        const cfg = vscode.workspace.getConfiguration("semantguard");
+        const cfg = vscode.workspace.getConfiguration("semanticguard");
         let serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8001";
 
         // Try to use discovered URL
@@ -356,7 +356,7 @@ async function triggerEvolution(projectRoot, tech) {
             serverUrl = discoveredUrl;
         }
 
-        console.log(`[SEMANTGUARD PIVOT] Calling /evolve_memory at ${serverUrl}`);
+        console.log(`[SEMANTICGUARD PIVOT] Calling /evolve_memory at ${serverUrl}`);
 
         const response = await fetchWithTimeout(`${serverUrl}/evolve_memory`, {
             method: 'POST',
@@ -366,17 +366,17 @@ async function triggerEvolution(projectRoot, tech) {
 
         if (response.ok) {
             const result = await response.json();
-            console.log('[SEMANTGUARD PIVOT] ✅ Evolution triggered successfully:', result);
+            console.log('[SEMANTICGUARD PIVOT] ✅ Evolution triggered successfully:', result);
 
             // Show notification to user
             vscode.window.showInformationMessage(
-                `✅ SemantGuard learned from pivot: Added rule "DO NOT USE ${tech.toUpperCase()}"`
+                `✅ SemanticGuard learned from pivot: Added rule "DO NOT USE ${tech.toUpperCase()}"`
             );
         } else {
-            console.error('[SEMANTGUARD PIVOT] Evolution failed:', response.status, response.statusText);
+            console.error('[SEMANTICGUARD PIVOT] Evolution failed:', response.status, response.statusText);
         }
     } catch (error) {
-        console.error('[SEMANTGUARD PIVOT] Error triggering evolution:', error);
+        console.error('[SEMANTICGUARD PIVOT] Error triggering evolution:', error);
     }
 }
 
@@ -386,35 +386,35 @@ async function triggerEvolution(projectRoot, tech) {
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
-    console.log("🛡️ SemantGuard Gatekeeper: Airbag active");
+    console.log("🛡️ SemanticGuard Gatekeeper: Airbag active");
 
     // Export context for use in other functions
-    if (!global.semantguardContext) {
-        global.semantguardContext = context;
+    if (!global.semanticguardContext) {
+        global.semanticguardContext = context;
     }
 
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider("semantguard.explorer", semantguardSidebarProvider)
+        vscode.window.registerWebviewViewProvider("semanticguard.explorer", semanticguardSidebarProvider)
     );
 
     // Initialize Output Channel (Global Singleton)
-    outputChannel = vscode.window.createOutputChannel("SemantGuard Gatekeeper");
+    outputChannel = vscode.window.createOutputChannel("SemanticGuard Gatekeeper");
     context.subscriptions.push(outputChannel);
     
     // Status bar pill
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    statusBarItem.command = "semantguard.status";
+    statusBarItem.command = "semanticguard.status";
     updateStatusBar(context);
     statusBarItem.show();
     context.subscriptions.push(statusBarItem);
 
     // Commands
     context.subscriptions.push(
-        vscode.commands.registerCommand("semantguard.status", showStatus),
-        vscode.commands.registerCommand("semantguard.toggleEnabled", toggleEnabled)
+        vscode.commands.registerCommand("semanticguard.status", showStatus),
+        vscode.commands.registerCommand("semanticguard.toggleEnabled", toggleEnabled)
     );
 
-    let askCommand = vscode.commands.registerCommand('semantguard.askGatekeeper', async () => {
+    let askCommand = vscode.commands.registerCommand('semanticguard.askGatekeeper', async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) return;
 
@@ -427,31 +427,31 @@ function activate(context) {
             return;
         }
 
-        vscode.window.showInformationMessage(`Asking SemantGuard about: "${highlightedText}"...`);
+        vscode.window.showInformationMessage(`Asking SemanticGuard about: "${highlightedText}"...`);
 
         // Send logic to the sidebar UI
-        semantguardSidebarProvider.sendMessage({
+        semanticguardSidebarProvider.sendMessage({
             type: 'log',
             title: 'User Asked',
             thought: 'Sending selection to Meta-Gate: ' + highlightedText
         });
     });
 
-    let openLedgerCommand = vscode.commands.registerCommand('semantguard.openLedger', async () => {
+    let openLedgerCommand = vscode.commands.registerCommand('semanticguard.openLedger', async () => {
         const folders = vscode.workspace.workspaceFolders;
         if (!folders?.length) {
-            vscode.window.showErrorMessage("SemantGuard: No workspace open.");
+            vscode.window.showErrorMessage("SemanticGuard: No workspace open.");
             return;
         }
 
-        const semantguardDir = path.join(folders[0].uri.fsPath, ".semantguard");
+        const semanticguardDir = path.join(folders[0].uri.fsPath, ".semanticguard");
         let ledgerPath = null;
 
-        if (fs.existsSync(semantguardDir)) {
-            const files = fs.readdirSync(semantguardDir);
+        if (fs.existsSync(semanticguardDir)) {
+            const files = fs.readdirSync(semanticguardDir);
             const walkthroughFile = files.find(f => f.toLowerCase().startsWith("walkthrough"));
             if (walkthroughFile) {
-                ledgerPath = path.join(semantguardDir, walkthroughFile);
+                ledgerPath = path.join(semanticguardDir, walkthroughFile);
             }
         }
 
@@ -459,36 +459,36 @@ function activate(context) {
             const doc = await vscode.workspace.openTextDocument(ledgerPath);
             await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside });
         } else {
-            vscode.window.showInformationMessage("SemantGuard: Walkthrough ledger not found yet. It will be generated on your next save.");
+            vscode.window.showInformationMessage("SemanticGuard: Walkthrough ledger not found yet. It will be generated on your next save.");
         }
     });
 
-    let reviewChangesCommand = vscode.commands.registerCommand('semantguard.reviewWithLedger', async () => {
+    let reviewChangesCommand = vscode.commands.registerCommand('semanticguard.reviewWithLedger', async () => {
         const folders = vscode.workspace.workspaceFolders;
         if (!folders?.length) {
-            vscode.window.showErrorMessage("SemantGuard: No workspace open.");
+            vscode.window.showErrorMessage("SemanticGuard: No workspace open.");
             return;
         }
 
         const activeEditor = vscode.window.activeTextEditor;
         if (!activeEditor) {
-            vscode.window.showInformationMessage("SemantGuard: Open a file first to review changes.");
+            vscode.window.showInformationMessage("SemanticGuard: Open a file first to review changes.");
             return;
         }
 
-        const semantguardDir = path.join(folders[0].uri.fsPath, ".semantguard");
+        const semanticguardDir = path.join(folders[0].uri.fsPath, ".semanticguard");
         let ledgerPath = null;
 
-        if (fs.existsSync(semantguardDir)) {
-            const files = fs.readdirSync(semantguardDir);
+        if (fs.existsSync(semanticguardDir)) {
+            const files = fs.readdirSync(semanticguardDir);
             const walkthroughFile = files.find(f => f.toLowerCase().startsWith("walkthrough"));
             if (walkthroughFile) {
-                ledgerPath = path.join(semantguardDir, walkthroughFile);
+                ledgerPath = path.join(semanticguardDir, walkthroughFile);
             }
         }
 
         if (!ledgerPath || !fs.existsSync(ledgerPath)) {
-            vscode.window.showInformationMessage("SemantGuard: Walkthrough ledger not found yet. It will be generated on your next save.");
+            vscode.window.showInformationMessage("SemanticGuard: Walkthrough ledger not found yet. It will be generated on your next save.");
             return;
         }
 
@@ -517,23 +517,23 @@ function activate(context) {
             preserveFocus: false
         });
 
-        vscode.window.showInformationMessage("📋 SemantGuard: Code (left) | Audit Ledger (right)");
+        vscode.window.showInformationMessage("📋 SemanticGuard: Code (left) | Audit Ledger (right)");
     });
 
-    let initializeProjectCommand = vscode.commands.registerCommand('semantguard.initializeProject', async () => {
+    let initializeProjectCommand = vscode.commands.registerCommand('semanticguard.initializeProject', async () => {
         const folders = vscode.workspace.workspaceFolders;
         if (!folders?.length) {
-            vscode.window.showErrorMessage("SemantGuard: No workspace open. Please open a folder first.");
+            vscode.window.showErrorMessage("SemanticGuard: No workspace open. Please open a folder first.");
             return;
         }
 
         const projectPath = folders[0].uri.fsPath;
-        const semantguardDir = path.join(projectPath, ".semantguard");
+        const semanticguardDir = path.join(projectPath, ".semanticguard");
 
         // Check if already initialized
-        if (fs.existsSync(semantguardDir)) {
+        if (fs.existsSync(semanticguardDir)) {
             const choice = await vscode.window.showWarningMessage(
-                "SemantGuard is already initialized in this project. Reinitialize?",
+                "SemanticGuard is already initialized in this project. Reinitialize?",
                 { modal: true },
                 "Yes, Reinitialize",
                 "Cancel"
@@ -567,7 +567,7 @@ function activate(context) {
 
         const selected = await vscode.window.showQuickPick(templates, {
             placeHolder: "Choose your architectural style",
-            title: "SemantGuard: Golden Template Selection"
+            title: "SemanticGuard: Golden Template Selection"
         });
 
         if (!selected) {
@@ -577,18 +577,18 @@ function activate(context) {
         // Show progress
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: "SemantGuard: Initializing Project",
+            title: "SemanticGuard: Initializing Project",
             cancellable: false
         }, async (progress) => {
-            progress.report({ message: "Creating .semantguard directory..." });
+            progress.report({ message: "Creating .semanticguard directory..." });
 
-            const cfg = vscode.workspace.getConfiguration("semantguard");
+            const cfg = vscode.workspace.getConfiguration("semanticguard");
             const serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8001";
 
             try {
                 progress.report({ message: "Generating golden template..." });
 
-                const processorMode = vscode.workspace.getConfiguration("semantguard").get("processor_mode") || "GPU";
+                const processorMode = vscode.workspace.getConfiguration("semanticguard").get("processor_mode") || "GPU";
                 const response = await fetchWithTimeout(`${serverUrl}/initialize_project`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -609,8 +609,8 @@ function activate(context) {
                 progress.report({ message: "Opening generated files..." });
 
                 // Open system_rules.md and golden_state.md
-                const rulesPath = path.join(semantguardDir, "system_rules.md");
-                const goldenPath = path.join(semantguardDir, "golden_state.md");
+                const rulesPath = path.join(semanticguardDir, "system_rules.md");
+                const goldenPath = path.join(semanticguardDir, "golden_state.md");
 
                 if (fs.existsSync(rulesPath)) {
                     const rulesDoc = await vscode.workspace.openTextDocument(rulesPath);
@@ -623,39 +623,39 @@ function activate(context) {
                 }
 
                 vscode.window.showInformationMessage(
-                    `✅ SemantGuard initialized with ${selected.label}! Review your system_rules.md and golden_state.md.`
+                    `✅ SemanticGuard initialized with ${selected.label}! Review your system_rules.md and golden_state.md.`
                 );
 
             } catch (error) {
-                vscode.window.showErrorMessage(`SemantGuard initialization failed: ${error.message}`);
-                console.error("SemantGuard initialization error:", error);
+                vscode.window.showErrorMessage(`SemanticGuard initialization failed: ${error.message}`);
+                console.error("SemanticGuard initialization error:", error);
             }
         });
     });
 
-    let toggleProcessorCommand = vscode.commands.registerCommand('semantguard.toggleProcessor', async () => {
-        const cfg = vscode.workspace.getConfiguration("semantguard");
+    let toggleProcessorCommand = vscode.commands.registerCommand('semanticguard.toggleProcessor', async () => {
+        const cfg = vscode.workspace.getConfiguration("semanticguard");
         const currentMode = cfg.get("processor_mode") ?? "GPU";
         
         const selection = await vscode.window.showQuickPick([
             { label: "GPU", description: "Use Ollama/HuggingFace GPU Acceleration (Default)", picked: currentMode === "GPU" },
             { label: "CPU", description: "Use Local CPU Inference (Lower performance)", picked: currentMode === "CPU" }
         ], {
-            placeHolder: `Select SemantGuard Inference Processor (Current: ${currentMode})`,
-            title: "🛡️ SemantGuard: Processor Configuration"
+            placeHolder: `Select SemanticGuard Inference Processor (Current: ${currentMode})`,
+            title: "🛡️ SemanticGuard: Processor Configuration"
         });
 
         if (selection) {
             const newMode = selection.label;
             await cfg.update("processor_mode", newMode, vscode.ConfigurationTarget.Global);
             vscode.window.showInformationMessage(
-                `🛡️ SemantGuard: Switched to ${newMode} mode. This setting will be applied to your next audit.`
+                `🛡️ SemanticGuard: Switched to ${newMode} mode. This setting will be applied to your next audit.`
             );
         }
     });
 
     const selectModelCmd = vscode.commands.registerCommand(
-        "semantguard.selectModel",
+        "semanticguard.selectModel",
         async () => {
             const picked = await vscode.window.showQuickPick(
                 MODEL_OPTIONS.map(opt => ({
@@ -665,7 +665,7 @@ function activate(context) {
                 })),
                 {
                     placeHolder: `Current model: ${_selectedModel}. Choose your audit mode.`,
-                    title: "SemantGuard: Select Audit Model"
+                    title: "SemanticGuard: Select Audit Model"
                 }
             );
 
@@ -673,19 +673,19 @@ function activate(context) {
                 _selectedModel = picked.model;
                 const modeName = picked.model === "llama3.1:8b" ? "Fast Mode ⚡" : "Smart Mode 🧠";
                 vscode.window.showInformationMessage(
-                    `SemantGuard switched to ${modeName} (${picked.model})`
+                    `SemanticGuard switched to ${modeName} (${picked.model})`
                 );
-                console.log(`[SEMANTGUARD] Model switched to: ${_selectedModel}`);
+                console.log(`[SEMANTICGUARD] Model switched to: ${_selectedModel}`);
             }
         }
     );
 
     const auditFolderCmd = vscode.commands.registerCommand(
-        "semantguard.auditEntireFolder",
+        "semanticguard.auditEntireFolder",
         async () => {
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (!workspaceFolders) {
-                vscode.window.showErrorMessage("SemantGuard: No workspace folder open.");
+                vscode.window.showErrorMessage("SemanticGuard: No workspace folder open.");
                 return;
             }
             
@@ -705,7 +705,7 @@ function activate(context) {
                     })),
                     {
                         placeHolder: "Select folder to audit",
-                        title: "🛡️ SemantGuard: Choose Folder for Full Audit"
+                        title: "🛡️ SemanticGuard: Choose Folder for Full Audit"
                     }
                 );
                 
@@ -730,7 +730,7 @@ function activate(context) {
                 }
             ], {
                 placeHolder: "Audit entire folder or pick a subfolder?",
-                title: "🛡️ SemantGuard: Folder Audit Scope"
+                title: "🛡️ SemanticGuard: Folder Audit Scope"
             });
             
             if (!pickSubfolder) {
@@ -753,15 +753,15 @@ function activate(context) {
                 targetFolder = selectedFolder[0];
             }
             
-            const extensionContext = global.semantguardContext;
+            const extensionContext = global.semanticguardContext;
             if (!extensionContext) {
-                vscode.window.showErrorMessage("SemantGuard: Extension context not available. Please reload VS Code.");
+                vscode.window.showErrorMessage("SemanticGuard: Extension context not available. Please reload VS Code.");
                 return;
             }
-            const isPowerMode = extensionContext.globalState.get('semantguard.mode') === 'cloud';
+            const isPowerMode = extensionContext.globalState.get('semanticguard.mode') === 'cloud';
             
             // Get server URL
-            const cfg = vscode.workspace.getConfiguration("semantguard");
+            const cfg = vscode.workspace.getConfiguration("semanticguard");
             let serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8001";
             
             // Try to use discovered URL if available
@@ -773,23 +773,34 @@ function activate(context) {
             // Get current model for latency calculation
             let currentModel = _selectedModel; // Local mode model
             if (isPowerMode) {
-                const provider = extensionContext.globalState.get('semantguard.provider') || 'openrouter';
+                const provider = extensionContext.globalState.get('semanticguard.provider') || 'openrouter';
                 const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
                 currentModel = extensionContext.globalState.get(modelKey) || '';
             }
             
-            // Determine latency based on model
-            let interFileLatency = 3000; // Default 3 seconds for llama3
-            if (currentModel.toLowerCase().includes('llama-4') || currentModel.toLowerCase().includes('llama4')) {
-                interFileLatency = 1500; // 1.5 seconds for llama4
-            }
-            
-            console.log(`[SEMANTGUARD FOLDER AUDIT] Using model: ${currentModel}, inter-file latency: ${interFileLatency}ms`);
+            console.log(`[SEMANTICGUARD FOLDER AUDIT] Using model: ${currentModel}`);
             
             // Warn about cost if Power Mode
             if (isPowerMode) {
+                // Detect TPM before showing confirmation
+                const provider = context.globalState.get('semanticguard.provider') || 'groq';
+                const keyName = provider === 'openrouter' ? 'openrouter_api_key' : 'groq_api_key';
+                const apiKey = await context.secrets.get(keyName);
+                const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
+                const cloudModelName = context.globalState.get(modelKey) || 'meta-llama/llama-4-scout-17b-16e-instruct';
+                
+                let tpmMessage = "";
+                if (apiKey) {
+                    const { TokenBucket, detectModelLimits } = require(path.join(context.extensionPath, 'token-bucket.js'));
+                    const { maxRpm, maxTpm } = await detectModelLimits(apiKey, cloudModelName);
+                    tpmMessage = `\n\nDetected Rate Limits: ${maxTpm.toLocaleString()} TPM, ~${maxRpm} RPM (estimated)`;
+                    if (maxTpm >= 500000) {
+                        tpmMessage += `\n🎉 Upgraded Account Detected!`;
+                    }
+                }
+                
                 const confirm = await vscode.window.showWarningMessage(
-                    "🔍 SemantGuard: Full folder audit will send every file to the Cloud API. This may incur API costs. Continue?",
+                    `🔍 SemanticGuard: Full folder audit will send every file to the Cloud API. This may incur API costs.${tpmMessage}\n\nContinue?`,
                     "Audit Entire Folder",
                     "Cancel"
                 );
@@ -802,7 +813,7 @@ function activate(context) {
             // Directories to skip
             const SKIP_DIRS = new Set([
                 'node_modules', '.git', 'dist', 'build', 'venv', '.venv',
-                '__pycache__', '.semantguard', 'semantguard_vault', 'coverage', '.next'
+                '__pycache__', '.semanticguard', 'semanticguard_vault', 'coverage', '.next'
             ]);
             
             // Collect all files in the target folder
@@ -817,25 +828,60 @@ function activate(context) {
             );
             
             if (auditableFiles.length === 0) {
-                vscode.window.showInformationMessage(`SemantGuard: No auditable files found in ${relativePath}.`);
+                vscode.window.showInformationMessage(`SemanticGuard: No auditable files found in ${relativePath}.`);
                 return;
             }
             
             const modeLabel = isPowerMode ? "☁️ Cloud" : "⚡ Local";
             vscode.window.showInformationMessage(
-                `🛡️ SemantGuard: Starting folder audit of ${auditableFiles.length} files in "${relativePath}" [${modeLabel} Mode]...`
+                `🛡️ SemanticGuard: Starting folder audit of ${auditableFiles.length} files in "${relativePath}" [${modeLabel} Mode]...`
             );
+            
+            // ═══ START TIMER ═══
+            const auditStartTime = Date.now();
             
             const violations = [];
             const errors = [];
             const errorDetails = {}; // Store detailed error info
             let processed = 0;
             let skipped = 0;
+            let layer1Blocked = 0; // Track files blocked by Layer 1
+            let layer2Analyzed = 0; // Track files that went to Layer 2
+            
+            // Store detected TPM for output display
+            let detectedTPM = 30000; // Default
+            let detectedRPM = 30; // Default
+            
+            // ═══ INTELLIGENT RATE LIMITING: Token Bucket ═══
+            const { TokenBucket, detectModelLimits } = require(path.join(context.extensionPath, 'token-bucket.js'));
+            
+            // Detect actual TPM limits from API
+            const provider = context.globalState.get('semanticguard.provider') || 'groq';
+            const keyName = provider === 'openrouter' ? 'openrouter_api_key' : 'groq_api_key';
+            const apiKey = await context.secrets.get(keyName);
+            
+            // CRITICAL FIX: Use CLOUD model, not local model
+            const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
+            const cloudModelName = context.globalState.get(modelKey) || 'meta-llama/llama-4-scout-17b-16e-instruct';
+            
+            let rateLimiter;
+            if (apiKey && isPowerMode) {
+                console.log(`[SEMANTICGUARD FOLDER AUDIT] Detecting rate limits from API for model: ${cloudModelName}...`);
+                const { maxRpm, maxTpm } = await detectModelLimits(apiKey, cloudModelName);
+                detectedTPM = maxTpm;
+                detectedRPM = maxRpm;
+                rateLimiter = new TokenBucket(maxRpm, maxTpm);
+                console.log(`[SEMANTICGUARD FOLDER AUDIT] Rate limiter initialized: ${maxTpm.toLocaleString()} TPM`);
+                console.log(`[SEMANTICGUARD FOLDER AUDIT] Token Bucket starts FULL — first ~${Math.floor(maxTpm / 5000)} files will be instant, then throttling begins`);
+            } else {
+                // Fallback to default limits
+                rateLimiter = new TokenBucket(30, 30000);
+            }
             
             // Progress notification
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: "🛡️ SemantGuard: Auditing folder...",
+                title: "🛡️ SemanticGuard: Auditing folder...",
                 cancellable: true
             }, async (progress, token) => {
                 
@@ -843,7 +889,7 @@ function activate(context) {
                     const fileUri = auditableFiles[i];
                     
                     if (token.isCancellationRequested) {
-                        console.log("[SEMANTGUARD FOLDER AUDIT] Cancelled by user");
+                        console.log("[SEMANTICGUARD FOLDER AUDIT] Cancelled by user");
                         break;
                     }
                     
@@ -867,7 +913,7 @@ function activate(context) {
                         // Skip very large files over 500 lines in local mode
                         const lineCount = code.split('\n').length;
                         if (!isPowerMode && lineCount > 500) {
-                            console.log(`[SEMANTGUARD FOLDER AUDIT] Skipping large file: ${fileRelativePath} (${lineCount} lines)`);
+                            console.log(`[SEMANTICGUARD FOLDER AUDIT] Skipping large file: ${fileRelativePath} (${lineCount} lines)`);
                             skipped++;
                             continue;
                         }
@@ -896,7 +942,7 @@ function activate(context) {
                         if (!response.ok) {
                             const errorText = await response.text().catch(() => 'Unable to read error response');
                             const errorMsg = `HTTP ${response.status}: ${errorText}`;
-                            console.error(`[SEMANTGUARD FOLDER AUDIT] Server error on ${fileRelativePath}: ${errorMsg}`);
+                            console.error(`[SEMANTICGUARD FOLDER AUDIT] Server error on ${fileRelativePath}: ${errorMsg}`);
                             errors.push(fileRelativePath);
                             errorDetails[fileRelativePath] = errorMsg;
                             processed++;
@@ -905,46 +951,110 @@ function activate(context) {
                         
                         const result = await response.json();
                         
-                        if (result.action === "REJECT" && result.violations?.length > 0) {
-                            for (const v of result.violations) {
-                                violations.push({
-                                    file: fileRelativePath,
-                                    line: v.line_number || 0,
-                                    rule: v.rule_name || v.rule_id,
-                                    reason: v.violation,
-                                    confidence: v.confidence
+                        // ═══ LAYER 1 TRACKING ═══
+                        if (result.action === "REJECT" && result.layer === "layer1") {
+                            layer1Blocked++;
+                            console.log(`[SEMANTICGUARD FOLDER AUDIT] Layer 1 BLOCKED: ${fileRelativePath}`);
+                        }
+                        
+                        // ═══ CRITICAL FIX: Handle L1_PASS in Power Mode ═══
+                        // When power_mode=true, backend returns L1_PASS if Layer 1 passes
+                        // We must then call Cloud API for Layer 2 analysis
+                        let finalResult = result;
+                        
+                        if (isPowerMode && result.action === "L1_PASS") {
+                            layer2Analyzed++;
+                            console.log(`[SEMANTICGUARD FOLDER AUDIT] L1_PASS received for ${fileRelativePath} — calling Cloud API for Layer 2`);
+                            
+                            try {
+                                // Call Cloud API directly (same as single-file save)
+                                const cloudResult = await callCloudAPI(context, {
+                                    filename: fileName,
+                                    code_snippet: code,
+                                    pillars: pillars,
+                                    project_path: vscode.workspace.workspaceFolders[0].uri.fsPath
                                 });
+                                
+                                finalResult = cloudResult;
+                                console.log(`[SEMANTICGUARD FOLDER AUDIT] Cloud API returned: ${cloudResult.action} with ${cloudResult.findings?.length || 0} findings`);
+                            } catch (cloudError) {
+                                console.error(`[SEMANTICGUARD FOLDER AUDIT] Cloud API failed for ${fileRelativePath}:`, cloudError);
+                                
+                                // Check for 429 rate limit error
+                                if (cloudError.message && cloudError.message.includes('429')) {
+                                    console.log(`[SEMANTICGUARD FOLDER AUDIT] 429 Rate Limit detected — setting global pause`);
+                                    await rateLimiter.setGlobalPause(30);
+                                }
+                                
+                                // Fall back to L1_PASS result (treat as safe)
+                                finalResult = result;
+                            }
+                        }
+                        
+                        // Handle both old violations format and new findings format
+                        if (finalResult.action === "REJECT") {
+                            if (finalResult.findings?.length > 0) {
+                                // New V2 findings format
+                                for (const f of finalResult.findings) {
+                                    violations.push({
+                                        file: fileRelativePath,
+                                        line: f.line_number || 0,
+                                        rule: f.rule_id || f.vulnerability_type || "Security Issue",
+                                        reason: f.description || "Security vulnerability detected",
+                                        confidence: "HIGH",
+                                        severity: f.severity || "MEDIUM"
+                                    });
+                                }
+                            } else if (finalResult.violations?.length > 0) {
+                                // Old violations format
+                                for (const v of finalResult.violations) {
+                                    violations.push({
+                                        file: fileRelativePath,
+                                        line: v.line_number || 0,
+                                        rule: v.rule_name || v.rule_id,
+                                        reason: v.violation,
+                                        confidence: v.confidence
+                                    });
+                                }
                             }
                         }
                         
                         processed++;
                         
-                        // Smart token-aware latency (except for the last file)
-                        if (i < auditableFiles.length - 1) {
+                        // ═══ INTELLIGENT RATE LIMITING: Token Bucket ═══
+                        if (i < auditableFiles.length - 1 && isPowerMode) {
                             // Load system rules for token estimation
-                            const systemRules = await loadSystemRules();
+                            const systemRules = loadSystemRules(vscode.workspace.workspaceFolders[0].uri.fsPath);
                             const systemPrompt = systemRules || '';
                             
                             // Token estimation: ~4 characters per token
-                            const estimatedTokens = (systemPrompt.length + code.length) / 4;
+                            // Account for: system prompt + code + response (2000 tokens)
+                            const estimatedTokens = Math.floor((systemPrompt.length + code.length) / 4) + 2000;
                             
-                            // Target: 30,000 tokens per minute
-                            const TARGET_TPM = 30000;
+                            // Use Token Bucket for precise rate limiting
+                            const waitTime = await rateLimiter.consumeWithWait(estimatedTokens);
                             
-                            // Calculate dynamic delay in milliseconds
-                            let delayMs = (estimatedTokens / TARGET_TPM) * 60000;
-                            
-                            // Minimum 300ms safety net for RPM limits
-                            delayMs = Math.max(delayMs, 300);
-                            
-                            console.log(`[SEMANTGUARD FOLDER AUDIT] Smart latency: ${Math.round(delayMs)}ms (${Math.round(estimatedTokens)} tokens)`);
-                            await new Promise(resolve => setTimeout(resolve, delayMs));
+                            if (waitTime === -1) {
+                                // File too large, skip it
+                                console.log(`[SEMANTICGUARD FOLDER AUDIT] File too large (${estimatedTokens.toLocaleString()} tokens), skipping: ${fileRelativePath}`);
+                                skipped++;
+                                continue;
+                            } else if (waitTime > 0) {
+                                console.log(`[SEMANTICGUARD FOLDER AUDIT] Token bucket wait: ${waitTime.toFixed(2)}s for ${estimatedTokens.toLocaleString()} tokens (bucket state: ${rateLimiter.getState().tokens.toLocaleString()}/${rateLimiter.getState().capacity.toLocaleString()})`);
+                            } else {
+                                // Log instant processing (bucket has tokens)
+                                const state = rateLimiter.getState();
+                                console.log(`[SEMANTICGUARD FOLDER AUDIT] Instant processing (${estimatedTokens.toLocaleString()} tokens, bucket: ${state.tokens.toLocaleString()}/${state.capacity.toLocaleString()})`);
+                            }
+                        } else if (i < auditableFiles.length - 1) {
+                            // Local mode: simple delay
+                            await new Promise(resolve => setTimeout(resolve, 300));
                         }
                         
                     } catch (err) {
                         const errorMsg = `${err.name}: ${err.message}`;
-                        console.error(`[SEMANTGUARD FOLDER AUDIT] Exception on ${fileRelativePath}:`, err);
-                        console.error(`[SEMANTGUARD FOLDER AUDIT] Stack trace:`, err.stack);
+                        console.error(`[SEMANTICGUARD FOLDER AUDIT] Exception on ${fileRelativePath}:`, err);
+                        console.error(`[SEMANTICGUARD FOLDER AUDIT] Stack trace:`, err.stack);
                         errors.push(fileRelativePath);
                         errorDetails[fileRelativePath] = errorMsg;
                         processed++;
@@ -952,19 +1062,35 @@ function activate(context) {
                 }
             });
             
+            // ═══ END TIMER ═══
+            const auditEndTime = Date.now();
+            const totalTimeSeconds = (auditEndTime - auditStartTime) / 1000;
+            const avgTimePerFile = processed > 0 ? (totalTimeSeconds / processed).toFixed(2) : 0;
+            
             // Show results in output channel
-            const auditOutputChannel = vscode.window.createOutputChannel("SemantGuard — Folder Audit");
+            const auditOutputChannel = vscode.window.createOutputChannel("SemanticGuard — Folder Audit");
             auditOutputChannel.clear();
-            auditOutputChannel.appendLine(`🛡️ SEMANTGUARD FOLDER AUDIT RESULTS`);
+            auditOutputChannel.appendLine(`🛡️ SEMANTICGUARD FOLDER AUDIT RESULTS`);
             auditOutputChannel.appendLine(`${'='.repeat(60)}`);
             auditOutputChannel.appendLine(`Folder: ${relativePath}`);
             auditOutputChannel.appendLine(`Mode: ${isPowerMode ? "☁️ Power Mode (Cloud API)" : "⚡ Local Mode (Llama)"}`);
             auditOutputChannel.appendLine(`Model: ${currentModel}`);
-            auditOutputChannel.appendLine(`Inter-file latency: ${interFileLatency}ms`);
+            if (isPowerMode) {
+                auditOutputChannel.appendLine(`Rate Limits: ${detectedTPM.toLocaleString()} TPM, ${detectedRPM} RPM`);
+                if (detectedTPM >= 500000) {
+                    auditOutputChannel.appendLine(`>>> UPGRADED ACCOUNT DETECTED! You have ${detectedTPM.toLocaleString()} TPM`);
+                }
+            }
             auditOutputChannel.appendLine(`Files scanned: ${processed}`);
             auditOutputChannel.appendLine(`Files skipped: ${skipped}`);
+            if (isPowerMode) {
+                auditOutputChannel.appendLine(`Layer 1 blocked: ${layer1Blocked} files (regex pre-filter)`);
+                auditOutputChannel.appendLine(`Layer 2 analyzed: ${layer2Analyzed} files (LLM deep scan)`);
+            }
             auditOutputChannel.appendLine(`Violations found: ${violations.length}`);
             auditOutputChannel.appendLine(`Errors: ${errors.length}`);
+            auditOutputChannel.appendLine(`${'='.repeat(60)}`);
+            auditOutputChannel.appendLine(`⏱️  Total Time: ${totalTimeSeconds.toFixed(2)}s (avg ${avgTimePerFile}s per file)`);
             auditOutputChannel.appendLine(`${'='.repeat(60)}\n`);
             
             // Group violations by file for reporting
@@ -1003,22 +1129,22 @@ function activate(context) {
             // Summary notification
             if (violations.length === 0) {
                 vscode.window.showInformationMessage(
-                    `✅ SemantGuard: Folder audit complete — ${processed} files clean`
+                    `✅ SemanticGuard: Folder audit complete — ${processed} files clean`
                 );
             } else {
                 const fileCount = Object.keys(byFile).length;
                 vscode.window.showWarningMessage(
-                    `⚠️ SemantGuard: Found ${violations.length} violation(s) in ${fileCount} files — see Output panel`
+                    `⚠️ SemanticGuard: Found ${violations.length} violation(s) in ${fileCount} files — see Output panel`
                 );
             }
         }
     );
 
     const configureBYOKCmd = vscode.commands.registerCommand(
-        "semantguard.configureBYOK",
+        "semanticguard.configureBYOK",
         async () => {
             try {
-                console.log("[SEMANTGUARD BYOK] Starting configuration flow...");
+                console.log("[SEMANTICGUARD BYOK] Starting configuration flow...");
                 
                 // Step 1: Select Provider
                 const providerChoice = await vscode.window.showQuickPick([
@@ -1036,19 +1162,19 @@ function activate(context) {
                     }
                 ], {
                     placeHolder: "Select your cloud provider",
-                    title: "🔧 SemantGuard Power Mode - Choose Provider"
+                    title: "🔧 SemanticGuard Power Mode - Choose Provider"
                 });
                 
                 if (!providerChoice) {
-                    console.log("[SEMANTGUARD BYOK] Provider selection cancelled");
+                    console.log("[SEMANTICGUARD BYOK] Provider selection cancelled");
                     return;
                 }
                 
                 const provider = providerChoice.provider;
-                console.log(`[SEMANTGUARD BYOK] Provider selected: ${provider}`);
+                console.log(`[SEMANTICGUARD BYOK] Provider selected: ${provider}`);
                 
                 // Save provider selection
-                await context.globalState.update('semantguard.provider', provider);
+                await context.globalState.update('semanticguard.provider', provider);
                 
                 // Provider-specific configuration
                 const providerConfig = {
@@ -1074,7 +1200,7 @@ function activate(context) {
                 const existingKey = await context.secrets.get(config.keyName);
                 const existingModel = context.globalState.get(config.modelKey) || config.defaultModel;
                 
-                console.log(`[SEMANTGUARD BYOK] Existing credentials for ${provider}: key=${existingKey ? 'EXISTS' : 'NONE'}, model=${existingModel}`);
+                console.log(`[SEMANTICGUARD BYOK] Existing credentials for ${provider}: key=${existingKey ? 'EXISTS' : 'NONE'}, model=${existingModel}`);
                 
                 // If credentials exist, show settings menu
                 if (existingKey) {
@@ -1107,17 +1233,17 @@ function activate(context) {
                         }
                     ], {
                         placeHolder: `${config.displayName} Settings - Select what to edit`,
-                        title: `🔧 SemantGuard Power Mode - ${config.displayName}`
+                        title: `🔧 SemanticGuard Power Mode - ${config.displayName}`
                     });
                     
                     if (!action) {
-                        console.log("[SEMANTGUARD BYOK] Settings menu cancelled");
+                        console.log("[SEMANTICGUARD BYOK] Settings menu cancelled");
                         return;
                     }
                     
                     if (action.action === "changeProvider") {
                         // Recursively call configureBYOK to start over
-                        await vscode.commands.executeCommand('semantguard.configureBYOK');
+                        await vscode.commands.executeCommand('semanticguard.configureBYOK');
                         return;
                     }
                     
@@ -1137,19 +1263,27 @@ function activate(context) {
                         });
                         
                         if (!newKey) {
-                            console.log("[SEMANTGUARD BYOK] API key update cancelled");
+                            console.log("[SEMANTICGUARD BYOK] API key update cancelled");
                             return;
                         }
                         
                         // Test new key
-                        console.log(`[SEMANTGUARD BYOK] Testing new ${provider} API key...`);
+                        console.log(`[SEMANTICGUARD BYOK] Testing new ${provider} API key...`);
                         vscode.window.showInformationMessage(`🔄 Testing ${config.displayName} connection...`);
                         
-                        await testProviderConnection(provider, newKey, existingModel);
+                        const testResult = await testProviderConnection(provider, newKey, existingModel);
                         
                         await context.secrets.store(config.keyName, newKey);
-                        vscode.window.showInformationMessage(`✅ ${config.displayName} API key updated successfully!`);
-                        console.log(`[SEMANTGUARD BYOK] ${provider} API key updated`);
+                        
+                        let successMsg = `✅ ${config.displayName} API key updated successfully!`;
+                        if (testResult.detectedTPM) {
+                            successMsg += `\n\nDetected Rate Limits: ${testResult.detectedTPM.toLocaleString()} TPM, ~${testResult.detectedRPM} RPM (estimated)`;
+                            if (testResult.detectedTPM >= 500000) {
+                                successMsg += `\n🎉 Upgraded Account!`;
+                            }
+                        }
+                        vscode.window.showInformationMessage(successMsg);
+                        console.log(`[SEMANTICGUARD BYOK] ${provider} API key updated`);
                         
                     } else if (action.action === "editModel") {
                         // Edit Model - Show preset list + custom option
@@ -1193,7 +1327,7 @@ function activate(context) {
                         });
                         
                         if (!modelChoice) {
-                            console.log("[SEMANTGUARD BYOK] Model selection cancelled");
+                            console.log("[SEMANTICGUARD BYOK] Model selection cancelled");
                             return;
                         }
                         
@@ -1215,7 +1349,7 @@ function activate(context) {
                             });
                             
                             if (!newModel) {
-                                console.log("[SEMANTGUARD BYOK] Custom model input cancelled");
+                                console.log("[SEMANTICGUARD BYOK] Custom model input cancelled");
                                 return;
                             }
                         } else {
@@ -1225,30 +1359,37 @@ function activate(context) {
                         
                         await context.globalState.update(config.modelKey, newModel);
                         vscode.window.showInformationMessage(`✅ Model updated to: ${newModel}`);
-                        console.log(`[SEMANTGUARD BYOK] ${provider} model updated to:`, newModel);
+                        console.log(`[SEMANTICGUARD BYOK] ${provider} model updated to:`, newModel);
                         
                         // Refresh webview to show new model
-                        semantguardSidebarProvider.sendMessage({
+                        semanticguardSidebarProvider.sendMessage({
                             type: 'updateModelBadge',
                             modelId: newModel
                         });
                         
                     } else if (action.action === "test") {
                         // Test Connection
-                        console.log(`[SEMANTGUARD BYOK] Testing ${provider} connection...`);
+                        console.log(`[SEMANTICGUARD BYOK] Testing ${provider} connection...`);
                         vscode.window.showInformationMessage(`🔄 Testing ${config.displayName} connection...`);
                         
-                        await testProviderConnection(provider, existingKey, existingModel);
+                        const testResult = await testProviderConnection(provider, existingKey, existingModel);
                         
-                        vscode.window.showInformationMessage(`✅ Connection successful! Model: ${existingModel}`);
-                        console.log(`[SEMANTGUARD BYOK] ${provider} connection test passed`);
+                        let successMsg = `✅ Connection successful! Model: ${existingModel}`;
+                        if (testResult.detectedTPM) {
+                            successMsg += `\n\nDetected Rate Limits: ${testResult.detectedTPM.toLocaleString()} TPM, ~${testResult.detectedRPM} RPM (estimated)`;
+                            if (testResult.detectedTPM >= 500000) {
+                                successMsg += `\n🎉 Upgraded Account!`;
+                            }
+                        }
+                        vscode.window.showInformationMessage(successMsg);
+                        console.log(`[SEMANTICGUARD BYOK] ${provider} connection test passed`);
                     }
                     
                     return;
                 }
                 
                 // First-time setup flow (no existing credentials)
-                console.log(`[SEMANTGUARD BYOK] First-time setup for ${provider}`);
+                console.log(`[SEMANTICGUARD BYOK] First-time setup for ${provider}`);
                 
                 // Step 2: Prompt for API Key
                 const apiKey = await vscode.window.showInputBox({
@@ -1265,12 +1406,12 @@ function activate(context) {
                 });
 
                 if (!apiKey) {
-                    console.log("[SEMANTGUARD BYOK] API key input cancelled");
+                    console.log("[SEMANTICGUARD BYOK] API key input cancelled");
                     vscode.window.showInformationMessage("BYOK configuration cancelled.");
                     return;
                 }
                 
-                console.log(`[SEMANTGUARD BYOK] ${provider} API key received, length:`, apiKey.length);
+                console.log(`[SEMANTICGUARD BYOK] ${provider} API key received, length:`, apiKey.length);
 
                 // Step 3: Select Model - Show preset list + custom option
                 const modelPresets = provider === "groq" ? [
@@ -1313,7 +1454,7 @@ function activate(context) {
                 });
                 
                 if (!modelChoice) {
-                    console.log("[SEMANTGUARD BYOK] Model selection cancelled");
+                    console.log("[SEMANTICGUARD BYOK] Model selection cancelled");
                     vscode.window.showInformationMessage("BYOK configuration cancelled.");
                     return;
                 }
@@ -1336,7 +1477,7 @@ function activate(context) {
                     });
                     
                     if (!modelId) {
-                        console.log("[SEMANTGUARD BYOK] Custom model input cancelled");
+                        console.log("[SEMANTICGUARD BYOK] Custom model input cancelled");
                         vscode.window.showInformationMessage("BYOK configuration cancelled.");
                         return;
                     }
@@ -1345,37 +1486,42 @@ function activate(context) {
                     modelId = modelChoice.modelId;
                 }
                 
-                console.log(`[SEMANTGUARD BYOK] ${provider} model selected:`, modelId);
+                console.log(`[SEMANTICGUARD BYOK] ${provider} model selected:`, modelId);
 
                 // Step 4: Test the connection
-                console.log(`[SEMANTGUARD BYOK] Testing ${provider} connection...`);
+                console.log(`[SEMANTICGUARD BYOK] Testing ${provider} connection...`);
                 vscode.window.showInformationMessage(`🔄 Testing ${config.displayName} connection...`);
 
-                await testProviderConnection(provider, apiKey, modelId);
+                const testResult = await testProviderConnection(provider, apiKey, modelId);
 
-                console.log(`[SEMANTGUARD BYOK] ${provider} connection test successful`);
+                console.log(`[SEMANTICGUARD BYOK] ${provider} connection test successful`);
 
                 // Step 5: Save credentials securely
-                console.log(`[SEMANTGUARD BYOK] Saving ${provider} credentials...`);
+                console.log(`[SEMANTICGUARD BYOK] Saving ${provider} credentials...`);
                 await context.secrets.store(config.keyName, apiKey);
                 await context.globalState.update(config.modelKey, modelId);
-                console.log(`[SEMANTGUARD BYOK] ${provider} credentials saved successfully`);
+                console.log(`[SEMANTICGUARD BYOK] ${provider} credentials saved successfully`);
 
-                // Step 6: Show success message
-                vscode.window.showInformationMessage(
-                    `✅ ${config.displayName} configured successfully! Model: ${modelId}`
-                );
+                // Step 6: Show success message with TPM info
+                let successMsg = `✅ ${config.displayName} configured successfully! Model: ${modelId}`;
+                if (testResult.detectedTPM) {
+                    successMsg += `\n\nDetected Rate Limits: ${testResult.detectedTPM.toLocaleString()} TPM, ~${testResult.detectedRPM} RPM (estimated)`;
+                    if (testResult.detectedTPM >= 500000) {
+                        successMsg += `\n🎉 Upgraded Account!`;
+                    }
+                }
+                vscode.window.showInformationMessage(successMsg);
 
-                console.log(`[SEMANTGUARD BYOK] Configuration complete. Provider: ${provider}, Model: ${modelId}`);
+                console.log(`[SEMANTICGUARD BYOK] Configuration complete. Provider: ${provider}, Model: ${modelId}`);
 
                 // Refresh webview to show new model
-                semantguardSidebarProvider.sendMessage({
+                semanticguardSidebarProvider.sendMessage({
                     type: 'updateModelBadge',
                     modelId: modelId
                 });
 
             } catch (error) {
-                console.error("[SEMANTGUARD BYOK] Configuration error:", error);
+                console.error("[SEMANTICGUARD BYOK] Configuration error:", error);
                 vscode.window.showErrorMessage(
                     `❌ BYOK configuration failed: ${error.message}`
                 );
@@ -1396,8 +1542,8 @@ function activate(context) {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${apiKey}`,
                 ...(provider === "openrouter" && {
-                    "HTTP-Referer": "https://github.com/dsadsadsadsadas/SemantGuard",
-                    "X-Title": "SemantGuard Gatekeeper"
+                    "HTTP-Referer": "https://github.com/dsadsadsadsadas/SemanticGuard",
+                    "X-Title": "SemanticGuard Gatekeeper"
                 })
             },
             body: JSON.stringify({
@@ -1412,17 +1558,25 @@ function activate(context) {
             throw new Error(`${provider} API test failed: ${testResponse.status} - ${errorText}`);
         }
         
-        return await testResponse.json();
+        // Detect TPM limits from response headers
+        const { detectModelLimits } = require(path.join(context.extensionPath, 'token-bucket.js'));
+        const { maxRpm, maxTpm } = await detectModelLimits(apiKey, model);
+        
+        const result = await testResponse.json();
+        result.detectedTPM = maxTpm;
+        result.detectedRPM = maxRpm;
+        
+        return result;
     }
 
     const togglePowerModeCmd = vscode.commands.registerCommand(
-        "semantguard.togglePowerMode",
+        "semanticguard.togglePowerMode",
         async () => {
             try {
-                console.log("[SEMANTGUARD POWER MODE] Toggle requested");
+                console.log("[SEMANTICGUARD POWER MODE] Toggle requested");
                 
                 // Get current provider (default to openrouter)
-                const provider = context.globalState.get('semantguard.provider') || 'openrouter';
+                const provider = context.globalState.get('semanticguard.provider') || 'openrouter';
                 
                 // Provider-specific key names
                 const keyNames = {
@@ -1445,45 +1599,45 @@ function activate(context) {
                 
                 if (existingKey) {
                     // Key exists, just toggle the mode
-                    const currentMode = context.globalState.get('semantguard.mode') || 'local';
+                    const currentMode = context.globalState.get('semanticguard.mode') || 'local';
                     const newMode = currentMode === 'cloud' ? 'local' : 'cloud';
                     
-                    console.log(`[SEMANTGUARD POWER MODE] Toggling from ${currentMode} to ${newMode}`);
+                    console.log(`[SEMANTICGUARD POWER MODE] Toggling from ${currentMode} to ${newMode}`);
                     
-                    await context.globalState.update('semantguard.mode', newMode);
+                    await context.globalState.update('semanticguard.mode', newMode);
                     updateStatusBar(context);
                     
                     if (newMode === 'cloud') {
                         const model = context.globalState.get(modelKeys[provider]) || 
-                                     (provider === 'openrouter' ? 'anthropic/claude-3.5-sonnet' : 'llama-3.3-70b-versatile');
+                                     (provider === 'openrouter' ? 'anthropic/claude-3.5-sonnet' : 'meta-llama/llama-4-scout-17b-16e-instruct');
                         vscode.window.showInformationMessage(
-                            `✅ SemantGuard: Power Mode Activated (${displayNames[provider]} - ${model})`
+                            `✅ SemanticGuard: Power Mode Activated (${displayNames[provider]} - ${model})`
                         );
-                        console.log(`[SEMANTGUARD POWER MODE] ✅ Activated Power Mode with ${displayNames[provider]}, model: ${model}`);
+                        console.log(`[SEMANTICGUARD POWER MODE] ✅ Activated Power Mode with ${displayNames[provider]}, model: ${model}`);
                         outputChannel.appendLine(`[${new Date().toISOString()}] ✅ Power Mode Activated - Provider: ${displayNames[provider]}, Model: ${model}`);
                     } else {
                         vscode.window.showInformationMessage(
-                            `✅ SemantGuard: Local Mode Activated`
+                            `✅ SemanticGuard: Local Mode Activated`
                         );
-                        console.log("[SEMANTGUARD POWER MODE] ✅ Activated Local Mode");
+                        console.log("[SEMANTICGUARD POWER MODE] ✅ Activated Local Mode");
                         outputChannel.appendLine(`[${new Date().toISOString()}] ✅ Local Mode Activated`);
                     }
                 } else {
                     // No key exists, trigger configuration flow
-                    console.log("[SEMANTGUARD POWER MODE] No API key found, triggering configuration");
-                    await vscode.commands.executeCommand('semantguard.configureBYOK');
+                    console.log("[SEMANTICGUARD POWER MODE] No API key found, triggering configuration");
+                    await vscode.commands.executeCommand('semanticguard.configureBYOK');
                     
                     // After configuration, check if key was added and activate power mode
                     const keyAfterConfig = await context.secrets.get(keyNames[provider]);
                     if (keyAfterConfig) {
-                        await context.globalState.update('semantguard.mode', 'cloud');
+                        await context.globalState.update('semanticguard.mode', 'cloud');
                         updateStatusBar(context);
-                        console.log("[SEMANTGUARD POWER MODE] ✅ Activated Power Mode after configuration");
+                        console.log("[SEMANTICGUARD POWER MODE] ✅ Activated Power Mode after configuration");
                         outputChannel.appendLine(`[${new Date().toISOString()}] ✅ Power Mode Activated after initial configuration`);
                     }
                 }
             } catch (error) {
-                console.error("[SEMANTGUARD POWER MODE] Toggle error:", error);
+                console.error("[SEMANTICGUARD POWER MODE] Toggle error:", error);
                 vscode.window.showErrorMessage(
                     `❌ Power Mode toggle failed: ${error.message}`
                 );
@@ -1492,40 +1646,40 @@ function activate(context) {
     );
 
     const toggleV2PromptsCmd = vscode.commands.registerCommand(
-        "semantguard.toggleV2Prompts",
+        "semanticguard.toggleV2Prompts",
         async () => {
-            const currentMode = context.globalState.get('semantguard.experimental_v2_prompts') || false;
+            const currentMode = context.globalState.get('semanticguard.experimental_v2_prompts') || false;
             const newMode = !currentMode;
             
-            await context.globalState.update('semantguard.experimental_v2_prompts', newMode);
+            await context.globalState.update('semanticguard.experimental_v2_prompts', newMode);
             
             const status = newMode ? "ENABLED" : "DISABLED";
             const emoji = newMode ? "🧪" : "📝";
             
             vscode.window.showInformationMessage(
-                `${emoji} SemantGuard V2 Prompts: ${status} ${newMode ? '(Experimental - Reduces false positives)' : '(Using legacy prompts)'}`
+                `${emoji} SemanticGuard V2 Prompts: ${status} ${newMode ? '(Experimental - Reduces false positives)' : '(Using legacy prompts)'}`
             );
             
-            console.log(`[SEMANTGUARD V2] Experimental V2 prompts: ${status}`);
+            console.log(`[SEMANTICGUARD V2] Experimental V2 prompts: ${status}`);
         }
     );
 
     const debugReasoningCmd = vscode.commands.registerCommand(
-        "semantguard.debugReasoning",
+        "semanticguard.debugReasoning",
         async () => {
-            const currentMode = context.globalState.get('semantguard.debug_reasoning') || false;
+            const currentMode = context.globalState.get('semanticguard.debug_reasoning') || false;
             const newMode = !currentMode;
             
-            await context.globalState.update('semantguard.debug_reasoning', newMode);
+            await context.globalState.update('semanticguard.debug_reasoning', newMode);
             
             const status = newMode ? "ENABLED" : "DISABLED";
             const emoji = newMode ? "🔍" : "🔇";
             
             vscode.window.showInformationMessage(
-                `${emoji} SemantGuard Debug Reasoning: ${status} ${newMode ? '(Detailed logs in console)' : '(Normal logging)'}`
+                `${emoji} SemanticGuard Debug Reasoning: ${status} ${newMode ? '(Detailed logs in console)' : '(Normal logging)'}`
             );
             
-            console.log(`[SEMANTGUARD DEBUG] Debug reasoning mode: ${status}`);
+            console.log(`[SEMANTICGUARD DEBUG] Debug reasoning mode: ${status}`);
         }
     );
 
@@ -1551,7 +1705,7 @@ function activate(context) {
                     return;
                 }
 
-                const cfg = vscode.workspace.getConfiguration("semantguard");
+                const cfg = vscode.workspace.getConfiguration("semanticguard");
                 if (!cfg.get("enabled")) {
                     // Airbag disabled in settings
                     return;
@@ -1559,7 +1713,7 @@ function activate(context) {
 
                 // Bypass standard excludes if this is a Pillar file (Selective Pass)
                 const relPath = vscode.workspace.asRelativePath(event.document.uri);
-                const isPillar = relPath.startsWith(".semantguard") && relPath.endsWith(".md");
+                const isPillar = relPath.startsWith(".semanticguard") && relPath.endsWith(".md");
                 // Check if file is a pillar or excluded
 
                 if (!isPillar) {
@@ -1574,20 +1728,20 @@ function activate(context) {
                 if (!serverOnline) {
                     const enforcementMode = cfg.get("enforcementMode") ?? "Soft";
                     if (enforcementMode === "Strict") {
-                        console.warn('[SEMANTGUARD] Server is OFFLINE. Strict mode enforcing BLOCK.');
+                        console.warn('[SEMANTICGUARD] Server is OFFLINE. Strict mode enforcing BLOCK.');
                         // Sleek toast notification instead of modal
-                        vscode.window.showErrorMessage(`🛑 SemantGuard: Server offline — Save blocked in Strict mode`);
-                        throw new Error("SemantGuard Strict Mode: Server is offline. Save blocked.");
+                        vscode.window.showErrorMessage(`🛑 SemanticGuard: Server offline — Save blocked in Strict mode`);
+                        throw new Error("SemanticGuard Strict Mode: Server is offline. Save blocked.");
                     }
-                    console.warn('[SEMANTGUARD] Server is OFFLINE. Airbag failing open for this save.');
+                    console.warn('[SEMANTICGUARD] Server is OFFLINE. Airbag failing open for this save.');
                     return;
                 }
 
                 // Queue the evaluation sequentially to protect the GPU
                 await saveEvaluationQueue.enqueue(() => evaluateSave(event.document));
             } catch (error) {
-                console.error('[SEMANTGUARD ERROR] Save listener async task failed:', error);
-                try { vscode.window.showErrorMessage(`SemantGuard Extension Crash: ${error.message}`); } catch (e) { /* swallow */ }
+                console.error('[SEMANTICGUARD ERROR] Save listener async task failed:', error);
+                try { vscode.window.showErrorMessage(`SemanticGuard Extension Crash: ${error.message}`); } catch (e) { /* swallow */ }
                 // Re-throw to let VS Code know the save participant failed (preserves previous behavior)
                 throw error;
             }
@@ -1595,7 +1749,7 @@ function activate(context) {
     });
 
     const saveDoneHandler = vscode.workspace.onDidSaveTextDocument(async (document) => {
-        console.log('[SEMANTGUARD] Document Saved:', document.fileName);
+        console.log('[SEMANTICGUARD] Document Saved:', document.fileName);
 
         // Check for pivots (evolutionary intelligence)
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
@@ -1618,7 +1772,7 @@ function activate(context) {
 // ─── Core Evaluation ─────────────────────────────────────────────────────────
 
 /**
- * Rule Sanctuary: Detects if a document is within the .semantguard/ folder
+ * Rule Sanctuary: Detects if a document is within the .semanticguard/ folder
  * Returns true if the file should be auto-accepted without audit
  */
 function isRuleSanctuaryPath(document) {
@@ -1626,8 +1780,8 @@ function isRuleSanctuaryPath(document) {
     // Normalize path separators for cross-platform compatibility
     const normalizedPath = relPath.replace(/\\/g, '/');
 
-    // Check if path contains .semantguard/ folder
-    return normalizedPath.includes('.semantguard/') || normalizedPath.startsWith('.semantguard/');
+    // Check if path contains .semanticguard/ folder
+    return normalizedPath.includes('.semanticguard/') || normalizedPath.startsWith('.semanticguard/');
 }
 
 /**
@@ -1640,7 +1794,7 @@ async function evaluateSave(document) {
 
     // Skip if this exact content was already sent in a previous audit
     if (_lastSentContent.get(fileKey) === currentContent) {
-        console.log('[SEMANTGUARD] No changes since last audit. Skipping.');
+        console.log('[SEMANTICGUARD] No changes since last audit. Skipping.');
         return [];
     }
 
@@ -1650,54 +1804,54 @@ async function evaluateSave(document) {
     if (lastSent) {
         const normalize = (text) => text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0).join('');
         if (normalize(currentContent) === normalize(lastSent)) {
-            console.log('[SEMANTGUARD] Trivial cosmetic change detected (indentation/newlines only). Skipping audit.');
+            console.log('[SEMANTICGUARD] Trivial cosmetic change detected (indentation/newlines only). Skipping audit.');
             return [];
         }
     }
 
-    const cfg = vscode.workspace.getConfiguration("semantguard");
+    const cfg = vscode.workspace.getConfiguration("semanticguard");
     let serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8001";
     const timeoutMs = cfg.get("timeoutMs") ?? 300_000;
 
     // Use auto-discovery if the configured URL doesn't work
     const discoveredUrl = await discoverServerURL();
     if (discoveredUrl && discoveredUrl !== serverUrl) {
-        console.log(`[SEMANTGUARD EVAL] Using discovered URL: ${discoveredUrl} instead of configured: ${serverUrl}`);
+        console.log(`[SEMANTICGUARD EVAL] Using discovered URL: ${discoveredUrl} instead of configured: ${serverUrl}`);
         serverUrl = discoveredUrl;
         // Update config for future use
         await cfg.update("serverUrl", discoveredUrl, vscode.ConfigurationTarget.Workspace);
     } else if (!discoveredUrl) {
-        console.log(`[SEMANTGUARD EVAL] ❌ No server available for evaluation`);
+        console.log(`[SEMANTICGUARD EVAL] ❌ No server available for evaluation`);
         if (cfg.get("enforcementMode") === "Strict") {
             // Sleek toast notification instead of modal
-            vscode.window.showErrorMessage(`🛑 SemantGuard: No server available — Save blocked in Strict mode`);
-            throw new Error("SemantGuard Strict Mode: No server available.");
+            vscode.window.showErrorMessage(`🛑 SemanticGuard: No server available — Save blocked in Strict mode`);
+            throw new Error("SemanticGuard Strict Mode: No server available.");
         }
         return []; // Fail-open: allow save to proceed
     }
 
     const relPath = vscode.workspace.asRelativePath(document.uri);
-    const isPillar = relPath.startsWith(".semantguard") && relPath.endsWith(".md");
+    const isPillar = relPath.startsWith(".semanticguard") && relPath.endsWith(".md");
 
     // ============================================
-    // THE META-GATE: Policing the Law (.semantguard/*.md)
+    // THE META-GATE: Policing the Law (.semanticguard/*.md)
     // ============================================
     if (isPillar) {
         const fileName = path.basename(document.fileName);
         const incomingContent = currentContent;
 
-        console.log(`[SEMANTGUARD META-GATE] Pillar file save detected: ${fileName}`);
+        console.log(`[SEMANTICGUARD META-GATE] Pillar file save detected: ${fileName}`);
 
         updateStatusBar(extensionContext, 'auditing');
-        semantguardSidebarProvider.sendMessage({ type: 'scanning', title: 'Meta-Gate Audit: ' + fileName }, true);
+        semanticguardSidebarProvider.sendMessage({ type: 'scanning', title: 'Analysis: ' + fileName }, true);
         
         try {
             // Resolve the project root for the specific file being saved (multi-root workspace support)
             const projectPath = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
                 ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
                 ?? '';
-            console.log(`[SEMANTGUARD META-GATE] Resolved project_path: ${projectPath}`);
-            const processorMode = vscode.workspace.getConfiguration("semantguard").get("processor_mode") || "GPU";
+            console.log(`[SEMANTICGUARD META-GATE] Resolved project_path: ${projectPath}`);
+            const processorMode = vscode.workspace.getConfiguration("semanticguard").get("processor_mode") || "GPU";
             
             // Record what we are about to send, regardless of verdict
             _lastSentContent.set(fileKey, currentContent);
@@ -1714,7 +1868,7 @@ async function evaluateSave(document) {
             }, timeoutMs);
 
             if (!res.ok) {
-                console.warn(`SemantGuard: Meta-Gate server returned ${res.status} — failing open`);
+                console.warn(`SemanticGuard: Meta-Gate server returned ${res.status} — failing open`);
                 updateStatusBar(extensionContext, 'idle');
                 return [];
             }
@@ -1726,22 +1880,23 @@ async function evaluateSave(document) {
 
             const webviewMessage = {
                 type: 'log',
-                title: 'Meta-Gate Audit: ' + fileName,
+                title: 'Analysis: ' + fileName,
                 score: driftScore.toFixed(2),
                 action: actionResult,
                 reasoning: reasoning,
                 filename: fileName,
                 fullPath: document.uri.fsPath,
-                violations: data.violations || [],
+                findings: data.findings || [],  // V2: Use findings array
+                violations: data.violations || [],  // Legacy support
             };
-            semantguardSidebarProvider.sendMessage(webviewMessage, actionResult === "REJECT");
+            semanticguardSidebarProvider.sendMessage(webviewMessage, actionResult === "REJECT");
             await executeAIAssistantActions(reasoning, actionResult, driftScore);
 
             if (actionResult === "REJECT") {
                 const scoreDisplay = driftScore.toFixed(2);
                 // Sleek toast notification instead of modal
-                vscode.window.showErrorMessage(`🛑 SemantGuard: Save blocked — Security violation detected (Score: ${scoreDisplay})`);
-                throw new Error(`SemantGuard Gatekeeper: architectural drift detected (score ${scoreDisplay})`);
+                vscode.window.showErrorMessage(`🛑 SemanticGuard: Save blocked — Security violation detected (Score: ${scoreDisplay})`);
+                throw new Error(`SemanticGuard Gatekeeper: architectural drift detected (score ${scoreDisplay})`);
             }
 
             setStatus("accepted");
@@ -1749,7 +1904,7 @@ async function evaluateSave(document) {
             _lastAuditedContent.set(fileKey, currentContent);
             return [];
         } catch (err) {
-            console.error("SemantGuard Meta-Gate error:", err);
+            console.error("SemanticGuard Meta-Gate error:", err);
             updateStatusBar(extensionContext, 'idle');
             return [];
         }
@@ -1762,18 +1917,18 @@ async function evaluateSave(document) {
         const previousContent = _lastAuditedContent.get(fileKey);
 
         // ── CHECK MODE EARLY: Power Mode needs full context ───────────────
-        const extensionContext = global.semantguardContext;
+        const extensionContext = global.semanticguardContext;
         if (!extensionContext) {
-            console.error('[SEMANTGUARD] Extension context not available');
+            console.error('[SEMANTICGUARD] Extension context not available');
             return; // Fail-open: allow save if context unavailable
         }
-        const isPowerMode = extensionContext.globalState.get('semantguard.mode') === 'cloud';
+        const isPowerMode = extensionContext.globalState.get('semanticguard.mode') === 'cloud';
 
         let codeContent;
         
         // ── POWER MODE: Always send full file (no snapshot restrictions) ──
         if (isPowerMode) {
-            console.log(`[SEMANTGUARD POWER MODE] Sending full file (${totalLines} lines) for deep taint analysis`);
+            console.log(`[SEMANTICGUARD POWER MODE] Sending full file (${totalLines} lines) for deep taint analysis`);
             codeContent = currentContent;
             
             // Still update snapshots for future reference
@@ -1792,11 +1947,11 @@ async function evaluateSave(document) {
                     
                     // Show status bar message
                     const indexMsg = vscode.window.setStatusBarMessage(
-                        `🛡️ SemantGuard: Indexed ${totalLines} lines — auditing changes from next save`,
+                        `🛡️ SemanticGuard: Indexed ${totalLines} lines — auditing changes from next save`,
                         8000
                     );
                     
-                    console.log(`[SEMANTGUARD] First save of large file (${totalLines} lines). Indexing silently, skipping audit.`);
+                    console.log(`[SEMANTICGUARD] First save of large file (${totalLines} lines). Indexing silently, skipping audit.`);
                     return [];
                 } else {
                     // Small file on first save — audit normally
@@ -1811,29 +1966,29 @@ async function evaluateSave(document) {
                 
                 if (codeContent === "") {
                     // No changes detected — skip audit entirely
-                    console.log('[SEMANTGUARD] No changes detected since last audit. Skipping.');
+                    console.log('[SEMANTICGUARD] No changes detected since last audit. Skipping.');
                     return [];
                 }
                 
-                console.log(`[SEMANTGUARD] Diff mode: sending ${codeContent.split('\n').length} lines of ${totalLines} total`);
+                console.log(`[SEMANTICGUARD] Diff mode: sending ${codeContent.split('\n').length} lines of ${totalLines} total`);
             }
         }
 
         const pillars = readPillars(document);
 
 
-        console.log(`[SEMANTGUARD AIRBAG] Document save detected: ${fileName}`);
+        console.log(`[SEMANTICGUARD AIRBAG] Document save detected: ${fileName}`);
 
         updateStatusBar(extensionContext, 'auditing');
-        semantguardSidebarProvider.sendMessage({ type: 'scanning', title: 'Airbag Audit: ' + fileName }, true);
+        semanticguardSidebarProvider.sendMessage({ type: 'scanning', title: 'Analysis: ' + fileName }, true);
 
         try {
             // Resolve the project root for the specific file being saved (multi-root workspace support)
             const projectPath = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
                 ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
                 ?? '';
-            console.log(`[SEMANTGUARD AIRBAG] Resolved project_path: ${projectPath}`);
-            const processorMode = vscode.workspace.getConfiguration("semantguard").get("processor_mode") || "GPU";
+            console.log(`[SEMANTICGUARD AIRBAG] Resolved project_path: ${projectPath}`);
+            const processorMode = vscode.workspace.getConfiguration("semanticguard").get("processor_mode") || "GPU";
             
             // Record what we are about to send, regardless of verdict
             _lastSentContent.set(fileKey, currentContent);
@@ -1844,8 +1999,8 @@ async function evaluateSave(document) {
             let data;
             
             if (isPowerMode) {
-                console.log("[SEMANTGUARD TRAFFIC COP] Power Mode detected — routing through Layer 1 + Cloud");
-                console.log(`[SEMANTGUARD TRAFFIC COP] Sending full file: ${totalLines} lines for deep analysis`);
+                console.log("[SEMANTICGUARD TRAFFIC COP] Power Mode detected — routing through Layer 1 + Cloud");
+                console.log(`[SEMANTICGUARD TRAFFIC COP] Sending full file: ${totalLines} lines for deep analysis`);
                 
                 // Strip comments to protect Layer 1 Regex from false positives
                 const strippedCodeContent = stripCommentsPreserveLines(codeContent);
@@ -1866,7 +2021,7 @@ async function evaluateSave(document) {
                 }, timeoutMs);
 
                 if (!layer1Response.ok) {
-                    console.warn(`SemantGuard: Layer 1 server returned ${layer1Response.status} — failing open`);
+                    console.warn(`SemanticGuard: Layer 1 server returned ${layer1Response.status} — failing open`);
                     updateStatusBar(extensionContext, 'idle');
                     return [];
                 }
@@ -1876,11 +2031,11 @@ async function evaluateSave(document) {
                 // Step 2: Check Layer 1 result
                 if (layer1Data.action === "REJECT") {
                     // Layer 1 caught it — block immediately
-                    console.log("[SEMANTGUARD TRAFFIC COP] Layer 1 REJECT — blocking save");
+                    console.log("[SEMANTICGUARD TRAFFIC COP] Layer 1 REJECT — blocking save");
                     data = layer1Data;
                 } else if (layer1Data.action === "L1_PASS") {
                     // Layer 1 passed — call Cloud API for Layer 2
-                    console.log("[SEMANTGUARD TRAFFIC COP] Layer 1 passed — calling Cloud API");
+                    console.log("[SEMANTICGUARD TRAFFIC COP] Layer 1 passed — calling Cloud API");
                     
                     try {
                         const cloudResult = await callCloudAPI(extensionContext, {
@@ -1892,7 +2047,7 @@ async function evaluateSave(document) {
                         // ═══ REQUIREMENT 5: FALLBACK LINE NUMBER DETECTION ═══
                         // Process violations to correct line numbers using fallback logic
                         if (cloudResult.violations && Array.isArray(cloudResult.violations)) {
-                            console.log(`[SEMANTGUARD FALLBACK] Processing ${cloudResult.violations.length} violations`);
+                            console.log(`[SEMANTICGUARD FALLBACK] Processing ${cloudResult.violations.length} violations`);
                             
                             cloudResult.violations = cloudResult.violations.map(violation => {
                                 const reportedLine = violation.line_number;
@@ -1914,21 +2069,21 @@ async function evaluateSave(document) {
                                         line_corrected: correctedLine !== reportedLine
                                     };
                                 } else {
-                                    console.warn(`[SEMANTGUARD FALLBACK] No violating_snippet for violation at line ${reportedLine}`);
+                                    console.warn(`[SEMANTICGUARD FALLBACK] No violating_snippet for violation at line ${reportedLine}`);
                                     return violation;
                                 }
                             });
                             
                             const correctedCount = cloudResult.violations.filter(v => v.line_corrected).length;
                             if (correctedCount > 0) {
-                                console.log(`[SEMANTGUARD FALLBACK] ✓ Corrected ${correctedCount} line numbers using fallback logic`);
+                                console.log(`[SEMANTICGUARD FALLBACK] ✓ Corrected ${correctedCount} line numbers using fallback logic`);
                             }
                         }
                         
                         data = cloudResult;
-                        console.log("[SEMANTGUARD TRAFFIC COP] Cloud API result:", data.action);
+                        console.log("[SEMANTICGUARD TRAFFIC COP] Cloud API result:", data.action);
                     } catch (cloudError) {
-                        console.error("[SEMANTGUARD TRAFFIC COP] Cloud API failed:", cloudError);
+                        console.error("[SEMANTICGUARD TRAFFIC COP] Cloud API failed:", cloudError);
                         vscode.window.showErrorMessage(`⚠️ Power Mode failed: ${cloudError.message}. Falling back to local.`);
                         
                         // Fallback: run full local audit
@@ -1959,7 +2114,7 @@ async function evaluateSave(document) {
                 }
             } else {
                 // Local Mode: Standard full audit
-                console.log("[SEMANTGUARD TRAFFIC COP] Local Mode — running full local audit");
+                console.log("[SEMANTICGUARD TRAFFIC COP] Local Mode — running full local audit");
                 
                 // Strip comments to protect Layer 1 Regex from false positives
                 const strippedCodeContent = stripCommentsPreserveLines(codeContent);
@@ -1982,7 +2137,7 @@ async function evaluateSave(document) {
                 const localLatency = ((localEndTime - localStartTime) / 1000).toFixed(2);
 
                 if (!res.ok) {
-                    console.warn(`SemantGuard: Airbag server returned ${res.status} — failing open`);
+                    console.warn(`SemanticGuard: Airbag server returned ${res.status} — failing open`);
                     updateStatusBar(extensionContext, 'idle');
                     return [];
                 }
@@ -2000,13 +2155,14 @@ async function evaluateSave(document) {
 
             const webviewMessage = {
                 type: 'log',
-                title: 'Airbag Audit: ' + fileName,
+                title: 'Analysis: ' + fileName,
                 score: driftScore.toFixed(2),
                 action: actionResult,
                 reasoning: reasoning,
                 filename: fileName,
                 fullPath: document.uri.fsPath,
-                violations: data.violations || [],
+                findings: data.findings || [],  // V2: Use findings array
+                violations: data.violations || [],  // Legacy support
                 // Performance tracking metadata
                 audit_mode: data.audit_mode || 'local',
                 cloud_provider: data.cloud_provider || null,
@@ -2014,14 +2170,14 @@ async function evaluateSave(document) {
                 local_latency: data.local_latency || null,
             };
 
-            semantguardSidebarProvider.sendMessage(webviewMessage, actionResult === "REJECT");
+            semanticguardSidebarProvider.sendMessage(webviewMessage, actionResult === "REJECT");
             await executeAIAssistantActions(reasoning, actionResult, driftScore);
 
             if (actionResult === "REJECT") {
                 const scoreDisplay = driftScore.toFixed(2);
                 // Sleek toast notification instead of modal
-                vscode.window.showErrorMessage(`🛑 SemantGuard: Save blocked — Security violation detected (Score: ${scoreDisplay})`);
-                throw new Error(`SemantGuard Airbag: architectural drift detected (score ${scoreDisplay})`);
+                vscode.window.showErrorMessage(`🛑 SemanticGuard: Save blocked — Security violation detected (Score: ${scoreDisplay})`);
+                throw new Error(`SemanticGuard Airbag: architectural drift detected (score ${scoreDisplay})`);
             }
 
             setStatus("accepted");
@@ -2029,7 +2185,7 @@ async function evaluateSave(document) {
             _lastAuditedContent.set(fileKey, currentContent);
             return [];
         } catch (err) {
-            console.error("SemantGuard Airbag error:", err);
+            console.error("SemanticGuard Airbag error:", err);
             updateStatusBar(extensionContext, 'idle');
             return [];
         }
@@ -2047,7 +2203,7 @@ async function evaluateSave(document) {
  */
 function injectLineNumbers(code) {
     if (!code || typeof code !== 'string') {
-        console.warn('[SEMANTGUARD LINE INJECTION] Invalid code input, returning empty string');
+        console.warn('[SEMANTICGUARD LINE INJECTION] Invalid code input, returning empty string');
         return '';
     }
     
@@ -2085,7 +2241,7 @@ function detectCorrectLineNumber(reportedLineNumber, violatingSnippet, document)
     try {
         // Validate inputs
         if (!violatingSnippet || typeof violatingSnippet !== 'string') {
-            console.warn('[SEMANTGUARD FALLBACK] No violating_snippet provided, using reported line number');
+            console.warn('[SEMANTICGUARD FALLBACK] No violating_snippet provided, using reported line number');
             return reportedLineNumber;
         }
         
@@ -2093,7 +2249,7 @@ function detectCorrectLineNumber(reportedLineNumber, violatingSnippet, document)
         const cleanSnippet = removeLineNumberPrefix(violatingSnippet);
         
         if (!cleanSnippet) {
-            console.warn('[SEMANTGUARD FALLBACK] Empty snippet after cleaning, using reported line number');
+            console.warn('[SEMANTICGUARD FALLBACK] Empty snippet after cleaning, using reported line number');
             return reportedLineNumber;
         }
         
@@ -2104,18 +2260,18 @@ function detectCorrectLineNumber(reportedLineNumber, violatingSnippet, document)
             const cleanSnippetTrimmed = cleanSnippet.trim();
             
             if (reportedLineText === cleanSnippetTrimmed || reportedLineText.includes(cleanSnippetTrimmed)) {
-                console.log(`[SEMANTGUARD FALLBACK] ✓ Reported line ${reportedLineNumber} matches snippet`);
+                console.log(`[SEMANTICGUARD FALLBACK] ✓ Reported line ${reportedLineNumber} matches snippet`);
                 return reportedLineNumber;
             }
         }
         
         // Fallback: Search for snippet in document
-        console.log(`[SEMANTGUARD FALLBACK] Line ${reportedLineNumber} doesn't match, searching for snippet...`);
+        console.log(`[SEMANTICGUARD FALLBACK] Line ${reportedLineNumber} doesn't match, searching for snippet...`);
         const documentText = document.getText();
         const snippetIndex = documentText.indexOf(cleanSnippet);
         
         if (snippetIndex === -1) {
-            console.warn(`[SEMANTGUARD FALLBACK] ⚠ Snippet not found in document: "${cleanSnippet.substring(0, 50)}..."`);
+            console.warn(`[SEMANTICGUARD FALLBACK] ⚠ Snippet not found in document: "${cleanSnippet.substring(0, 50)}..."`);
             return reportedLineNumber; // Use reported line as fallback
         }
         
@@ -2123,11 +2279,11 @@ function detectCorrectLineNumber(reportedLineNumber, violatingSnippet, document)
         const position = document.positionAt(snippetIndex);
         const correctedLineNumber = position.line + 1; // Convert to 1-based
         
-        console.log(`[SEMANTGUARD FALLBACK] ✓ Corrected line number: ${reportedLineNumber} → ${correctedLineNumber}`);
+        console.log(`[SEMANTICGUARD FALLBACK] ✓ Corrected line number: ${reportedLineNumber} → ${correctedLineNumber}`);
         return correctedLineNumber;
         
     } catch (error) {
-        console.error('[SEMANTGUARD FALLBACK] Error in fallback detection:', error);
+        console.error('[SEMANTICGUARD FALLBACK] Error in fallback detection:', error);
         return reportedLineNumber; // Safe fallback
     }
 }
@@ -2135,23 +2291,23 @@ function detectCorrectLineNumber(reportedLineNumber, violatingSnippet, document)
 // ─── System Rules Loader ─────────────────────────────────────────────────────
 
 /**
- * Load system_rules.md from the project's .semantguard folder
+ * Load system_rules.md from the project's .semanticguard folder
  * @param {string} projectPath - Absolute path to project root
  * @returns {string} - Contents of system_rules.md or empty string if not found
  */
 function loadSystemRules(projectPath) {
     try {
-        const systemRulesPath = path.join(projectPath, '.semantguard', 'system_rules.md');
+        const systemRulesPath = path.join(projectPath, '.semanticguard', 'system_rules.md');
         if (fs.existsSync(systemRulesPath)) {
             const content = fs.readFileSync(systemRulesPath, 'utf-8');
-            console.log(`[SEMANTGUARD RULES] Loaded system_rules.md (${content.length} chars)`);
+            console.log(`[SEMANTICGUARD RULES] Loaded system_rules.md (${content.length} chars)`);
             return content;
         } else {
-            console.warn(`[SEMANTGUARD RULES] system_rules.md not found at: ${systemRulesPath}`);
+            console.warn(`[SEMANTICGUARD RULES] system_rules.md not found at: ${systemRulesPath}`);
             return '';
         }
     } catch (error) {
-        console.error(`[SEMANTGUARD RULES] Error loading system_rules.md:`, error);
+        console.error(`[SEMANTICGUARD RULES] Error loading system_rules.md:`, error);
         return '';
     }
 }
@@ -2182,10 +2338,10 @@ async function callCloudAPI(context, payload) {
     
     try {
         // Get current provider
-        const provider = context.globalState.get('semantguard.provider') || 'openrouter';
+        const provider = context.globalState.get('semanticguard.provider') || 'openrouter';
         
         // Check for experimental V2 prompt mode
-        const useV2Prompts = context.globalState.get('semantguard.experimental_v2_prompts') || false;
+        const useV2Prompts = context.globalState.get('semanticguard.experimental_v2_prompts') || false;
         
         // Provider-specific configuration
         const providerConfig = {
@@ -2211,31 +2367,31 @@ async function callCloudAPI(context, payload) {
         // Get API key and model
         const apiKey = await context.secrets.get(config.keyName);
         const modelId = context.globalState.get(config.modelKey) || 
-                       (provider === 'openrouter' ? 'anthropic/claude-3.5-sonnet' : 'llama-3.3-70b-versatile');
+                       (provider === 'openrouter' ? 'anthropic/claude-3.5-sonnet' : 'meta-llama/llama-4-scout-17b-16e-instruct');
         
         if (!apiKey) {
             throw new Error(`${config.displayName} API key not found. Please configure Power Mode first.`);
         }
         
-        console.log(`[SEMANTGUARD POWER MODE] Calling ${config.displayName} with model: ${modelId} (V${useV2Prompts ? '2' : '1'} prompts)`);
+        console.log(`[SEMANTICGUARD POWER MODE] Calling ${config.displayName} with model: ${modelId} (V${useV2Prompts ? '2' : '1'} prompts)`);
         
         // ═══ LOAD SYSTEM RULES FROM PROJECT ═══
         const projectPath = payload.project_path || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         const systemRules = loadSystemRules(projectPath);
         
         if (!systemRules) {
-            console.warn('[SEMANTGUARD POWER MODE] No system_rules.md found - using empty ruleset');
+            console.warn('[SEMANTICGUARD POWER MODE] No system_rules.md found - using empty ruleset');
         }
         
         // ═══ GHOST STRIPPER: Remove Comments While Preserving Line Numbers ═══
         const originalCode = payload.code_snippet;
         const strippedCode = stripCommentsPreserveLines(originalCode);
-        console.log(`[SEMANTGUARD GHOST STRIPPER] Stripped comments from ${originalCode.split('\n').length} lines`);
+        console.log(`[SEMANTICGUARD GHOST STRIPPER] Stripped comments from ${originalCode.split('\n').length} lines`);
         
         // ═══ REQUIREMENT 1: LINE NUMBER INJECTION ═══
         // Inject line numbers into code before sending to Cloud API
         const numberedCode = injectLineNumbers(strippedCode);
-        console.log(`[SEMANTGUARD LINE INJECTION] Injected line numbers into ${strippedCode.split('\n').length} lines`);
+        console.log(`[SEMANTICGUARD LINE INJECTION] Injected line numbers into ${strippedCode.split('\n').length} lines`);
         
         // Build the prompt based on version
         let systemPrompt, userPrompt;
@@ -2317,63 +2473,187 @@ Follow the 5 required reasoning steps in order:
 
 Provide your analysis in the required JSON format.`;
         } else {
-            // ═══ REQUIREMENT 2 & 3: ENHANCED SYSTEM PROMPT ═══
-            // V1 Legacy Prompt System with Line Number and Rule Name Instructions
-            systemPrompt = `You are SemantGuard, a security-focused code auditor. Analyze the provided code for security violations and architectural drift.
+            // V1 PURGED - Now using V2 Taint Analysis System
+            // MERGE STEP 1: Inject system_rules.md
+            const rulesBlock = systemRules ? `
+===============================================================================
 
-IMPORTANT INSTRUCTIONS FOR LINE NUMBERS:
-- The code you receive has line numbers prepended in the format: \${lineNumber} | \${lineContent}
-- You MUST use the exact line numbers shown in the code
-- DO NOT calculate or infer line numbers independently
-- Report the line number exactly as it appears before the pipe character (|)
+PROJECT-SPECIFIC SECURITY RULES (from system_rules.md):
 
-STRICT RULE NOMENCLATURE (CRITICAL):
-- You are operating under a strict custom rulebook
-- You MUST map every violation to the exact Rule ID provided in the system context
-- Examples of valid rule names: 'RULE_8: PHI_PROTECTION', 'RULE_10: LOGGING_GATE', 'RULE_3: HARDCODED_SECRETS'
-- Under NO circumstances are you allowed to invent, guess, or generate generic rule names
-- DO NOT use generic names like 'security_violation', 'data_exposure', 'sensitive_data_exposure'
-- If you're unsure which rule applies, use the closest matching rule from the provided list
-- If no exact rule matches, state "RULE_UNKNOWN: [description]" rather than inventing a rule name
+${systemRules}
 
-SINK VERIFICATION MANDATE (CRITICAL):
-- You must perform rigorous End-to-End Taint Analysis
-- Defining sensitive data in a variable is NOT a vulnerability
-- A vulnerability ONLY exists if that exact sensitive data flows into an insecure sink
-- Insecure sinks include: print(), console.log(), os.popen(), HTTP response bodies, database queries, file writes
-- If an object contains sensitive data, but that specific data is stripped or unreferenced before the final output/return, YOU MUST NOT FLAG IT
-- Verify the exact keys/fields being returned before claiming data exposure
-- Example: If user_data = {"ssn": "123-45-6789", "name": "John"} but only {"name": "John"} is returned, this is SAFE
-- You must trace the data flow from source to sink and confirm the sensitive field actually reaches the output
+===============================================================================
+` : '';
+            
+            if (systemRules) {
+                console.log(`[SEMANTICGUARD RULES] Injected ${systemRules.length} chars into prompt`);
+            }
+            
+            systemPrompt = `You are an AGGRESSIVE AppSec auditor focused on EXPLOITABILITY, not patterns.
 
-REQUIRED OUTPUT FORMAT:
-Return ONLY valid JSON in this exact format:
+Your job is to find REAL, EXPLOITABLE security issues. Avoid false positives.
+
+${rulesBlock}
+ZERO-TOLERANCE FOR HARDCODED FALSE POSITIVES:
+- Hardcoded strings are SAFE unless they are actual secrets/credentials
+- Model names, file paths, configuration values are NOT vulnerabilities
+- Only flag hardcoded API keys, passwords, tokens, or secrets
+
+TAINT ANALYSIS RULES (STRICT):
+1. SOURCE: Only user-controlled input is dangerous
+
+Untrusted sources — trace these:
+- HTTP: request.json(), req.query, req.body, req.params, form data
+- Browser: document.cookie, localStorage, sessionStorage, window.location, location.href, location.hash, location.search, URLSearchParams, window.name
+- Runtime: sys.argv[1+], os.environ (when user-influenced), file uploads, user session values, WebSocket messages
+- DOM: innerHTML reads, textContent reads, getAttribute()
+
+CRITICAL: Unvalidated Input Deserialization
+- request.json or req.body used WITHOUT validation/sanitization is a vulnerability
+- Look for missing jsonschema, validate_json, pydantic, marshmallow, joi, yup, zod
+- Flag if user data reaches application logic without schema validation
+
+Trusted sources — do NOT flag:
+- Hardcoded string literals (unless they ARE the dangerous payload)
+- Script constants defined in-file
+- os.environ["KEY"] = "literal" (assigning literal)
+- os.environ.copy() (copying full env, not user-controlled key)
+
+2. SINK: Dangerous sinks — flag if untrusted input reaches these:
+
+Code Execution:
+- eval(), exec(), compile(), Function() constructor
+- subprocess with shell=True, os.system(), os.popen()
+- spawn() with shell mode or user-controlled binary
+
+CRITICAL SUBPROCESS RULE:
+- subprocess.run(['command', 'arg']) with list arguments and NO shell=True is SAFE
+- subprocess.run('command', shell=True) with string and shell=True is DANGEROUS
+- If you see subprocess with list arguments and no shell=True → DO NOT FLAG IT
+
+DOM/XSS:
+- innerHTML, outerHTML, document.write(), document.writeln()
+- insertAdjacentHTML(), srcdoc attribute
+- setTimeout(string), setInterval(string)
+
+Injection:
+- SQL: string concatenation in queries (not parameterized)
+- Template: Jinja2 render with user input, EJS with user input
+- Path: path.join() / os.path.join() with user-controlled segments without realpath() + startswith() validation
+
+Deserialization:
+- pickle.loads(), yaml.load() (not safe_load), unserialize()
+
+Network:
+- fetch(), requests.get/post() with user-controlled URLs (SSRF)
+- XMLHttpRequest with user-controlled target
+
+3. FLOW: Vulnerability exists ONLY if dangerous user input reaches dangerous sink
+   - Trace the exact data flow from source to sink
+   - If user input is sanitized, validated, or hardcoded → SAFE
+
+CRITICAL SECURITY PATTERNS (ALWAYS FLAG):
+- Hardcoded credentials: API keys, passwords, tokens, secrets
+- User input in eval(), exec(), os.system()
+- User input in SQL string concatenation
+- User input in file paths without validation
+- Hardcoded XSS payloads in innerHTML, document.write()
+- Hardcoded dangerous strings in eval()
+
+RULE_ID MAPPING (MANDATORY - NEVER USE "NONE"):
+
+**For XSS/DOM Issues**:
+- "RULE_11_STEP0: Static Dangerous Content" (hardcoded XSS, innerHTML with <script>)
+
+**For Command Injection**:
+- "RULE_102: Shell Injection" (subprocess with shell=True, os.system)
+
+**For Code Injection**:
+- "RULE_101: Eval Injection" (eval(), exec(), compile())
+
+**For SQL Injection**:
+- "RULE_103: SQL Injection" (string concatenation in SQL)
+
+**For Hardcoded Secrets**:
+- "RULE_100: Hardcoded Secrets" (API keys, passwords, tokens)
+
+**For Data Leaks**:
+- "RULE_105: Logging Gate" (sensitive data in logs)
+- "RULE_104: PHI Protection" (PII/PHI in insecure sinks)
+
+**For Custom Rules** (if system_rules.md has RULE_8, RULE_9, etc.):
+- Use exact format: "RULE_8: PHI_PROTECTION"
+
+**Default Fallbacks** (if no specific rule matches):
+- "RULE_11_STEP0: Static Dangerous Content" (for hardcoded dangerous strings)
+- "RULE_11: Multi-Hop Taint Analysis" (for dynamic taint flows)
+
+REQUIRED JSON OUTPUT (STRICT SCHEMA):
 {
-    "action": "ACCEPT or REJECT",
-    "drift_score": 0.0 to 1.0,
-    "reasoning": "Brief explanation with data flow analysis",
-    "violations": [
-        {
-            "rule_id": "string (exact rule name from instructions)",
-            "line_number": number (exact line number from prepended format),
-            "violation": "description with data flow path",
-            "confidence": "HIGH or LOW",
-            "violating_snippet": "the exact line of code containing the violation (without the line number prefix)"
-        }
-    ]
+  "findings": [
+    {
+      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+      "rule_id": "<use exact format from RULE_ID MAPPING above - NEVER use NONE>",
+      "vulnerability_type": "Hardcoded Secrets|Code Injection|SQL Injection|Path Traversal|DOM-based XSS|etc",
+      "line_number": <exact_line_number>,
+      "description": "Brief description of the actual vulnerability"
+    }
+  ]
 }
 
-PROJECT-SPECIFIC SECURITY RULES:
-${systemRules || 'No custom rules defined. Use general security best practices.'}
+FEW-SHOT EXAMPLES:
 
-DATA FLOW ANALYSIS REQUIREMENTS:
-1. Identify the source of sensitive data (variable definition, user input, database query)
-2. Trace the data through all transformations (assignments, function calls, filtering)
-3. Identify the final sink (return statement, print, log, HTTP response)
-4. Verify that the sensitive field actually reaches the sink
-5. Only flag if the sensitive data is present in the final output`;
+Example 1 (Hardcoded XSS):
+{"findings": [{"severity": "CRITICAL", "rule_id": "RULE_11_STEP0: Static Dangerous Content", "vulnerability_type": "DOM-based XSS", "line_number": 4, "description": "Hardcoded XSS payload in innerHTML"}]}
 
-            userPrompt = `Analyze this code for security violations:
+Example 2 (eval with hardcoded string):
+{"findings": [{"severity": "CRITICAL", "rule_id": "RULE_101: Eval Injection", "vulnerability_type": "Code Injection", "line_number": 1, "description": "eval() with dangerous hardcoded string"}]}
+
+Example 3 (Safe code):
+{"findings": []}
+
+If safe: {"findings": []}
+
+ANTI-HALLUCINATION MANDATE:
+- If no user input reaches dangerous sinks → {"findings": []}
+- If only hardcoded values are used → {"findings": []} (unless credentials or dangerous strings)
+- If input is properly sanitized → {"findings": []}
+- NO false positives for safe patterns
+
+ZERO-TOLERANCE NO-WEASEL MANDATE:
+You are FORBIDDEN from creating a finding if your own reasoning contains ANY of these phrases:
+- "Although hardcoded"
+- "Despite being an array"
+- "Although the arguments are hardcoded"
+- "Although the binary is hardcoded"
+- "Could potentially"
+- "An attacker could potentially"
+- "Might be"
+- "If an attacker"
+
+These phrases prove you already know the code is SAFE.
+If you catch yourself writing them, DISCARD the finding.
+A finding that admits inputs are hardcoded is a LOGIC FAILURE.
+
+Exception: Step 0 static dangerous content (hardcoded XSS payloads, hardcoded eval strings) — these are flagged regardless.
+
+===============================================================================
+
+PHASE 5 – PRE-FLIGHT CHECKLIST (mandatory before writing any JSON):
+
+For EVERY potential finding:
+  Q1: Can an attacker change this value without already having shell access? NO → REMOVE IT.
+  Q2: Does my reasoning use a weasel phrase from above?                    YES → REMOVE IT.
+  Q3: Is the "secret" a model name, port, host, or local URL?              YES → REMOVE IT.
+
+After the checklist – if zero findings remain, output: {"findings": []}
+
+===============================================================================
+
+FINAL RULE: Pattern matching = noise. Proven taint path = finding. When in doubt, return {"findings": []}.
+False negatives are recoverable. False positives destroy trust.`;
+
+            userPrompt = `Analyze this code for REAL security vulnerabilities using strict taint analysis:
 
 Filename: ${payload.filename}
 
@@ -2382,11 +2662,12 @@ Code:
 ${numberedCode}
 \`\`\`
 
-Provide your analysis in JSON format. Remember to:
-1. Use exact line numbers from the code
-2. Use exact rule names from the instructions (e.g., RULE_8: PHI_PROTECTION)
-3. Perform complete data flow analysis from source to sink
-4. Only flag violations where sensitive data actually reaches an insecure sink`;
+Apply taint analysis:
+1. Identify user-controlled sources (if any)
+2. Trace data flow to dangerous sinks
+3. Only flag if user input reaches dangerous sink
+
+Return JSON with findings array. If safe, return {"findings": []}.`;
         }
 
         // Build headers based on provider
@@ -2397,9 +2678,26 @@ Provide your analysis in JSON format. Remember to:
         
         // OpenRouter requires additional headers
         if (provider === 'openrouter') {
-            headers["HTTP-Referer"] = "https://github.com/dsadsadsadsadas/SemantGuard";
-            headers["X-Title"] = "SemantGuard Gatekeeper";
+            headers["HTTP-Referer"] = "https://github.com/dsadsadsadsadas/SemanticGuard";
+            headers["X-Title"] = "SemanticGuard Gatekeeper";
         }
+
+        // 🔍 DEBUG INSTRUMENTATION: Capture raw payload before API call
+        const DEBUG_PAYLOAD = {
+            "system_prompt": systemPrompt,
+            "user_prompt": userPrompt,
+            "model": modelId,
+            "temperature": 0.3,
+            "max_tokens": 2000,
+            "response_format": { type: "json_object" },
+            "post_ghost_strip_content": strippedCode,
+            "post_line_injection_content": numberedCode,
+            "provider": config.displayName,
+            "use_v2_prompts": useV2Prompts
+        };
+        const fs = require('fs');
+        fs.writeFileSync("debug_extension_payload.json", JSON.stringify(DEBUG_PAYLOAD, null, 2), 'utf-8');
+        console.log('[SEMANTICGUARD DEBUG] Raw payload written to debug_extension_payload.json');
 
         const response = await fetchWithTimeout(config.endpoint, {
             method: "POST",
@@ -2410,8 +2708,9 @@ Provide your analysis in JSON format. Remember to:
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userPrompt }
                 ],
-                temperature: 0.1,
-                max_tokens: 2000
+                temperature: 0.3,  // Aligned with stress_test.py for consistency
+                max_tokens: 2000,
+                response_format: { type: "json_object" }  // Force strict JSON mode
             })
         }, 30000);
 
@@ -2427,20 +2726,55 @@ Provide your analysis in JSON format. Remember to:
             throw new Error(`No response content from ${config.displayName}`);
         }
         
-        console.log(`[SEMANTGUARD POWER MODE] Raw response from ${config.displayName}:`, content);
+        console.log(`[SEMANTICGUARD POWER MODE] Raw response from ${config.displayName}:`, content);
         
-        // Parse JSON response
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-            throw new Error(`Could not extract JSON from ${config.displayName} response`);
+        // 🛠️ BULLETPROOF JSON EXTRACTOR - Handles nested braces correctly
+        // 1. Strip out markdown code blocks if the LLM hallucinated them
+        let cleanResponse = content.replace(/```json/gi, '').replace(/```/g, '').trim();
+        
+        // 2. Find the boundaries of the outermost JSON object using string indices
+        const firstBrace = cleanResponse.indexOf('{');
+        if (firstBrace === -1) {
+            throw new Error(`No JSON object found in ${config.displayName} response`);
         }
         
-        let result = JSON.parse(jsonMatch[0]);
+        // 3. Find the matching closing brace by counting nested braces
+        let braceCount = 0;
+        let lastBrace = -1;
+        
+        for (let i = firstBrace; i < cleanResponse.length; i++) {
+            if (cleanResponse[i] === '{') {
+                braceCount++;
+            } else if (cleanResponse[i] === '}') {
+                braceCount--;
+                if (braceCount === 0) {
+                    lastBrace = i;
+                    break; // Found the matching closing brace
+                }
+            }
+        }
+        
+        if (lastBrace === -1) {
+            throw new Error(`Incomplete JSON object in ${config.displayName} response`);
+        }
+        
+        // 4. Extract the complete JSON object from first { to matching }
+        const jsonString = cleanResponse.substring(firstBrace, lastBrace + 1);
+        
+        // 5. Parse the safely extracted string
+        let result;
+        try {
+            result = JSON.parse(jsonString);
+            console.log(`[SEMANTICGUARD POWER MODE] ✅ Successfully parsed JSON from ${config.displayName}`);
+        } catch (parseError) {
+            console.error(`[SEMANTICGUARD POWER MODE] JSON parse failed:`, parseError);
+            console.error(`[SEMANTICGUARD POWER MODE] Attempted to parse:`, jsonString);
+            throw new Error(`Invalid JSON from ${config.displayName}: ${parseError.message}`);
+        }
         
         // V2 Response Processing and Validation
-        if (useV2Prompts) {
-            result = await processV2Response(result, config.displayName, payload);
-        }
+        // ALWAYS process findings format (both V1 and V2 use it now)
+        result = await processV2Response(result, config.displayName, payload);
         
         // Calculate performance metrics
         const duration = (Date.now() - startTime) / 1000; // Convert to seconds
@@ -2451,13 +2785,13 @@ Provide your analysis in JSON format. Remember to:
         result.audit_mode = 'cloud';
         result.prompt_version = useV2Prompts ? 'v2' : 'v1';
         
-        console.log(`[SEMANTGUARD POWER MODE] Parsed result from ${config.displayName}:`, result);
-        console.log(`[SEMANTGUARD POWER MODE] ⚡ Performance: ${duration.toFixed(2)}s latency`);
+        console.log(`[SEMANTICGUARD POWER MODE] Parsed result from ${config.displayName}:`, result);
+        console.log(`[SEMANTICGUARD POWER MODE] ⚡ Performance: ${duration.toFixed(2)}s latency`);
         
         return result;
         
     } catch (error) {
-        console.error("[SEMANTGUARD POWER MODE] Cloud API error:", error);
+        console.error("[SEMANTICGUARD POWER MODE] Cloud API error:", error);
         throw error;
     }
 }
@@ -2465,176 +2799,106 @@ Provide your analysis in JSON format. Remember to:
 // ─── V2 Response Processing and Validation ──────────────────────────────────
 
 async function processV2Response(v2Response, providerName, payload) {
-    const extensionContext = global.semantguardContext;
-    const debugMode = extensionContext?.globalState.get('semantguard.debug_reasoning') || false;
+    const extensionContext = global.semanticguardContext;
+    const debugMode = extensionContext?.globalState.get('semanticguard.debug_reasoning') || false;
     
     if (debugMode) {
-        console.log(`[SEMANTGUARD V2 DEBUG] ═══════════════════════════════════════`);
-        console.log(`[SEMANTGUARD V2 DEBUG] Processing V2 response from ${providerName}`);
-        console.log(`[SEMANTGUARD V2 DEBUG] Raw V2 Response:`, JSON.stringify(v2Response, null, 2));
-        console.log(`[SEMANTGUARD V2 DEBUG] ═══════════════════════════════════════`);
+        console.log(`[SEMANTICGUARD V2 DEBUG] ═══════════════════════════════════════`);
+        console.log(`[SEMANTICGUARD V2 DEBUG] Processing V2 findings from ${providerName}`);
+        console.log(`[SEMANTICGUARD V2 DEBUG] Raw V2 Response:`, JSON.stringify(v2Response, null, 2));
+        console.log(`[SEMANTICGUARD V2 DEBUG] ═══════════════════════════════════════`);
     } else {
-        console.log(`[SEMANTGUARD V2] Processing V2 response from ${providerName}`);
+        console.log(`[SEMANTICGUARD V2] Processing V2 findings from ${providerName}`);
     }
     
-    // Validate V2 response structure
-    const requiredFields = [
-        "pattern_detected", "user_controlled_input", "uses_shell", 
-        "argument_type", "exploitability", "severity", "confidence", "reasoning"
-    ];
-    
-    const validationErrors = [];
-    
-    // Check required fields
-    for (const field of requiredFields) {
-        if (!(field in v2Response)) {
-            validationErrors.push(`Missing required field: ${field}`);
-        }
-    }
-    
-    if (validationErrors.length > 0) {
-        console.warn(`[SEMANTGUARD V2] Validation errors: ${validationErrors.join(', ')}`);
-        if (debugMode) {
-            console.log(`[SEMANTGUARD V2 DEBUG] Validation failed, attempting strict mode retry`);
-        }
-        return await retryWithStrictMode(payload, providerName);
-    }
-    
-    // Logical consistency validation
-    const correctedResponse = { ...v2Response };
-    const logicalErrors = [];
-    
-    // Rule: If user_controlled_input = false → severity cannot be CRITICAL
-    if (!v2Response.user_controlled_input && v2Response.severity === "CRITICAL") {
-        logicalErrors.push("No user input but CRITICAL severity");
-        correctedResponse.severity = "HIGH";
-        if (debugMode) {
-            console.log(`[SEMANTGUARD V2 DEBUG] Applied constraint: user_controlled_input=false → severity downgraded from CRITICAL to HIGH`);
-        }
-    }
-    
-    // Rule: If uses_shell = false AND argument_type = list → severity ≤ LOW
-    if (!v2Response.uses_shell && 
-        v2Response.argument_type === "list" && 
-        ["CRITICAL", "HIGH", "MEDIUM"].includes(v2Response.severity)) {
-        logicalErrors.push("Safe subprocess usage but high severity");
-        correctedResponse.severity = "LOW";
-        if (debugMode) {
-            console.log(`[SEMANTGUARD V2 DEBUG] Applied constraint: uses_shell=false + argument_type=list → severity downgraded to LOW`);
-        }
-    }
-    
-    // Rule: If exploitability = none → severity must be NONE
-    if (v2Response.exploitability === "none" && v2Response.severity !== "NONE") {
-        logicalErrors.push("No exploitability but non-zero severity");
-        correctedResponse.severity = "NONE";
-        if (debugMode) {
-            console.log(`[SEMANTGUARD V2 DEBUG] Applied constraint: exploitability=none → severity set to NONE`);
-        }
-    }
-    
-    // Rule: If pattern_detected indicates no risk → severity should be NONE
-    const safePatterns = ["none", "no pattern", "no risk", "safe", "no issues"];
-    if (safePatterns.some(pattern => v2Response.pattern_detected.toLowerCase().includes(pattern))) {
-        if (v2Response.severity !== "NONE") {
-            logicalErrors.push("No pattern detected but non-zero severity");
-            correctedResponse.severity = "NONE";
-            if (debugMode) {
-                console.log(`[SEMANTGUARD V2 DEBUG] Applied constraint: safe pattern detected → severity set to NONE`);
-            }
-        }
-    }
-    
-    if (logicalErrors.length > 0) {
-        console.warn(`[SEMANTGUARD V2] Logical errors corrected: ${logicalErrors.join(', ')}`);
-    }
-    
-    // Convert V2 to legacy format for compatibility
-    const legacyResponse = convertV2ToLegacyFormat(correctedResponse);
-    
-    // Add V2 metadata for debugging
-    legacyResponse.v2_metadata = {
-        pattern_detected: correctedResponse.pattern_detected,
-        user_controlled_input: correctedResponse.user_controlled_input,
-        uses_shell: correctedResponse.uses_shell,
-        argument_type: correctedResponse.argument_type,
-        exploitability: correctedResponse.exploitability,
-        severity: correctedResponse.severity,
-        confidence: correctedResponse.confidence,
-        validation_errors: validationErrors,
-        logical_errors: logicalErrors,
-        constraints_applied: logicalErrors.length > 0
-    };
+    // V2 FINDINGS FORMAT: {"findings": [...]}
+    const findings = v2Response.findings || [];
     
     if (debugMode) {
-        console.log(`[SEMANTGUARD V2 DEBUG] ═══════════════════════════════════════`);
-        console.log(`[SEMANTGUARD V2 DEBUG] Final V2 Analysis:`);
-        console.log(`[SEMANTGUARD V2 DEBUG] - Pattern: ${correctedResponse.pattern_detected}`);
-        console.log(`[SEMANTGUARD V2 DEBUG] - User Input: ${correctedResponse.user_controlled_input}`);
-        console.log(`[SEMANTGUARD V2 DEBUG] - Uses Shell: ${correctedResponse.uses_shell}`);
-        console.log(`[SEMANTGUARD V2 DEBUG] - Argument Type: ${correctedResponse.argument_type}`);
-        console.log(`[SEMANTGUARD V2 DEBUG] - Exploitability: ${correctedResponse.exploitability}`);
-        console.log(`[SEMANTGUARD V2 DEBUG] - Severity: ${correctedResponse.severity}`);
-        console.log(`[SEMANTGUARD V2 DEBUG] - Confidence: ${correctedResponse.confidence}`);
-        console.log(`[SEMANTGUARD V2 DEBUG] - Constraints Applied: ${logicalErrors.length}`);
-        console.log(`[SEMANTGUARD V2 DEBUG] - Legacy Action: ${legacyResponse.action}`);
-        console.log(`[SEMANTGUARD V2 DEBUG] - Legacy Score: ${legacyResponse.drift_score}`);
-        console.log(`[SEMANTGUARD V2 DEBUG] ═══════════════════════════════════════`);
+        console.log(`[SEMANTICGUARD V2 DEBUG] Extracted ${findings.length} findings`);
+        findings.forEach((finding, index) => {
+            console.log(`[SEMANTICGUARD V2 DEBUG] Finding ${index + 1}:`, finding);
+        });
+    }
+    
+    // Convert V2 findings to legacy format for compatibility with existing UI
+    const legacyResponse = convertFindingsToLegacyFormat(findings, v2Response);
+    
+    if (debugMode) {
+        console.log(`[SEMANTICGUARD V2 DEBUG] ═══════════════════════════════════════`);
+        console.log(`[SEMANTICGUARD V2 DEBUG] Final V2 Analysis:`);
+        console.log(`[SEMANTICGUARD V2 DEBUG] - Findings Count: ${findings.length}`);
+        console.log(`[SEMANTICGUARD V2 DEBUG] - Legacy Action: ${legacyResponse.action}`);
+        console.log(`[SEMANTICGUARD V2 DEBUG] - Legacy Score: ${legacyResponse.drift_score}`);
+        console.log(`[SEMANTICGUARD V2 DEBUG] ═══════════════════════════════════════`);
     } else {
-        console.log(`[SEMANTGUARD V2] Converted to legacy format:`, legacyResponse);
+        console.log(`[SEMANTICGUARD V2] Converted to legacy format:`, legacyResponse);
     }
     
     return legacyResponse;
 }
 
-async function retryWithStrictMode(payload, providerName) {
-    console.log(`[SEMANTGUARD V2] Retrying with strict mode for ${providerName}`);
+// V2 PURGE: Legacy retry function removed - V2 findings format is simpler and more reliable
+
+function convertFindingsToLegacyFormat(findings, rawResponse) {
+    // V2 FINDINGS FORMAT: Convert {"findings": [...]} to legacy format
     
-    // For now, fall back to V1 format on validation failure
-    // In a full implementation, this would retry with enhanced constraints
-    const fallbackResponse = {
-        action: "ACCEPT",
-        drift_score: 0.0,
-        reasoning: "V2 validation failed, falling back to safe default",
-        violations: [],
-        v2_fallback: true
+    if (!findings || findings.length === 0) {
+        // SAFE: No findings
+        return {
+            action: "ACCEPT",
+            drift_score: 0.0,
+            reasoning: "No security vulnerabilities detected.",
+            violations: [],
+            findings: [] // Include V2 findings for new UI
+        };
+    }
+    
+    // VULNERABLE: Has findings
+    const maxSeverity = getMaxSeverity(findings);
+    const driftScore = severityToScore(maxSeverity);
+    
+    // Convert findings to legacy violations format for backward compatibility
+    const violations = findings.map((finding, index) => ({
+        rule_id: finding.rule_id || `SECURITY_VIOLATION_${index + 1}`,
+        rule_name: finding.vulnerability_type || "Security Issue",
+        line_number: finding.line_number || 0,
+        violation: finding.description || "Security vulnerability detected.",
+        confidence: "HIGH", // V2 doesn't use confidence
+        severity: finding.severity || "MEDIUM"
+    }));
+    
+    const reasoning = findings.length === 1 
+        ? `Security vulnerability: ${findings[0].description}`
+        : `${findings.length} security vulnerabilities detected.`;
+    
+    return {
+        action: "REJECT",
+        drift_score: driftScore,
+        reasoning: reasoning,
+        violations: violations,
+        findings: findings // Include V2 findings for new UI
     };
-    
-    return fallbackResponse;
 }
 
-function convertV2ToLegacyFormat(v2Response) {
-    // Map severity to action
-    const severity = v2Response.severity || "NONE";
-    const action = ["CRITICAL", "HIGH", "MEDIUM"].includes(severity) ? "REJECT" : "ACCEPT";
-    
-    // Map severity to drift score
+function getMaxSeverity(findings) {
+    const severityOrder = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
+    for (const severity of severityOrder) {
+        if (findings.some(f => f.severity === severity)) {
+            return severity;
+        }
+    }
+    return "LOW";
+}
+
+function severityToScore(severity) {
     const severityToScore = {
         "CRITICAL": 1.0,
         "HIGH": 0.8,
         "MEDIUM": 0.6,
-        "LOW": 0.3,
-        "NONE": 0.0
+        "LOW": 0.3
     };
-    const driftScore = severityToScore[severity] || 0.0;
-    
-    // Create violations array if rejecting
-    const violations = [];
-    if (action === "REJECT") {
-        violations.push({
-            rule_id: "V2_ANALYSIS",
-            line_number: 1,  // V2 doesn't track specific lines yet
-            violation: v2Response.pattern_detected || "Security violation detected",
-            confidence: (v2Response.confidence || 0.0) > 0.7 ? "HIGH" : "LOW"
-        });
-    }
-    
-    return {
-        action: action,
-        drift_score: driftScore,
-        reasoning: v2Response.reasoning || "V2 analysis completed",
-        violations: violations
-    };
+    return severityToScore[severity] || 0.3;
 }
 
 // ─── Pillar Reader ────────────────────────────────────────────────────────────
@@ -2647,9 +2911,9 @@ function readPillars(document) {
 
     if (!workspaceFolder) return emptyPillars();
 
-    const semantguardDir = path.join(workspaceFolder.uri.fsPath, ".semantguard");
+    const semanticguardDir = path.join(workspaceFolder.uri.fsPath, ".semanticguard");
     const read = (name) => {
-        const filePath = path.join(semantguardDir, name);
+        const filePath = path.join(semanticguardDir, name);
         return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : "";
     };
 
@@ -2673,15 +2937,15 @@ function emptyPillars() {
 // ─── Health Check ─────────────────────────────────────────────────────────────
 
 async function checkServerHealth() {
-    console.log(`[SEMANTGUARD HEALTH] Starting health check...`);
+    console.log(`[SEMANTICGUARD HEALTH] Starting health check...`);
 
     // Use auto-discovery to find the correct server URL
     const discoveredUrl = await discoverServerURL();
 
     if (!discoveredUrl) {
-        console.log(`[SEMANTGUARD HEALTH] ❌ No server found via auto-discovery`);
+        console.log(`[SEMANTICGUARD HEALTH] ❌ No server found via auto-discovery`);
         serverOnline = false;
-        updateStatusBar(global.semantguardContext);
+        updateStatusBar(global.semanticguardContext);
 
         // Output detailed diagnostics to VS Code channel
         outputChannel.appendLine(`[${new Date().toISOString()}] Health Check Status: Failed (Auto-Discovery)`);
@@ -2691,24 +2955,24 @@ async function checkServerHealth() {
     }
 
     try {
-        console.log(`[SEMANTGUARD HEALTH] Using discovered URL: ${discoveredUrl}`);
+        console.log(`[SEMANTICGUARD HEALTH] Using discovered URL: ${discoveredUrl}`);
         const res = await fetchWithTimeout(`${discoveredUrl}/health`, {}, 4000);
         const data = await res.json();
 
-        console.log(`[SEMANTGUARD HEALTH] ✅ Server response: ${JSON.stringify(data)}`);
+        console.log(`[SEMANTICGUARD HEALTH] ✅ Server response: ${JSON.stringify(data)}`);
 
         // Update configuration with working URL for future requests
-        const cfg = vscode.workspace.getConfiguration("semantguard");
+        const cfg = vscode.workspace.getConfiguration("semanticguard");
         if (cfg.get("serverUrl") !== discoveredUrl) {
-            console.log(`[SEMANTGUARD HEALTH] Updating serverUrl config to: ${discoveredUrl}`);
+            console.log(`[SEMANTICGUARD HEALTH] Updating serverUrl config to: ${discoveredUrl}`);
             await cfg.update("serverUrl", discoveredUrl, vscode.ConfigurationTarget.Workspace);
         }
 
         serverOnline = data.status === "ok";
-        updateStatusBar(global.semantguardContext);
+        updateStatusBar(global.semanticguardContext);
 
     } catch (error) {
-        console.log(`[SEMANTGUARD HEALTH] ❌ Health check failed: ${error.message}`);
+        console.log(`[SEMANTICGUARD HEALTH] ❌ Health check failed: ${error.message}`);
 
         // Enhanced error logging using the global channel
         outputChannel.appendLine(`[${new Date().toISOString()}] Health Check Error`);
@@ -2730,19 +2994,19 @@ async function checkServerHealth() {
         }
         
         serverOnline = false;
-        updateStatusBar(global.semantguardContext);
+        updateStatusBar(global.semanticguardContext);
     }
 }
 
 // ─── Status Bar ───────────────────────────────────────────────────────────────
 
 const STATUS_MAP = {
-    online: { text: "🛡️ SemantGuard: Watching...", tooltip: "SemantGuard online — airbag armed", bg: undefined },
-    loading: { text: "$(shield) SemantGuard ⏳", tooltip: "SemantGuard online — model loading…", bg: undefined },
-    checking: { text: "$(sync~spin) Auditing...", tooltip: "SemantGuard — evaluating save…", bg: new vscode.ThemeColor("terminal.ansiYellow") },
-    accepted: { text: "🛡️ SemantGuard: Accepted ✅", tooltip: "SemantGuard — save ACCEPTED", bg: new vscode.ThemeColor("statusBarItem.prominentBackground") },
-    offline: { text: "$(shield) SemantGuard ⚫", tooltip: "SemantGuard offline — saves pass through", bg: undefined },
-    powerMode: { text: "$(zap) SemantGuard: Power Mode", tooltip: "SemantGuard Power Mode — using cloud AI", bg: undefined }
+    online: { text: "🛡️ SemanticGuard: Watching...", tooltip: "SemanticGuard online — airbag armed", bg: undefined },
+    loading: { text: "$(shield) SemanticGuard ⏳", tooltip: "SemanticGuard online — model loading…", bg: undefined },
+    checking: { text: "$(sync~spin) Auditing...", tooltip: "SemanticGuard — evaluating save…", bg: new vscode.ThemeColor("terminal.ansiYellow") },
+    accepted: { text: "🛡️ SemanticGuard: Accepted ✅", tooltip: "SemanticGuard — save ACCEPTED", bg: new vscode.ThemeColor("statusBarItem.prominentBackground") },
+    offline: { text: "$(shield) SemanticGuard ⚫", tooltip: "SemanticGuard offline — saves pass through", bg: undefined },
+    powerMode: { text: "$(zap) SemanticGuard: Power Mode", tooltip: "SemanticGuard Power Mode — using cloud AI", bg: undefined }
 };
 
 function setStatus(key, customText = null, customTooltip = null) {
@@ -2755,20 +3019,20 @@ function setStatus(key, customText = null, customTooltip = null) {
 
 async function updateStatusBar(context, state = 'idle') {
     if (!statusBarItem) return;
-    const mode = context?.globalState.get('semantguard.mode');
-    const provider = context?.globalState.get('semantguard.provider') || 'openrouter';
+    const mode = context?.globalState.get('semanticguard.mode');
+    const provider = context?.globalState.get('semanticguard.provider') || 'openrouter';
     
     const providerDisplayNames = {
         openrouter: "OpenRouter",
         groq: "Groq"
     };
     
-    console.log(`[SEMANTGUARD STATUS] Updating status bar - mode: ${mode}, provider: ${provider}, state: ${state}, serverOnline: ${serverOnline}`);
+    console.log(`[SEMANTICGUARD STATUS] Updating status bar - mode: ${mode}, provider: ${provider}, state: ${state}, serverOnline: ${serverOnline}`);
     
     // Priority 1: If server is offline, always show offline (regardless of mode)
     if (!serverOnline) {
         setStatus('offline');
-        console.log(`[SEMANTGUARD STATUS] ✅ Status bar set to offline (server down)`);
+        console.log(`[SEMANTICGUARD STATUS] ✅ Status bar set to offline (server down)`);
         return;
     }
     
@@ -2778,11 +3042,11 @@ async function updateStatusBar(context, state = 'idle') {
         if (mode === 'cloud') {
             statusBarItem.text = `$(sync~spin) Auditing...`;
             statusBarItem.color = new vscode.ThemeColor('terminal.ansiYellow');
-            statusBarItem.tooltip = `SemantGuard: Auditing code with Power Mode`;
+            statusBarItem.tooltip = `SemanticGuard: Auditing code with Power Mode`;
         } else {
             setStatus('checking');
         }
-        console.log(`[SEMANTGUARD STATUS] ✅ Status bar set to auditing (mode: ${mode})`);
+        console.log(`[SEMANTICGUARD STATUS] ✅ Status bar set to auditing (mode: ${mode})`);
         return;
     }
     
@@ -2803,56 +3067,56 @@ async function updateStatusBar(context, state = 'idle') {
         if (modelId && apiKey) {
             setStatus(
                 'powerMode',
-                `$(zap) SemantGuard: Power Mode`,
-                `SemantGuard Power Mode — ${displayName}: ${modelId}`
+                `$(zap) SemanticGuard: Power Mode`,
+                `SemanticGuard Power Mode — ${displayName}: ${modelId}`
             );
-            console.log(`[SEMANTGUARD STATUS] ✅ Status bar set to Power Mode with ${displayName}: ${modelId}`);
+            console.log(`[SEMANTICGUARD STATUS] ✅ Status bar set to Power Mode with ${displayName}: ${modelId}`);
         } else if (apiKey) {
             setStatus(
                 'powerMode',
-                `$(zap) SemantGuard: Power Mode`,
-                `SemantGuard Power Mode — ${displayName}`
+                `$(zap) SemanticGuard: Power Mode`,
+                `SemanticGuard Power Mode — ${displayName}`
             );
-            console.log(`[SEMANTGUARD STATUS] ✅ Status bar set to Power Mode with ${displayName} (no model specified)`);
+            console.log(`[SEMANTICGUARD STATUS] ✅ Status bar set to Power Mode with ${displayName} (no model specified)`);
         } else {
             setStatus(
                 'powerMode',
-                `$(zap) SemantGuard: Power Mode [No API Key]`,
-                `SemantGuard Power Mode — API key not configured`
+                `$(zap) SemanticGuard: Power Mode [No API Key]`,
+                `SemanticGuard Power Mode — API key not configured`
             );
-            console.log(`[SEMANTGUARD STATUS] ⚠️ Status bar set to Power Mode but no API key found`);
+            console.log(`[SEMANTICGUARD STATUS] ⚠️ Status bar set to Power Mode but no API key found`);
         }
     } else {
         // Priority 4: Server online, Local Mode - clear any yellow color
         statusBarItem.color = undefined;
         setStatus('online');
-        console.log(`[SEMANTGUARD STATUS] ✅ Status bar set to online (local mode)`);
+        console.log(`[SEMANTICGUARD STATUS] ✅ Status bar set to online (local mode)`);
     }
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
 async function showStatus() {
-    const cfg = vscode.workspace.getConfiguration("semantguard");
+    const cfg = vscode.workspace.getConfiguration("semanticguard");
     const url = cfg.get("serverUrl");
     const enabled = cfg.get("enabled");
     vscode.window.showInformationMessage(
-        `🛡️ SemantGuard Gatekeeper\n\nServer: ${url}\nAirbag: ${enabled ? "ARMED ✅" : "DISABLED ⚫"}\nServer: ${serverOnline ? "online" : "offline"}`
+        `🛡️ SemanticGuard Gatekeeper\n\nServer: ${url}\nAirbag: ${enabled ? "ARMED ✅" : "DISABLED ⚫"}\nServer: ${serverOnline ? "online" : "offline"}`
     );
 }
 
 async function toggleEnabled() {
-    const cfg = vscode.workspace.getConfiguration("semantguard");
+    const cfg = vscode.workspace.getConfiguration("semanticguard");
     const current = cfg.get("enabled");
     await cfg.update("enabled", !current, vscode.ConfigurationTarget.Global);
-    vscode.window.showInformationMessage(`🛡️ SemantGuard Airbag: ${!current ? "ARMED ✅" : "DISABLED ⚫"}`);
+    vscode.window.showInformationMessage(`🛡️ SemanticGuard Airbag: ${!current ? "ARMED ✅" : "DISABLED ⚫"}`);
     setStatus(!current ? (serverOnline ? "online" : "offline") : "offline");
 }
 
 function openPillarFile(name) {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders?.length) return;
-    const filePath = path.join(folders[0].uri.fsPath, ".semantguard", name);
+    const filePath = path.join(folders[0].uri.fsPath, ".semanticguard", name);
     if (fs.existsSync(filePath)) {
         vscode.workspace.openTextDocument(filePath).then((doc) => vscode.window.showTextDocument(doc));
     }
@@ -2876,7 +3140,7 @@ async function executeAIAssistantActions(llmResponse, verdict, score) {
 
     const folders = vscode.workspace.workspaceFolders;
     if (!folders?.length) {
-        console.warn('[SEMANTGUARD AI AUTONOMY] No workspace folder open - cannot execute file operations');
+        console.warn('[SEMANTICGUARD AI AUTONOMY] No workspace folder open - cannot execute file operations');
         return;
     }
 
@@ -2894,7 +3158,7 @@ async function executeAIAssistantActions(llmResponse, verdict, score) {
     if (actionsMatch) {
         const sectionName = actionsMatch[1];
         const actionsSection = actionsMatch[2].trim();
-        console.log(`[SEMANTGUARD AI AUTONOMY] Found [${sectionName}] section - using explicit actions`);
+        console.log(`[SEMANTICGUARD AI AUTONOMY] Found [${sectionName}] section - using explicit actions`);
 
         // Parse APPEND_TO_FILE commands
         const appendCommands = actionsSection.matchAll(/APPEND_TO_FILE:\s*(.+?)\nCONTENT:\s*\|?\n([\s\S]*?)(?=\n\nAPPEND_TO_FILE:|$)/g);
@@ -2911,11 +3175,11 @@ async function executeAIAssistantActions(llmResponse, verdict, score) {
         // ═══════════════════════════════════════════════════════════════════
         // STRATEGY 2: FALLBACK - Analyze [THOUGHT] section for patterns
         // ═══════════════════════════════════════════════════════════════════
-        console.log('[SEMANTGUARD AI AUTONOMY] No [AI_ASSISTANT_ACTIONS] found - using fallback heuristics');
+        console.log('[SEMANTICGUARD AI AUTONOMY] No [AI_ASSISTANT_ACTIONS] found - using fallback heuristics');
 
         let thoughtMatch = llmResponse.match(/\[THOUGHT\]([\s\S]*?)(?:\[|$)/);
         if (!thoughtMatch) {
-            console.log('[SEMANTGUARD AI AUTONOMY] No [THOUGHT] section found - continuing without thought heuristics');
+            console.log('[SEMANTICGUARD AI AUTONOMY] No [THOUGHT] section found - continuing without thought heuristics');
             // Continue without returning so this autonomy code cannot block the save/fetch flow.
             thoughtMatch = ['', ''];
         }
@@ -2927,7 +3191,7 @@ async function executeAIAssistantActions(llmResponse, verdict, score) {
         if (verdict === 'REJECT' && score >= 0.40) {
             const violationKeywords = ['violates', 'breaks', 'forbidden', 'not allowed', 'against rule'];
             if (violationKeywords.some(kw => thought.includes(kw))) {
-                console.log('[SEMANTGUARD AI AUTONOMY] Detected rule violation - recording in problems');
+                console.log('[SEMANTICGUARD AI AUTONOMY] Detected rule violation - recording in problems');
 
                 const content = `## Problem: Rule Violation Detected (${timestamp})
 **Status**: UNRESOLVED
@@ -2935,7 +3199,7 @@ async function executeAIAssistantActions(llmResponse, verdict, score) {
 **Description**: Code violates architectural rules
 **AI Analysis**: ${thoughtMatch[1].trim().substring(0, 200)}...
 `;
-                if (await appendToFile(projectRoot, '.semantguard/problems_and_resolutions.md', content)) {
+                if (await appendToFile(projectRoot, '.semanticguard/problems_and_resolutions.md', content)) {
                     executedCount++;
                 }
             }
@@ -2944,14 +3208,14 @@ async function executeAIAssistantActions(llmResponse, verdict, score) {
         // HEURISTIC 2: Detect errors/failures
         const errorKeywords = ['error', 'failed', 'doesn\'t work', 'broken', 'issue', 'problem'];
         if (errorKeywords.some(kw => thought.includes(kw))) {
-            console.log('[SEMANTGUARD AI AUTONOMY] Detected error pattern - recording in problems');
+            console.log('[SEMANTICGUARD AI AUTONOMY] Detected error pattern - recording in problems');
 
             const content = `## Problem: Error Detected (${timestamp})
 **Status**: UNRESOLVED
 **Description**: AI detected potential error in code
 **AI Analysis**: ${thoughtMatch[1].trim().substring(0, 200)}...
 `;
-            if (await appendToFile(projectRoot, '.semantguard/problems_and_resolutions.md', content)) {
+            if (await appendToFile(projectRoot, '.semanticguard/problems_and_resolutions.md', content)) {
                 executedCount++;
             }
         }
@@ -2960,14 +3224,14 @@ async function executeAIAssistantActions(llmResponse, verdict, score) {
         if (verdict === 'ACCEPT' && score <= 0.15) {
             const patternKeywords = ['follows pattern', 'correct approach', 'good practice', 'recommended', 'aligns with'];
             if (patternKeywords.some(kw => thought.includes(kw))) {
-                console.log('[SEMANTGUARD AI AUTONOMY] Detected pattern compliance - noting success');
+                console.log('[SEMANTICGUARD AI AUTONOMY] Detected pattern compliance - noting success');
 
                 const content = `## Success: Pattern Followed (${timestamp})
 **Drift Score**: ${score.toFixed(2)}
 **Description**: Code follows architectural patterns correctly
 **AI Analysis**: ${thoughtMatch[1].trim().substring(0, 200)}...
 `;
-                if (await appendToFile(projectRoot, '.semantguard/history_phases.md', content)) {
+                if (await appendToFile(projectRoot, '.semanticguard/history_phases.md', content)) {
                     executedCount++;
                 }
             }
@@ -2977,7 +3241,7 @@ async function executeAIAssistantActions(llmResponse, verdict, score) {
     // Show notification if any actions were executed
     if (executedCount > 0) {
         vscode.window.showInformationMessage(
-            `🤖 SemantGuard AI Autonomy: Executed ${executedCount} pillar update(s)`,
+            `🤖 SemanticGuard AI Autonomy: Executed ${executedCount} pillar update(s)`,
             'View Changes'
         ).then(choice => {
             if (choice === 'View Changes') {
@@ -2999,7 +3263,7 @@ async function appendToFile(projectRoot, filePath, content) {
         const fullPath = path.join(projectRoot, filePath);
 
         if (!fs.existsSync(fullPath)) {
-            console.warn(`[SEMANTGUARD AI AUTONOMY] File not found: ${fullPath} - skipping`);
+            console.warn(`[SEMANTICGUARD AI AUTONOMY] File not found: ${fullPath} - skipping`);
             return false;
         }
 
@@ -3008,11 +3272,11 @@ async function appendToFile(projectRoot, filePath, content) {
         const contentToAppend = (needsNewline ? '\n' : '') + content + '\n';
 
         fs.appendFileSync(fullPath, contentToAppend, 'utf-8');
-        console.log(`[SEMANTGUARD AI AUTONOMY] ✅ Successfully appended to ${filePath}`);
+        console.log(`[SEMANTICGUARD AI AUTONOMY] ✅ Successfully appended to ${filePath}`);
         return true;
 
     } catch (error) {
-        console.error(`[SEMANTGUARD AI AUTONOMY] ❌ Failed to append to ${filePath}:`, error);
+        console.error(`[SEMANTICGUARD AI AUTONOMY] ❌ Failed to append to ${filePath}:`, error);
         return false;
     }
 }
@@ -3113,7 +3377,7 @@ function matchGlob(pattern, filePath) {
 
 // ─── Webview View Provider (Sidebar) ──────────────────────────────────────────
 
-class SemantGuardSidebarProvider {
+class SemanticGuardSidebarProvider {
     constructor() {
         this._lastMessage = null;
     }
@@ -3129,16 +3393,16 @@ class SemantGuardSidebarProvider {
 
         // Listen for messages from the Webview (like button clicks)
         webviewView.webview.onDidReceiveMessage(async (message) => {
-            console.log('[SEMANTGUARD WEBVIEW] Received message:', message);
+            console.log('[SEMANTICGUARD WEBVIEW] Received message:', message);
             
             // Handle BYOK configuration request
             if (message.command === 'configure_byok') {
-                console.log('[SEMANTGUARD WEBVIEW] Executing semantguard.configureBYOK command');
+                console.log('[SEMANTICGUARD WEBVIEW] Executing semanticguard.configureBYOK command');
                 try {
-                    await vscode.commands.executeCommand('semantguard.configureBYOK');
-                    console.log('[SEMANTGUARD WEBVIEW] Command executed successfully');
+                    await vscode.commands.executeCommand('semanticguard.configureBYOK');
+                    console.log('[SEMANTICGUARD WEBVIEW] Command executed successfully');
                 } catch (error) {
-                    console.error('[SEMANTGUARD WEBVIEW] Command execution failed:', error);
+                    console.error('[SEMANTICGUARD WEBVIEW] Command execution failed:', error);
                     vscode.window.showErrorMessage(`Failed to open BYOK config: ${error.message}`);
                 }
                 return;
@@ -3146,22 +3410,22 @@ class SemantGuardSidebarProvider {
             
             // Handle Power Mode toggle request
             if (message.command === 'toggle_power_mode') {
-                console.log('[SEMANTGUARD WEBVIEW] Executing semantguard.togglePowerMode command');
+                console.log('[SEMANTICGUARD WEBVIEW] Executing semanticguard.togglePowerMode command');
                 try {
-                    await vscode.commands.executeCommand('semantguard.togglePowerMode');
-                    console.log('[SEMANTGUARD WEBVIEW] Power mode toggled successfully');
+                    await vscode.commands.executeCommand('semanticguard.togglePowerMode');
+                    console.log('[SEMANTICGUARD WEBVIEW] Power mode toggled successfully');
                 } catch (error) {
-                    console.error('[SEMANTGUARD WEBVIEW] Power mode toggle failed:', error);
+                    console.error('[SEMANTICGUARD WEBVIEW] Power mode toggle failed:', error);
                     vscode.window.showErrorMessage(`Failed to toggle power mode: ${error.message}`);
                 }
                 return;
             }
 
             if (message.command === 'resign_vault') {
-                const cfg = vscode.workspace.getConfiguration("semantguard");
+                const cfg = vscode.workspace.getConfiguration("semanticguard");
                 const serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8000";
                 try {
-                    vscode.window.showInformationMessage("🛡️ Re-signing SemantGuard Vault...");
+                    vscode.window.showInformationMessage("🛡️ Re-signing SemanticGuard Vault...");
                     const res = await fetchWithTimeout(`${serverUrl}/resign_vault`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" }
@@ -3175,7 +3439,7 @@ class SemantGuardSidebarProvider {
                         vscode.window.showErrorMessage(`❌ Failed to re-sign vault: Server returned ${res.status}`);
                     }
                 } catch (err) {
-                    vscode.window.showErrorMessage(`❌ Failed to connect to SemantGuard server to re-sign: ${err.message}`);
+                    vscode.window.showErrorMessage(`❌ Failed to connect to SemanticGuard server to re-sign: ${err.message}`);
                 }
             }
 
@@ -3183,8 +3447,8 @@ class SemantGuardSidebarProvider {
                 const { filename } = message;
                 const folders = vscode.workspace.workspaceFolders;
                 if (!folders?.length) return;
-                const vaultPath = path.join(folders[0].uri.fsPath, ".semantguard", "semantguard_vault", filename);
-                const livePath = path.join(folders[0].uri.fsPath, ".semantguard", filename);
+                const vaultPath = path.join(folders[0].uri.fsPath, ".semanticguard", "semanticguard_vault", filename);
+                const livePath = path.join(folders[0].uri.fsPath, ".semanticguard", filename);
                 if (fs.existsSync(vaultPath)) {
                     fs.copyFileSync(vaultPath, livePath);
                     const doc = await vscode.workspace.openTextDocument(livePath);
@@ -3195,7 +3459,7 @@ class SemantGuardSidebarProvider {
             }
 
             if (message.command === 'force_override') {
-                vscode.window.showWarningMessage(`⚠️ Force Override acknowledged. SemantGuard will allow the next save for this file.`);
+                vscode.window.showWarningMessage(`⚠️ Force Override acknowledged. SemanticGuard will allow the next save for this file.`);
                 this.sendMessage({ type: 'reset' });
             }
 
@@ -3203,43 +3467,43 @@ class SemantGuardSidebarProvider {
                 const { line, text, ruleId, reason, filePath } = message;
                 
                 const relativePath = vscode.workspace.asRelativePath(filePath || '');
-                const prompt = `SemantGuard detected a Rule ${ruleId} violation in file '${relativePath}' on line ${line}.\nReason: ${reason}\nSuggested fix: ${text}\n\nPlease apply this fix.`;
+                const prompt = `SemanticGuard detected a Rule ${ruleId} violation in file '${relativePath}' on line ${line}.\nReason: ${reason}\nSuggested fix: ${text}\n\nPlease apply this fix.`;
                 
                 vscode.env.clipboard.writeText(prompt);
                 vscode.window.showInformationMessage(`📋 Fix prompt for '${relativePath}' copied to clipboard! Paste it to your IDE Agent.`);
             }
 
             if (message.command === 'run_workspace_audit') {
-                console.log('[SEMANTGUARD WEBVIEW] Executing semantguard.auditEntireFolder command');
+                console.log('[SEMANTICGUARD WEBVIEW] Executing semanticguard.auditEntireFolder command');
                 try {
-                    await vscode.commands.executeCommand('semantguard.auditEntireFolder');
-                    console.log('[SEMANTGUARD WEBVIEW] Workspace audit started successfully');
+                    await vscode.commands.executeCommand('semanticguard.auditEntireFolder');
+                    console.log('[SEMANTICGUARD WEBVIEW] Workspace audit started successfully');
                 } catch (error) {
-                    console.error('[SEMANTGUARD WEBVIEW] Workspace audit failed:', error);
+                    console.error('[SEMANTICGUARD WEBVIEW] Workspace audit failed:', error);
                     vscode.window.showErrorMessage(`Failed to start workspace audit: ${error.message}`);
                 }
                 return;
             }
 
             if (message.command === 'toggle_cpu_gpu') {
-                console.log('[SEMANTGUARD WEBVIEW] Executing semantguard.toggleProcessor command');
+                console.log('[SEMANTICGUARD WEBVIEW] Executing semanticguard.toggleProcessor command');
                 try {
-                    await vscode.commands.executeCommand('semantguard.toggleProcessor');
-                    console.log('[SEMANTGUARD WEBVIEW] CPU/GPU toggle executed successfully');
+                    await vscode.commands.executeCommand('semanticguard.toggleProcessor');
+                    console.log('[SEMANTICGUARD WEBVIEW] CPU/GPU toggle executed successfully');
                 } catch (error) {
-                    console.error('[SEMANTGUARD WEBVIEW] CPU/GPU toggle failed:', error);
+                    console.error('[SEMANTICGUARD WEBVIEW] CPU/GPU toggle failed:', error);
                     vscode.window.showErrorMessage(`Failed to toggle CPU/GPU: ${error.message}`);
                 }
                 return;
             }
 
             if (message.command === 'initialize_project') {
-                console.log('[SEMANTGUARD WEBVIEW] Executing semantguard.initializeProject command');
+                console.log('[SEMANTICGUARD WEBVIEW] Executing semanticguard.initializeProject command');
                 try {
-                    await vscode.commands.executeCommand('semantguard.initializeProject');
-                    console.log('[SEMANTGUARD WEBVIEW] Project initialization started successfully');
+                    await vscode.commands.executeCommand('semanticguard.initializeProject');
+                    console.log('[SEMANTICGUARD WEBVIEW] Project initialization started successfully');
                 } catch (error) {
-                    console.error('[SEMANTGUARD WEBVIEW] Project initialization failed:', error);
+                    console.error('[SEMANTICGUARD WEBVIEW] Project initialization failed:', error);
                     vscode.window.showErrorMessage(`Failed to initialize project: ${error.message}`);
                 }
                 return;
@@ -3247,13 +3511,13 @@ class SemantGuardSidebarProvider {
 
             if (message.command === 'update_model') {
                 const { model } = message;
-                console.log('[SEMANTGUARD WEBVIEW] Updating model to:', model);
-                const extensionContext = global.semantguardContext;
+                console.log('[SEMANTICGUARD WEBVIEW] Updating model to:', model);
+                const extensionContext = global.semanticguardContext;
                 if (!extensionContext) {
                     vscode.window.showErrorMessage('Extension context not available');
                     return;
                 }
-                const provider = extensionContext.globalState.get('semantguard.provider') || 'openrouter';
+                const provider = extensionContext.globalState.get('semanticguard.provider') || 'openrouter';
                 const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
                 await extensionContext.globalState.update(modelKey, model);
                 vscode.window.showInformationMessage(`Model updated to: ${model}`);
@@ -3262,12 +3526,12 @@ class SemantGuardSidebarProvider {
             }
 
             if (message.command === 'toggle_mode') {
-                console.log('[SEMANTGUARD WEBVIEW] Executing semantguard.togglePowerMode command from settings');
+                console.log('[SEMANTICGUARD WEBVIEW] Executing semanticguard.togglePowerMode command from settings');
                 try {
-                    await vscode.commands.executeCommand('semantguard.togglePowerMode');
-                    console.log('[SEMANTGUARD WEBVIEW] Power mode toggled successfully from settings');
+                    await vscode.commands.executeCommand('semanticguard.togglePowerMode');
+                    console.log('[SEMANTICGUARD WEBVIEW] Power mode toggled successfully from settings');
                 } catch (error) {
-                    console.error('[SEMANTGUARD WEBVIEW] Power mode toggle failed:', error);
+                    console.error('[SEMANTICGUARD WEBVIEW] Power mode toggle failed:', error);
                     vscode.window.showErrorMessage(`Failed to toggle power mode: ${error.message}`);
                 }
                 return;
@@ -3279,7 +3543,7 @@ class SemantGuardSidebarProvider {
 
         if (forceFocus) {
             // Focus the sidebar but PRESERVE focus in the editor so typing isn't interrupted
-            vscode.commands.executeCommand("semantguard.explorer.focus", { preserveFocus: true });
+            vscode.commands.executeCommand("semanticguard.explorer.focus", { preserveFocus: true });
         }
 
         // Attempt to send immediately (works if view was already mounted)
@@ -3296,9 +3560,9 @@ class SemantGuardSidebarProvider {
     }
     async _getHtmlForWebview() {
         // Get current mode and model information
-        const extensionContext = global.semantguardContext;
-        const mode = extensionContext?.globalState.get('semantguard.mode') || 'local';
-        const provider = extensionContext?.globalState.get('semantguard.provider') || 'openrouter';
+        const extensionContext = global.semanticguardContext;
+        const mode = extensionContext?.globalState.get('semanticguard.mode') || 'local';
+        const provider = extensionContext?.globalState.get('semanticguard.provider') || 'openrouter';
         
         // Get model name
         const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
@@ -3313,9 +3577,9 @@ class SemantGuardSidebarProvider {
         if (mode === 'cloud') {
             if (apiKey && modelId) {
                 // Show only the model ID, no provider prefix
-                modelBadgeHtml = `<span id="model-badge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background-color: #333; color: #ccc; vertical-align: middle; margin-left: 8px;">${modelId}</span>`;
+                modelBadgeHtml = '<span id="model-badge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background-color: #333; color: #ccc; vertical-align: middle; margin-left: 8px;">' + modelId + '</span>';
             } else if (!apiKey) {
-                modelBadgeHtml = `<span id="model-badge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; color: #ff5555; border: 1px solid #ff5555; vertical-align: middle; margin-left: 8px;">No API Key Detected</span>`;
+                modelBadgeHtml = '<span id="model-badge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; color: #ff5555; border: 1px solid #ff5555; vertical-align: middle; margin-left: 8px;">No API Key Detected</span>';
             }
         }
         
@@ -3325,7 +3589,7 @@ class SemantGuardSidebarProvider {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
-    <title>SemantGuard Architect</title>
+    <title>SemanticGuard Architect</title>
     <style>
         body { font-family: var(--vscode-font-family); padding: 10px; color: var(--vscode-editor-foreground); transition: background-color 0.3s; }
         body.compromised { background-color: rgba(255, 0, 0, 0.1); }
@@ -3340,29 +3604,60 @@ class SemantGuardSidebarProvider {
         .drift-score { font-weight: bold; font-size: 1.1em; padding: 2px 6px; border-radius: 3px; }
         .drift-status { font-weight: bold; margin-left: 4px; }
         
-        /* Color coding: 0.0 = Green (Healthy), 0.3-0.6 = Yellow (Warning), 0.6+ = Red (Critical) */
-        .drift-healthy { color: #4ec9b0; background-color: rgba(78, 201, 176, 0.15); }
-        .drift-warning { color: #dcdcaa; background-color: rgba(220, 220, 170, 0.15); }
-        .drift-critical { color: #f48771; background-color: rgba(244, 135, 113, 0.15); }
-        
-        /* Confidence Badges */
-        .confidence-high { 
-            color: #f48771; 
-            background: rgba(244, 135, 113, 0.1);
-            border: 1px solid rgba(244, 135, 113, 0.3);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 0.8em;
+        /* V2 SECURITY FINDINGS STYLING */
+        .finding-card {
+            background-color: var(--vscode-editor-inactiveSelectionBackground);
+            border-left: 4px solid #f48771;
+            border-radius: 6px;
+            padding: 16px;
+            margin: 12px 0;
+            font-size: 0.9em;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .finding-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
             font-weight: bold;
         }
-        .confidence-low { 
-            color: #dcdcaa; 
-            background: rgba(220, 220, 170, 0.1);
-            border: 1px solid rgba(220, 220, 170, 0.3);
-            padding: 2px 6px;
+        .severity-badge {
+            padding: 4px 8px;
             border-radius: 4px;
             font-size: 0.8em;
             font-weight: bold;
+            color: white;
+        }
+        .finding-desc {
+            margin-top: 6px;
+            line-height: 1.5;
+            color: var(--vscode-editor-foreground);
+        }
+        
+        /* SAFE STATE STYLING */
+        .safe-state {
+            background: rgba(78, 201, 176, 0.1);
+            border: 2px solid rgba(78, 201, 176, 0.3);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        .safe-checkmark {
+            font-size: 2em;
+            color: #4ec9b0;
+            margin-bottom: 10px;
+        }
+        
+        /* 🛠️ LATENCY INDICATOR STYLING */
+        .latency-indicator {
+            font-size: 0.8em;
+            color: #dcdcaa;
+            background: rgba(220, 220, 170, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 8px;
+            font-weight: normal;
         }
         
         .action-accept { color: var(--vscode-testing-iconPassed); font-weight: bold; }
@@ -3383,38 +3678,7 @@ class SemantGuardSidebarProvider {
         .btn-warn:hover { background-color: #804d00; }
         .btn-revert { background-color: #1a73e8; color: white; }
         .btn-revert:hover { background-color: #1557b0; }
-        
-        /* VIOLATION CARD STYLING */
-        .violation-card {
-            background-color: var(--vscode-editor-inactiveSelectionBackground);
-            border-left: 4px solid #f48771;
-            border-radius: 4px;
-            padding: 12px;
-            margin: 10px 0;
-            font-size: 0.9em;
-        }
-        .violation-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-            font-weight: bold;
-        }
-        .violation-file { color: #4ec9b0; }
-        .violation-line { color: #ce9178; font-family: var(--vscode-editor-font-family); }
-        .violation-rule { 
-            background: rgba(255, 255, 255, 0.1);
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 0.85em;
-            color: #dcdcaa;
-        }
-        .violation-desc {
-            margin-top: 6px;
-            line-height: 1.4;
-            color: var(--vscode-editor-foreground);
-        }
-        .violation-icon { margin-right: 4px; }
+
         
         /* BYOK Settings Gear Styling */
         .settings-gear {
@@ -3444,13 +3708,13 @@ class SemantGuardSidebarProvider {
 <body>
     <div id="compromise-banner" class="compromise-alert">
         <h3 style="margin-top:0;">🛑 VAULT COMPROMISE DETECTED</h3>
-        <p>The architectural pillars have been modified outside of SemantGuard's authorization. Please review the rules in your .semantguard folder.</p>
+        <p>The architectural pillars have been modified outside of SemanticGuard's authorization. Please review the rules in your .semanticguard folder.</p>
         <button id="resign-btn" class="btn btn-danger">⚠️ I have reviewed the rules. Re-Sign Vault.</button>
     </div>
 
     <div id="content">
         <div class="header-container">
-            <h2>🏛️ SemantGuard Vault Access${modelBadgeHtml}</h2>
+            <h2>🏛️ SemanticGuard Vault Access${modelBadgeHtml}</h2>
             <button id="settings-gear" class="settings-gear" title="Open Settings" onclick="window.openSettings()">⚙️</button>
         </div>
         <p>Awaiting architectural changes...</p>
@@ -3459,7 +3723,7 @@ class SemantGuardSidebarProvider {
     <div id="settings-panel" style="display: none; padding: 0; margin-top: 15px;">
         <div style="background: #1e1e1e; border-radius: 6px; overflow: hidden;">
             <div style="padding: 15px; border-bottom: 1px solid #333;">
-                <h3 style="margin: 0; color: var(--vscode-editor-foreground);">⚙️ SemantGuard Settings</h3>
+                <h3 style="margin: 0; color: var(--vscode-editor-foreground);">⚙️ SemanticGuard Settings</h3>
             </div>
             
             <details style="border-bottom: 1px solid #333;">
@@ -3506,7 +3770,7 @@ class SemantGuardSidebarProvider {
                     <span style="font-weight: 500; color: var(--vscode-editor-foreground);">📁 Project Management</span>
                 </summary>
                 <div style="padding: 15px; background: #181818; border-left: 3px solid #569cd6;">
-                    <button id="initialize-project-btn" onclick="window.initializeProject()" style="width: 100%; padding: 10px; background: #252525; color: white; border: 1px solid #333; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 500; transition: background 0.2s;" onmouseover="this.style.background='#2d2d2d'" onmouseout="this.style.background='#252525'">Initialize SemantGuard</button>
+                    <button id="initialize-project-btn" onclick="window.initializeProject()" style="width: 100%; padding: 10px; background: #252525; color: white; border: 1px solid #333; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 500; transition: background 0.2s;" onmouseover="this.style.background='#2d2d2d'" onmouseout="this.style.background='#252525'">Initialize SemanticGuard</button>
                 </div>
             </details>
             
@@ -3605,49 +3869,89 @@ class SemantGuardSidebarProvider {
         }
 
 
-        function renderViolations(violations, filePath) {
+        function renderFindings(findings, filePath) {
             try {
-                if (!violations) return '';
+                if (!findings || !Array.isArray(findings)) return '';
                 
-                // Ensure array format (LLM might sometimes output object-wrapped array)
-                const list = Array.isArray(violations) ? violations : [];
-                if (list.length === 0) return '';
+                if (findings.length === 0) {
+                    // SAFE STATE: Green success UI
+                    return '<div style="background: rgba(78, 201, 176, 0.1); border: 2px solid rgba(78, 201, 176, 0.3); border-radius: 8px; padding: 20px; margin: 15px 0; text-align: center;">' +
+                           '<div style="font-size: 2em; color: #4ec9b0; margin-bottom: 10px;">✓</div>' +
+                           '<div style="font-size: 1.1em; font-weight: bold; color: #4ec9b0; margin-bottom: 8px;">SAFE</div>' +
+                           '<div style="color: var(--vscode-editor-foreground); font-size: 0.9em;">No architectural drift or vulnerabilities detected.</div>' +
+                           '</div>';
+                }
                 
-                let html = '<div class="violations-container">';
-                html += '<h4 style="margin-bottom: 10px;">⚠️ Architectural Violations</h4>';
+                // VULNERABLE STATE: Multi-card layout
+                let html = '<div class="findings-container" style="margin: 15px 0;">';
+                html += '<h4 style="margin-bottom: 15px; color: var(--vscode-errorForeground);">🚨 Security Vulnerabilities Detected</h4>';
                 
-                list.forEach(v => {
-                    if (!v) return;
-                    const confClass = (v.confidence || '').toUpperCase() === 'LOW' ? 'confidence-low' : 'confidence-high';
+                findings.forEach((finding, index) => {
+                    if (!finding) return;
                     
-                    html += '<div class="violation-card" style="border-left: 3px solid var(--vscode-errorForeground); margin-bottom: 12px; padding: 10px; background: rgba(255, 255, 255, 0.05);">';
-                    html += '    <div class="violation-header" style="margin-bottom: 6px; display: flex; justify-content: space-between;">';
-                    html += '        <span class="violation-file">📍 Line: ' + (v.line_number || '?') + '</span>';
-                    html += '        <span class="' + confClass + '">' + (v.confidence || 'HIGH') + ' CONFIDENCE</span>';
-                    html += '    </div>';
-                    html += '    <div class="violation-rule" style="font-weight: bold; margin-bottom: 4px; color: #dcdcaa;">📋 Rule: ' + escapeHtml(v.rule_id || 'Rule') + '</div>';
-                    html += '    <div class="violation-desc" style="font-style: italic; color: var(--vscode-editor-foreground); margin-bottom: 8px;">🚫 Reason: ' + escapeHtml(v.violation || 'Check server logs') + '</div>';
+                    // Color-code severity
+                    let severityColor = '#f48771'; // Default orange
+                    let severityBg = 'rgba(244, 135, 113, 0.1)';
                     
-                    if (v.data_flow) {
-                        html += '    <div style="font-size: 0.85em; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 4px; margin: 8px 0; font-family: monospace;">';
-                        html += '        <span style="color: #569cd6;">Flow:</span> ' + escapeHtml(v.data_flow);
-                        html += '    </div>';
+                    switch ((finding.severity || '').toUpperCase()) {
+                        case 'CRITICAL':
+                            severityColor = '#ff4d4d';
+                            severityBg = 'rgba(255, 77, 77, 0.1)';
+                            break;
+                        case 'HIGH':
+                            severityColor = '#ff8c42';
+                            severityBg = 'rgba(255, 140, 66, 0.1)';
+                            break;
+                        case 'MEDIUM':
+                            severityColor = '#ffd700';
+                            severityBg = 'rgba(255, 215, 0, 0.1)';
+                            break;
+                        case 'LOW':
+                            severityColor = '#90ee90';
+                            severityBg = 'rgba(144, 238, 144, 0.1)';
+                            break;
                     }
                     
-                    if (v.suggested_fix) {
-                        html += '    <div style="margin-top: 10px;">';
-                        html += '        <button class="btn btn-warn apply-fix-btn" data-line="' + (v.line_number || 0) + '" data-rule-id="' + escapeHtml(v.rule_id || 'Rule') + '" data-reason="' + escapeHtml(v.violation || 'Architectural Drift') + '" data-fix="' + escapeHtml(v.suggested_fix) + '" data-file-path="' + (filePath || '') + '">🪄 Apply Fix</button>';
-                        html += '    </div>';
+                    html += '<div class="finding-card" style="background: ' + severityBg + '; border-left: 4px solid ' + severityColor + '; border-radius: 6px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">';
+                    html += '<div class="finding-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">';
+                    html += '<div style="display: flex; align-items: center; gap: 8px;">';
+                    html += '<span style="background: ' + severityColor + '; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold;">' + escapeHtml(finding.severity || 'MEDIUM') + '</span>';
+                    html += '<span style="color: var(--vscode-editor-foreground); font-weight: bold;">' + escapeHtml(finding.vulnerability_type || 'Security Issue') + '</span>';
+                    html += '</div>';
+                    html += '<span style="color: #ce9178; font-family: var(--vscode-editor-font-family); font-size: 0.9em;">Line ' + (finding.line_number || '?') + '</span>';
+                    html += '</div>';
+                    
+                    // 🛠️ RESTORE RULE ID DISPLAY - Show BYOK rule mapping
+                    if (finding.rule_id && finding.rule_id !== 'NONE') {
+                        html += '<div class="rule-id-display" style="background: rgba(100, 149, 237, 0.1); border: 1px solid rgba(100, 149, 237, 0.3); padding: 6px 10px; border-radius: 4px; margin-bottom: 10px; font-size: 0.85em;">';
+                        html += '<span style="color: #6495ed; font-weight: bold;">📋 Rule:</span> ';
+                        html += '<span style="color: var(--vscode-editor-foreground);">' + escapeHtml(finding.rule_id) + '</span>';
+                        html += '</div>';
                     }
+                    
+                    html += '<div class="finding-description" style="color: var(--vscode-editor-foreground); line-height: 1.5; margin-bottom: 12px; font-size: 0.95em;">';
+                    html += escapeHtml(finding.description || 'Security vulnerability detected.');
+                    html += '</div>';
+                    html += '<div style="background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 4px; font-family: var(--vscode-editor-font-family); font-size: 0.85em; color: #dcdcaa;">';
+                    html += '<strong>Vulnerability ID:</strong> SECURITY-' + String(index + 1).padStart(3, '0');
+                    html += '</div>';
                     html += '</div>';
                 });
                 
                 html += '</div>';
                 return html;
             } catch (err) {
-                console.error('[WEBVIEW ERROR] renderViolations failed:', err);
-                return '<p style="color: var(--vscode-errorForeground);">⚠️ Error rendering violations. See developer console.</p>';
+                console.error('[WEBVIEW ERROR] renderFindings failed:', err);
+                return '<p style="color: var(--vscode-errorForeground);">⚠️ Error rendering security findings. See developer console.</p>';
             }
+        }
+
+        // Legacy violations renderer - DEPRECATED in V2
+        // Only kept for backward compatibility, should not be used
+        function renderViolations(violations, filePath) {
+            // V2 PURGE: Legacy violations are deprecated
+            // All security issues should use renderFindings() instead
+            return '';
         }
 
         window.addEventListener('message', event => {
@@ -3669,29 +3973,29 @@ class SemantGuardSidebarProvider {
             if (message.type === 'reset') {
                 document.body.classList.remove('compromised');
                 compromiseBanner.classList.remove('active');
-                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemantGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p>Awaiting architectural changes...</p>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p>Awaiting architectural changes...</p>';
                 return;
             }
             
             if (message.type === 'resign_success') {
                 document.body.classList.remove('compromised');
                 compromiseBanner.classList.remove('active');
-                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemantGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p style="color: var(--vscode-testing-iconPassed); font-weight: bold;">✅ Successfully Re-Signed Vault!</p>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p style="color: var(--vscode-testing-iconPassed); font-weight: bold;">✅ Successfully Re-Signed Vault!</p>';
                 setTimeout(() => {
-                    contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemantGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p>Awaiting architectural changes...</p>';
+                    contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p>Awaiting architectural changes...</p>';
                 }, 3000);
                 return;
             }
 
             // SCANNING: show loading spinner while AI is thinking
             if (message.type === 'scanning') {
-                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemantGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><div class="scanning"><div class="spinner"></div><span>🛡️ SemantGuard is evaluating architectural drift...</span></div>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><div class="scanning"><div class="spinner"></div><span>🛡️ SemanticGuard is evaluating architectural drift...</span></div>';
                 return;
             }
 
             // ERROR: show server failure while evaluating
             if (message.type === 'error') {
-                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemantGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><div class="action-card" style="border-left: 4px solid var(--vscode-errorForeground);"><p class="action-error">⚠️ SemantGuard Error</p><p style="color: var(--vscode-editor-foreground); font-size: 0.9em;">' + message.message + '</p><p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; font-size: 0.85em; margin-top: 8px;">Audit failed — check server logs for details.</p></div>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><div class="action-card" style="border-left: 4px solid var(--vscode-errorForeground);"><p class="action-error">⚠️ SemanticGuard Error</p><p style="color: var(--vscode-editor-foreground); font-size: 0.9em;">' + message.message + '</p><p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; font-size: 0.85em; margin-top: 8px;">Audit failed — check server logs for details.</p></div>';
                 return;
             }
             
@@ -3703,11 +4007,22 @@ class SemantGuardSidebarProvider {
 
                 const entry = document.createElement('div');
                 entry.className = 'log-entry';
-                let html = '<h3>' + message.title + '</h3>';
+                let html = '<h3>' + message.title;
+                
+                // 🛠️ RESTORE LATENCY INDICATOR - Clean, modern style
+                if (message.cloud_latency) {
+                    html += ' <span class="latency-indicator">⚡ ' + message.cloud_latency + 's</span>';
+                } else if (message.local_latency) {
+                    html += ' <span class="latency-indicator">⚡ ' + message.local_latency + 's</span>';
+                }
+                
+                html += '</h3>';
                 
                 // FIX 2: DRIFT METER WITH COLOR CODING (Distance-Based)
                 // 0.0 = Perfect (Green), 0.3-0.6 = Warning (Yellow), 0.6+ = Critical (Red)
-                if (message.score) {
+                // ONLY show risk score if there are findings (vulnerabilities detected)
+                const findings = message.findings || [];
+                if (message.score && findings.length > 0) {
                     const score = parseFloat(message.score);
                     let scoreClass = 'drift-healthy';  // Default green
                     let scoreLabel = 'Healthy';
@@ -3721,10 +4036,10 @@ class SemantGuardSidebarProvider {
                     }
                     
                     html += '<div class="drift-meter">';
-                    html += '<span class="drift-label">Architectural Distance:</span> ';
+                    html += '<span class="drift-label">Risk Score:</span> ';
                     html += '<span class="drift-score ' + scoreClass + '">' + message.score + '</span> ';
                     html += '<div style="margin-top: 5px; font-size: 0.85em; opacity: 0.8;">';
-                    html += 'Violation occurred after rule was previously satisfied → <b>Context Drift detected</b>';
+                    html += 'V2 Taint Analysis with Risk Surface Detection';
                     html += '</div>';
                     html += '</div>';
                 }
@@ -3737,43 +4052,32 @@ class SemantGuardSidebarProvider {
                 }
 */
 
-                // ═══════════════════════════════════════════════════════════════════
-                // PERFORMANCE TRACKING: "Bragging" UI
-                // ═══════════════════════════════════════════════════════════════════
-                if (message.audit_mode === 'cloud' && message.cloud_provider && message.cloud_latency) {
-                    html += '<div style="background: rgba(100, 200, 255, 0.1); border-left: 3px solid #64c8ff; padding: 8px 12px; margin: 10px 0; border-radius: 4px; font-size: 0.9em;">';
-                    html += '<span style="color: #64c8ff;">☁️ Cloud Audit:</span> ';
-                    html += '<span style="font-weight: bold; color: var(--vscode-editor-foreground);">' + escapeHtml(message.cloud_provider) + '</span>';
-                    html += ' | ';
-                    html += '<span style="color: #dcdcaa;">⚡ Latency:</span> ';
-                    html += '<span style="font-weight: bold; color: #4ec9b0;">' + escapeHtml(message.cloud_latency) + 's</span>';
-                    html += '</div>';
-                } else if (message.audit_mode === 'local') {
-                    html += '<div style="background: rgba(78, 201, 176, 0.1); border-left: 3px solid #4ec9b0; padding: 8px 12px; margin: 10px 0; border-radius: 4px; font-size: 0.9em;">';
-                    html += '<span style="color: #4ec9b0;">💻 Local Audit:</span> ';
-                    html += '<span style="font-weight: bold; color: var(--vscode-editor-foreground);">Layer 1 + Layer 2</span>';
-                    if (message.local_latency) {
-                        html += ' | ';
-                        html += '<span style="color: #dcdcaa;">⚡ Latency:</span> ';
-                        html += '<span style="font-weight: bold; color: #4ec9b0;">' + escapeHtml(message.local_latency) + 's</span>';
-                    }
-                    html += '</div>';
-                }
+                // V2: Pure findings-based UI - no legacy performance tracking
 
                 if (message.action === 'ACCEPT') {
                     html += '<p class="action-accept">✅ Verdict: ACCEPT</p>';
-                    // Only show violations on ACCEPT if there is actual drift (score > 0)
-                    if (message.violations && message.violations.length > 0 && parseFloat(message.score || 0) > 0) {
-                        html += renderViolations(message.violations, message.fullPath);
+                    
+                    // V2: Use findings array if available, fallback to violations
+                    const findings = message.findings || [];
+                    const violations = message.violations || [];
+                    
+                    if (findings.length > 0) {
+                        html += renderFindings(findings, message.fullPath);
                     }
 
                 } else if (message.action === 'REJECT') {
                     html += '<p class="action-reject">🛑 Verdict: REJECT</p>';
-                    if (message.violations && message.violations.length > 0) {
-                        html += renderViolations(message.violations, message.fullPath);
+                    
+                    // V2: Use findings array if available, fallback to violations
+                    const findings = message.findings || [];
+                    const violations = message.violations || [];
+                    
+                    if (findings.length > 0) {
+                        html += renderFindings(findings, message.fullPath);
                     } else {
                         html += '<p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; margin-top: 8px;">⚠️ Violation data missing (Check server logs)</p>';
                     }
+                    
                     html += '<div style="margin-top:10px;">';
                     html += '<button class="btn btn-revert" id="revertBtn">↩️ Revert Save</button>';
                     html += '<button class="btn btn-warn" id="overrideBtn">⚠️ Force Override</button>';
@@ -3781,8 +4085,13 @@ class SemantGuardSidebarProvider {
 
                 } else if (message.action === 'ERROR') {
                     html += '<p class="action-error">⚠️ Verdict: ERROR (AI hallucinated — no valid output)</p>';
-                    if (message.violations && message.violations.length > 0) {
-                        html += renderViolations(message.violations, message.fullPath);
+                    
+                    // V2: Use findings array if available, fallback to violations
+                    const findings = message.findings || [];
+                    const violations = message.violations || [];
+                    
+                    if (findings.length > 0) {
+                        html += renderFindings(findings, message.fullPath);
                     } else {
                         html += '<p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; margin-top: 8px;">⚠️ Evaluation failed (AI output malformed)</p>';
                     }
@@ -3794,11 +4103,17 @@ class SemantGuardSidebarProvider {
                     // FIX 4: Handle partial audits (missing [ACTION] tag)
                     html += '<p class="action-warn">⚠️ Verdict: INCOMPLETE AUDIT</p>';
                     html += '<p style="color: var(--vscode-terminal-ansiYellow); font-size: 0.9em; margin-top: 4px;">Parser detected truncated output - [ACTION] tag missing</p>';
-                    if (message.violations && message.violations.length > 0) {
-                        html += renderViolations(message.violations, message.fullPath);
+                    
+                    // V2: Use findings array if available, fallback to violations
+                    const findings = message.findings || [];
+                    const violations = message.violations || [];
+                    
+                    if (findings.length > 0) {
+                        html += renderFindings(findings, message.fullPath);
                     } else {
                          html += '<p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; margin-top: 8px;">⚠️ Truncated output: No violations extracted</p>';
                     }
+                    
                     // Buttons are disabled for incomplete audits
                     html += '<div style="margin-top:10px;">';
                     html += '<button class="btn btn-revert" disabled style="opacity: 0.5; cursor: not-allowed;">↩️ Revert Save (Disabled)</button>';
@@ -3808,13 +4123,18 @@ class SemantGuardSidebarProvider {
 
                 } else {
                     if (message.action) html += '<p>Verdict: ' + message.action + '</p>';
-                    if (message.violations && message.violations.length > 0) {
-                        html += renderViolations(message.violations, message.fullPath);
+                    
+                    // V2: Use findings array if available, fallback to violations
+                    const findings = message.findings || [];
+                    const violations = message.violations || [];
+                    
+                    if (findings.length > 0) {
+                        html += renderFindings(findings, message.fullPath);
                     }
                 }
 
                 entry.innerHTML = html;
-                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemantGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div>';
                 contentDiv.appendChild(entry);
 
                 // Wire up buttons via event delegation on the entry element
@@ -3840,7 +4160,7 @@ class SemantGuardSidebarProvider {
 </html>`;
     }
 }
-const semantguardSidebarProvider = new SemantGuardSidebarProvider();
+const semanticguardSidebarProvider = new SemanticGuardSidebarProvider();
 
 /**
  * Hands off an AI-suggested fix to the Antigravity IDE Agent.

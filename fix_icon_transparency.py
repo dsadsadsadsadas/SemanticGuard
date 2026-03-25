@@ -48,7 +48,7 @@ def make_transparent(img_path):
 
 def main():
     """Main execution function"""
-    print("🛡️  SemantGuard Icon Transparency Fixer")
+    print("🛡️  SemanticGuard Icon Transparency Fixer")
     print("=" * 50)
     
     # Target both icons

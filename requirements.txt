@@ -1,8 +1,95 @@
-fastapi
-uvicorn
-pydantic
-requests
-python-multipart
-ollama
-tree-sitter==0.21.3
-tree-sitter-languages==1.10.2
+# ═══════════════════════════════════════════════════════════════════════════
+# SemanticGuard Requirements
+# Python dependencies for the SemanticGuard security analysis system
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ─── Core Web Framework ────────────────────────────────────────────────────
+fastapi>=0.104.0          # Modern web framework for the API server
+uvicorn[standard]>=0.24.0 # ASGI server with WebSocket support
+pydantic>=2.0.0           # Data validation and settings management
+
+# ─── HTTP Client Libraries ─────────────────────────────────────────────────
+requests>=2.31.0          # HTTP library for API calls
+httpx>=0.25.0             # Modern async HTTP client (used in test files)
+
+# ─── File Upload Support ───────────────────────────────────────────────────
+python-multipart>=0.0.6   # Required for FastAPI file uploads
+
+# ─── Local LLM Support (Optional) ──────────────────────────────────────────
+ollama>=0.1.0             # Ollama Python client for local LLM inference
+
+# ─── Code Analysis (AST/Tree-sitter) ───────────────────────────────────────
+tree-sitter==0.21.3       # Python bindings for Tree-sitter parser
+tree-sitter-languages==1.10.2  # Pre-built language grammars
+
+# ─── Additional Standard Library (No install needed) ───────────────────────
+# The following are Python standard library modules (no pip install needed):
+# - asyncio (async/await support)
+# - json (JSON parsing)
+# - logging (logging framework)
+# - pathlib (path manipulation)
+# - dataclasses (data classes)
+# - typing (type hints)
+# - re (regular expressions)
+# - os, sys, io (system operations)
+# - subprocess (process management)
+# - time, datetime (time operations)
+# - collections (data structures)
+# - difflib (diff utilities)
+# - shutil (file operations)
+# - ast (Python AST parsing)
+# - unittest (testing framework)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Installation Instructions
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# 1. Install Python 3.9 or higher:
+#    - Windows: https://www.python.org/downloads/
+#    - macOS: brew install python3
+#    - Linux: sudo apt install python3 python3-pip
+#
+# 2. Install all dependencies:
+#    pip install -r requirements.txt
+#
+# 3. Verify installation:
+#    python -c "import fastapi, uvicorn, requests; print('✓ All dependencies installed')"
+#
+# ═══════════════════════════════════════════════════════════════════════════
+# Optional: Cloud API Keys (No pip install needed)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# For Power Mode (Cloud API), you need ONE of these:
+#
+# Option 1: Groq API (Recommended - Fast & Free Tier)
+#   - Sign up: https://console.groq.com/
+#   - Get API key: https://console.groq.com/keys
+#   - Default model: meta-llama/llama-4-scout-17b-16e-instruct
+#   - Free tier: 30,000 TPM
+#   - Upgraded: 500,000+ TPM
+#
+# Option 2: OpenRouter API (Multi-model support)
+#   - Sign up: https://openrouter.ai/
+#   - Get API key: https://openrouter.ai/keys
+#   - Supports: Claude, GPT-4, Llama, etc.
+#
+# Configure in VS Code:
+#   - Open Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+#   - Run: "SemanticGuard: Configure API Key"
+#   - Enter your API key
+#   - Test connection to verify
+#
+# ═══════════════════════════════════════════════════════════════════════════
+# Node.js (For VS Code Extension Development Only)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Node.js is NOT required for normal usage (extension is pre-built).
+# Only needed if you're developing/modifying the extension itself.
+#
+# If needed:
+#   - Download: https://nodejs.org/ (LTS version recommended)
+#   - Verify: node --version (should be v18+ or v20+)
+#
+# Extension dependencies are bundled - no npm install needed for users!
+#
+# ═══════════════════════════════════════════════════════════════════════════

@@ -1,13 +1,13 @@
 {
-  "name": "semantguard-gatekeeper",
-  "displayName": "SemantGuard Gatekeeper 🛡️",
-  "description": "Architectural airbag — blocks file saves that violate your project's .semantguard/ pillar rules.",
-  "version": "2.4.1",
+  "name": "semanticguard-gatekeeper",
+  "displayName": "SemanticGuard Gatekeeper 🛡️",
+  "description": "Architectural airbag — blocks file saves that violate your project's .semanticguard/ pillar rules.",
+  "version": "2.5.0",
   "publisher": "trepansec",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dsadsadsadsadas/SemantGuard"
+    "url": "https://github.com/dsadsadsadsadas/SemanticGuard"
   },
   "engines": {
     "vscode": "^1.74.0"
@@ -23,80 +23,80 @@
   "contributes": {
     "commands": [
       {
-        "command": "semantguard.status",
-        "title": "SemantGuard: Show Server Status"
+        "command": "semanticguard.status",
+        "title": "SemanticGuard: Show Server Status"
       },
       {
-        "command": "semantguard.toggleEnabled",
-        "title": "SemantGuard: Toggle Airbag On/Off"
+        "command": "semanticguard.toggleEnabled",
+        "title": "SemanticGuard: Toggle Airbag On/Off"
       },
       {
-        "command": "semantguard.askGatekeeper",
-        "title": "🛡️ Ask SemantGuard"
+        "command": "semanticguard.askGatekeeper",
+        "title": "🛡️ Ask SemanticGuard"
       },
       {
-        "command": "semantguard.openLedger",
-        "title": "🛡️ Open SemantGuard Ledger"
+        "command": "semanticguard.openLedger",
+        "title": "🛡️ Open SemanticGuard Ledger"
       },
       {
-        "command": "semantguard.reviewWithLedger",
-        "title": "🔍 SemantGuard: Review Changes vs. Walkthrough"
+        "command": "semanticguard.reviewWithLedger",
+        "title": "🔍 SemanticGuard: Review Changes vs. Walkthrough"
       },
       {
-        "command": "semantguard.initializeProject",
-        "title": "⚡ SemantGuard: Initialize Project"
+        "command": "semanticguard.initializeProject",
+        "title": "⚡ SemanticGuard: Initialize Project"
       },
       {
-        "command": "semantguard.toggleProcessor",
-        "title": "🛡️ SemantGuard: Toggle CPU/GPU Mode"
+        "command": "semanticguard.toggleProcessor",
+        "title": "🛡️ SemanticGuard: Toggle CPU/GPU Mode"
       },
       {
-        "command": "semantguard.selectModel",
-        "title": "SemantGuard: Select Audit Model",
-        "category": "SemantGuard"
+        "command": "semanticguard.selectModel",
+        "title": "SemanticGuard: Select Audit Model",
+        "category": "SemanticGuard"
       },
       {
-        "command": "semantguard.auditEntireFolder",
-        "title": "SemantGuard: Audit Entire Folder",
-        "category": "SemantGuard"
+        "command": "semanticguard.auditEntireFolder",
+        "title": "SemanticGuard: Audit Entire Folder",
+        "category": "SemanticGuard"
       },
       {
-        "command": "semantguard.configureBYOK",
-        "title": "🚀 SemantGuard: Configure Power Mode (BYOK)",
-        "category": "SemantGuard"
+        "command": "semanticguard.configureBYOK",
+        "title": "🚀 SemanticGuard: Configure Power Mode (BYOK)",
+        "category": "SemanticGuard"
       },
       {
-        "command": "semantguard.togglePowerMode",
-        "title": "⚡ SemantGuard: Toggle Power Mode",
-        "category": "SemantGuard"
+        "command": "semanticguard.togglePowerMode",
+        "title": "⚡ SemanticGuard: Toggle Power Mode",
+        "category": "SemanticGuard"
       },
       {
-        "command": "semantguard.toggleV2Prompts",
-        "title": "🧪 SemantGuard: Toggle V2 Prompts (Experimental)",
-        "category": "SemantGuard"
+        "command": "semanticguard.toggleV2Prompts",
+        "title": "🧪 SemanticGuard: Toggle V2 Prompts (Experimental)",
+        "category": "SemanticGuard"
       },
       {
-        "command": "semantguard.debugReasoning",
-        "title": "🔍 SemantGuard: Toggle Debug Reasoning",
-        "category": "SemantGuard"
+        "command": "semanticguard.debugReasoning",
+        "title": "🔍 SemanticGuard: Toggle Debug Reasoning",
+        "category": "SemanticGuard"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "semantguard.askGatekeeper",
+          "command": "semanticguard.askGatekeeper",
           "group": "navigation"
         }
       ],
       "scm/resourceState/context": [
         {
-          "command": "semantguard.reviewWithLedger",
+          "command": "semanticguard.reviewWithLedger",
           "group": "inline"
         }
       ],
       "scm/title": [
         {
-          "command": "semantguard.reviewWithLedger",
+          "command": "semanticguard.reviewWithLedger",
           "group": "navigation"
         }
       ]
@@ -104,40 +104,40 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "semantguard-sidebar",
-          "title": "SemantGuard Architect",
-          "icon": "resources/semantguard-icon-v2.svg"
+          "id": "semanticguard-sidebar",
+          "title": "SemanticGuard Architect",
+          "icon": "resources/semanticguard-icon-v2.svg"
         }
       ]
     },
     "views": {
-      "semantguard-sidebar": [
+      "semanticguard-sidebar": [
         {
-          "id": "semantguard.explorer",
+          "id": "semanticguard.explorer",
           "name": "Logic Gate Status",
           "type": "webview"
         }
       ]
     },
     "configuration": {
-      "title": "SemantGuard Gatekeeper",
+      "title": "SemanticGuard Gatekeeper",
       "properties": {
-        "semantguard.serverUrl": {
+        "semanticguard.serverUrl": {
           "type": "string",
           "default": "http://127.0.0.1:8001",
-          "description": "URL of the SemantGuard inference server"
+          "description": "URL of the SemanticGuard inference server"
         },
-        "semantguard.enabled": {
+        "semanticguard.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Enable/disable the save airbag"
         },
-        "semantguard.timeoutMs": {
+        "semanticguard.timeoutMs": {
           "type": "number",
           "default": 300000,
           "description": "Max ms to wait for server response before failing open"
         },
-        "semantguard.excludePatterns": {
+        "semanticguard.excludePatterns": {
           "type": "array",
           "default": [
             "**/node_modules/**",
@@ -148,7 +148,7 @@
           ],
           "description": "Glob patterns to skip evaluation (always allowed to save)"
         },
-        "semantguard.enforcementMode": {
+        "semanticguard.enforcementMode": {
           "type": "string",
           "default": "Soft",
           "enum": [
@@ -157,7 +157,7 @@
           ],
           "description": "If Strict, network timeouts or server unreachability will rigorously block the save instead of allowing an open-fail."
         },
-        "semantguard.processor_mode": {
+        "semanticguard.processor_mode": {
           "type": "string",
           "default": "GPU",
           "enum": [

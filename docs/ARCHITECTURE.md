@@ -1,9 +1,9 @@
-# SemantGuard: The Architectural Seatbelt 🛡️
+# SemanticGuard: The Architectural Seatbelt 🛡️
 
 **Privacy-First by Default. Lightning Fast with Power Mode. Absolute Intent Verification.**
 
 > Most AI tools are **Yes-Men** — they help you ship spaghetti code faster with a smile.
-> **SemantGuard is the No-Man.** It is the mandatory enforcement layer between your AI IDE and your codebase — catching **Context Drift** before it becomes architectural debt you can't pay back.
+> **SemanticGuard is the No-Man.** It is the mandatory enforcement layer between your AI IDE and your codebase — catching **Context Drift** before it becomes architectural debt you can't pay back.
 >
 > **Your Choice**: 100% local privacy (default) or 3-4x faster cloud audits with your own API key (Power Mode).
 
@@ -32,17 +32,17 @@ Built for developers suffering from the **Vibe Coding Hangover**: that moment yo
   - Clear speed/accuracy tradeoffs displayed
 
 - **📁 Full Folder Audit** (v2.3.1): Scan your entire codebase in one command
-  - Click the ⚙️ Gear Icon in SemantGuard Vault UI → "Run Full Workspace Audit"
+  - Click the ⚙️ Gear Icon in SemanticGuard Vault UI → "Run Full Workspace Audit"
   - Works in both Local and Power Mode
   - Results displayed in dedicated Output panel
 
-**Upgrade**: Install `semantguard-gatekeeper-2.3.1.vsix` and enjoy faster, more accurate security audits.
+**Upgrade**: Install `semanticguard-gatekeeper-2.3.1.vsix` and enjoy faster, more accurate security audits.
 
 ---
 
-## 🎬 See SemantGuard in Action (Local Mode)
+## 🎬 See SemanticGuard in Action (Local Mode)
 
-![SemantGuard catching a security violation in VS Code](images/semantguard_demo.gif)
+![SemanticGuard catching a security violation in VS Code](images/semanticguard_demo.gif)
 
 
 ---
@@ -56,9 +56,9 @@ Static analysis tools like Semgrep catch **syntax violations**. They cannot catc
 - **Attention Decay**: As your AI's context window fills up, it loses grip on your architectural decisions made 10,000 tokens ago.
 - **Semantic Drift**: The AI generates code that is syntactically valid and passes linting — but violates the *spirit* of your architecture (e.g., using a forbidden pattern, bypassing a security boundary, re-introducing a previously rejected approach).
 
-**Semgrep checks for known bad patterns. SemantGuard checks for known good intent.**
+**Semgrep checks for known bad patterns. SemanticGuard checks for known good intent.**
 
-SemantGuard performs **Semantic Auditing** — using a local LLM to compare every code change against your declared architectural pillars and producing a **Deterministic Verification** verdict: `ACCEPT` or `REJECT`. No hallucinations. No gray zones.
+SemanticGuard performs **Semantic Auditing** — using a local LLM to compare every code change against your declared architectural pillars and producing a **Deterministic Verification** verdict: `ACCEPT` or `REJECT`. No hallucinations. No gray zones.
 
 ---
 
@@ -79,7 +79,7 @@ Your code is your most valuable asset. **You choose where it goes.**
 - **Trade-off**: Code sent to cloud provider for faster analysis
 - **Best For**: Non-sensitive projects, prototyping, when speed matters
 
-**The Choice is Yours**: Maximum privacy or maximum speed. SemantGuard works both ways.
+**The Choice is Yours**: Maximum privacy or maximum speed. SemanticGuard works both ways.
 
 ---
 
@@ -106,7 +106,7 @@ If you want 100% local privacy, you'll need:
 | **VS Code** | For the extension-based audit workflow |
 
 **Note**: Ollama is only required if you want to use Local Mode. Power Mode works without any local setup.
-| **Extension** |[Here](https://marketplace.visualstudio.com/items?itemName=semantguardsec.semantguard-gatekeeper#review-details)| 
+| **Extension** |[Here](https://marketplace.visualstudio.com/items?itemName=semanticguardsec.semanticguard-gatekeeper#review-details)| 
 
 ---
 
@@ -118,12 +118,12 @@ Want to get started in 60 seconds? Use Power Mode:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/dsadsadsadsadas/SemantGuard
-cd semantguard
+git clone https://github.com/dsadsadsadsadas/SemanticGuard
+cd semanticguard
 
 # 2. Install the VS Code Extension
 cd extension
-code --install-extension semantguard-gatekeeper-x.x.x.vsix (View Latest Version in Releases)
+code --install-extension semanticguard-gatekeeper-x.x.x.vsix (View Latest Version in Releases)
 ```
 
 **That's it!** Configure your cloud API key in the extension and start auditing. No Ollama, no Python server needed.
@@ -134,8 +134,8 @@ Want 100% local privacy? Follow the complete setup:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/dsadsadsadsadas/SemantGuard
-cd semantguard
+git clone https://github.com/dsadsadsadsadas/SemanticGuard
+cd semanticguard
 
 # 2. Install Python dependencies
 pip install -r requirements.txt
@@ -145,18 +145,18 @@ python start_server.py
 
 # 4. Install the VS Code Extension
 cd extension
-code --install-extension semantguard-gatekeeper-x.x.x.vsix (View Latest Version in Releases)
+code --install-extension semanticguard-gatekeeper-x.x.x.vsix (View Latest Version in Releases)
 
-or :https://marketplace.visualstudio.com/items?itemName=semantguardsec.semantguard-gatekeeper
+or :https://marketplace.visualstudio.com/items?itemName=semanticguardsec.semanticguard-gatekeeper
 ```
 
-Then install the **SemantGuard VS Code Extension** from the Marketplace (or from the `/extension` folder). Every file save is now audited in real-time.
+Then install the **SemanticGuard VS Code Extension** from the Marketplace (or from the `/extension` folder). Every file save is now audited in real-time.
 
 ---
 
 ## ⚡ Project Initialization
 
-Starting a new project? Click the ⚙️ Gear Icon in the SemantGuard Vault UI and select **"Initialize Project"**.
+Starting a new project? Click the ⚙️ Gear Icon in the SemanticGuard Vault UI and select **"Initialize Project"**.
 
 Choose a **RULE AFFECTING** mode that matches your context:
 
@@ -179,7 +179,7 @@ For Local Mode (100% privacy), switch between different local models:
 - **🧠 Smart Mode (DeepSeek-R1:7b)**: ~10-15s per audit. Better reasoning for security reviews.
 
 To switch local models:
-1. Click the ⚙️ Gear Icon in the SemantGuard Vault UI
+1. Click the ⚙️ Gear Icon in the SemanticGuard Vault UI
 2. Select your preferred model from the dropdown in the "Engine & API" section
 
 The selected model persists across VS Code sessions.
@@ -190,10 +190,10 @@ The selected model persists across VS Code sessions.
 
 **🚀 Power Mode - Cloud API Configuration (UI Panel)**
 
-For Power Mode (cloud-based, 3-4x faster), configure through the SemantGuard UI panel:
+For Power Mode (cloud-based, 3-4x faster), configure through the SemanticGuard UI panel:
 
 **Setup via UI Panel:**
-1. Open the **SemantGuard Vault panel** in VS Code sidebar
+1. Open the **SemanticGuard Vault panel** in VS Code sidebar
 2. Click the **⚙️ gear icon** to configure Power Mode
 3. Select your provider (OpenRouter or Groq)
 4. Enter your API key and choose a model
@@ -225,7 +225,7 @@ Want maximum speed without sacrificing accuracy? Configure Power Mode with your 
 - **Groq**: Ultra-fast inference with Llama models (up to 10x faster)
 
 **Setup:**
-1. Click the ⚙️ gear icon in the SemantGuard Vault panel (VS Code sidebar)
+1. Click the ⚙️ gear icon in the SemanticGuard Vault panel (VS Code sidebar)
 2. Select your provider (OpenRouter or Groq)
 3. Enter your API key:
    - OpenRouter: Get one at [openrouter.ai](https://openrouter.ai)
@@ -233,10 +233,10 @@ Want maximum speed without sacrificing accuracy? Configure Power Mode with your 
 4. Choose a model:
    - OpenRouter: `anthropic/claude-3.5-sonnet`, `openai/gpt-4o-mini`, etc.
    - Groq: `meta-llama/llama-4-scout-17b-16e-instruct`, `llama-3.3-70b-versatile`, etc.
-5. SemantGuard tests the connection and saves your credentials securely
+5. SemanticGuard tests the connection and saves your credentials securely
 
 **Toggle Power Mode:**
-- Click the ⚙️ Gear Icon in the SemantGuard Vault panel
+- Click the ⚙️ Gear Icon in the SemanticGuard Vault panel
 - Use the "Mode Selection" section to switch between Local and Cloud Power Mode
 
 **Performance of POWER Mode :**
@@ -273,16 +273,16 @@ Want maximum speed without sacrificing accuracy? Configure Power Mode with your 
 **Switch CPU/GPU**
 
 To switch between CPU and GPU modes:
-1. Click the ⚙️ Gear Icon in the SemantGuard Vault UI
+1. Click the ⚙️ Gear Icon in the SemanticGuard Vault UI
 2. Select "Switch CPU/GPU" from the settings menu
 3. Choose your preferred mode
 
 The selected mode persists across VS Code sessions.
 --- 
 
-## 📁 The Six Pillars of the SemantGuard Vault
+## 📁 The Six Pillars of the SemanticGuard Vault
 
-All architectural state lives in the **`.semantguard/`** directory — a living, versioned brain for your project:
+All architectural state lives in the **`.semanticguard/`** directory — a living, versioned brain for your project:
 
 | Pillar | Role |
 |---|---|
@@ -295,7 +295,7 @@ All architectural state lives in the **`.semantguard/`** directory — a living,
 
 > **🔄 The Agentic Feedback Loop**
 >
-> When a problem causes an architectural pivot, SemantGuard drives the learning:
+> When a problem causes an architectural pivot, SemanticGuard drives the learning:
 > - The **failed approach** is written into `system_rules.md` (Blacklist).
 > - The **successful solution** is written into `golden_state.md` (Whitelist).
 >
@@ -305,10 +305,10 @@ All architectural state lives in the **`.semantguard/`** directory — a living,
 
 ## 🏛️ The Cryptographic Vault
 
-SemantGuard protects your pillars with a cryptographic enforcement layer stored in `.semantguard/semantguard_vault/`.
+SemanticGuard protects your pillars with a cryptographic enforcement layer stored in `.semanticguard/semanticguard_vault/`.
 
-- **Meta-Gate Validation**: Any change to your rules (`.semantguard/*.md`) is reviewed by a specialized Meta-Gate AI to ensure that intent — not just syntax — is preserved. Rules cannot be silently weakened.
-- **SHA-256 Locking**: The entire vault is signed in `.semantguard.lock`. Unauthorized out-of-band tampering is detectable immediately.
+- **Meta-Gate Validation**: Any change to your rules (`.semanticguard/*.md`) is reviewed by a specialized Meta-Gate AI to ensure that intent — not just syntax — is preserved. Rules cannot be silently weakened.
+- **SHA-256 Locking**: The entire vault is signed in `.semanticguard.lock`. Unauthorized out-of-band tampering is detectable immediately.
 
 Your architectural decisions are as immutable as you want them to be.
 
@@ -318,16 +318,16 @@ Your architectural decisions are as immutable as you want them to be.
 
 > *AI should be a skeptical partner, not a yes-man.*
 >
-> SemantGuard optimizes for **architectural integrity** — ensuring your project's soul isn't dissolved in the vibe of rapid AI iteration. The model that wrote your feature in 30 seconds didn't read your ADRs. SemantGuard did.
+> SemanticGuard optimizes for **architectural integrity** — ensuring your project's soul isn't dissolved in the vibe of rapid AI iteration. The model that wrote your feature in 30 seconds didn't read your ADRs. SemanticGuard did.
 >
 > **Your code stays on your machine. Always.**
 
 ---
 ## IMPORTANT !
-SemantGuard uses a local 7-8B parameter model. It catches the majority of common violations but is not perfect. It is a seatbelt, not an autopilot. Your judgment still matters.
+SemanticGuard uses a local 7-8B parameter model. It catches the majority of common violations but is not perfect. It is a seatbelt, not an autopilot. Your judgment still matters.
 ## 📞 Are You One of the First 100 Users?
 
-I'd love to hear if SemantGuard caught a drift for you. Open an issue or reach out directly:
+I'd love to hear if SemanticGuard caught a drift for you. Open an issue or reach out directly:
 - **Gmail**: jayjaygamingbaron@gmail.com
 - **LinkedIn**: [Ethan Baron](https://www.linkedin.com/in/ethan-baron-b77965374/)
 - **X (Twitter)**: [@Jsaaaron91633](https://x.com/Jsaaaron91633)
@@ -341,6 +341,6 @@ This project is licensed under the **GNU Affero General Public License v3.0 (AGP
 See the [LICENSE](LICENSE) file for full details.
 
 **What this means in plain English:**
-You are free to use, modify, and distribute SemantGuard. However, if you modify it and offer it as a networked service (SaaS), you **must** make your modified source code publicly available under the same license.
+You are free to use, modify, and distribute SemanticGuard. However, if you modify it and offer it as a networked service (SaaS), you **must** make your modified source code publicly available under the same license.
 
-This clause exists for one reason: to prevent predatory corporate enclosure of open-source tooling. SemantGuard stays open. Period.
+This clause exists for one reason: to prevent predatory corporate enclosure of open-source tooling. SemanticGuard stays open. Period.
