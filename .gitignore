@@ -171,6 +171,18 @@ st/*_payload.json
 
 # ─── User Specific ─────────────────────────────────────────────────────────
 🛡️ SemanticGuard V2 Breaking the A.txt
+check_ollama_models.bat
+fix_icon_transparency.py
+folder_token_audit.py
+large_ecommerce_app.py
+test_few_shot_examples.py
+test_groq_headers.py
+test_precision_individual.py
+verify_setup.py
+PERFORMANCE_ANALYSIS.md
+RATE_LIMIT_AUDIT.md
+RATE_LIMIT_SOLUTION.md
+REBRAND_COMPLETE.md
 
 # ─── Batch & Shell Scripts (Platform-Specific) ─────────────────────────────
 # Uncomment if you want to ignore all batch files
