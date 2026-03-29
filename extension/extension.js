@@ -13,8 +13,122 @@
 const vscode = require("vscode");
 const fs = require("fs");
 const path = require("path");
+const { TokenBucket } = require("./token_bucket");
+
 
 // ─── WSL Bridge Auto-Discovery ──────────────────────────────────────────────
+
+/**
+ * Detect TPM/RPM limits from Groq API headers
+ * @param {string} apiKey - Groq API key
+ * @param {string} modelName - Model name to test
+ * @returns {Promise<{maxRpm: number, maxTpm: number}>} - Detected limits or defaults
+ */
+async function detectModelLimits(apiKey, modelName) {
+    try {
+        console.log('[SEMANTICGUARD TPM] Detecting model limits from Groq API...');
+        console.log('[SEMANTICGUARD TPM] Model:', modelName);
+        
+        // Make a minimal test call to get rate limit headers
+        const response = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: modelName,
+                messages: [{ role: 'user', content: 'test' }],
+                max_tokens: 1
+            })
+        }, 10000);
+
+        const headers = response.headers || {};
+        
+        // Debug: Print ALL headers to see what Groq actually returns
+        console.log('[SEMANTICGUARD TPM] ALL Response Headers:');
+        for (const [key, value] of Object.entries(headers)) {
+            console.log(`  ${key}: ${value}`);
+        }
+
+        let maxRpm = null;
+        let maxTpm = null;
+        let isRpmEstimated = false;
+
+        // Search for TPM header first (more reliable)
+        for (const [key, value] of Object.entries(headers)) {
+            const keyLower = key.toLowerCase();
+            if ((keyLower.includes('ratelimit') || keyLower.includes('rate-limit')) && 
+                keyLower.includes('token') && 
+                (keyLower.includes('limit') || keyLower.includes('remaining'))) {
+                const numValue = parseInt(value);
+                if (!isNaN(numValue) && numValue > 0) {
+                    maxTpm = numValue;
+                    console.log(`[SEMANTICGUARD TPM] ✅ Found TPM from header "${key}": ${maxTpm.toLocaleString()}`);
+                    break;
+                }
+            }
+        }
+
+        // Search for RPM header - Pattern 1: Look for "minute" in header name
+        for (const [key, value] of Object.entries(headers)) {
+            const keyLower = key.toLowerCase();
+            if ((keyLower.includes('ratelimit') || keyLower.includes('rate-limit')) && 
+                keyLower.includes('request') && 
+                (keyLower.includes('limit') || keyLower.includes('remaining')) &&
+                keyLower.includes('minute')) {
+                const numValue = parseInt(value);
+                if (!isNaN(numValue) && numValue > 0) {
+                    maxRpm = numValue;
+                    console.log(`[SEMANTICGUARD TPM] ✅ Found RPM from header "${key}": ${maxRpm}`);
+                    break;
+                }
+            }
+        }
+
+        // Pattern 2: If no "minute" header, look for RPD (Requests Per Day) and estimate
+        if (!maxRpm) {
+            for (const [key, value] of Object.entries(headers)) {
+                const keyLower = key.toLowerCase();
+                if ((keyLower.includes('ratelimit') || keyLower.includes('rate-limit')) && 
+                    keyLower.includes('request') && 
+                    (keyLower.includes('limit') || keyLower.includes('remaining'))) {
+                    const numValue = parseInt(value);
+                    if (!isNaN(numValue) && numValue > 0) {
+                        // Check if this looks like RPD (> 10,000 suggests daily limit)
+                        if (numValue > 10000) {
+                            maxRpm = Math.floor(numValue / 1440);  // RPD / minutes per day
+                            isRpmEstimated = true;
+                            console.log(`[SEMANTICGUARD TPM] ⚠️ Found RPD (Requests Per Day) from header "${key}": ${numValue.toLocaleString()}`);
+                            console.log(`[SEMANTICGUARD TPM] ⚠️ Estimated RPM: ${maxRpm} (RPD / 1440 minutes)`);
+                        } else {
+                            maxRpm = numValue;
+                            console.log(`[SEMANTICGUARD TPM] ✅ Found RPM from header "${key}": ${maxRpm}`);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (maxRpm && maxTpm) {
+            const rpmLabel = isRpmEstimated ? `${maxRpm} RPM (estimated from RPD)` : `${maxRpm} RPM`;
+            console.log(`[SEMANTICGUARD TPM] ✅ Detected: ${rpmLabel}, ${maxTpm.toLocaleString()} TPM`);
+            if (maxTpm >= 100000) {
+                console.log(`[SEMANTICGUARD TPM] 🚀 PRO ACCOUNT DETECTED! ${maxTpm.toLocaleString()} TPM`);
+            }
+            return { maxRpm, maxTpm };
+        } else {
+            console.log('[SEMANTICGUARD TPM] ⚠️ Could not detect limits from headers, using defaults');
+            console.log('[SEMANTICGUARD TPM] ⚠️ This may indicate the API response format has changed');
+            return { maxRpm: 30, maxTpm: 30000 };
+        }
+
+    } catch (error) {
+        console.log(`[SEMANTICGUARD TPM] ⚠️ Detection failed: ${error.message}`);
+        return { maxRpm: 30, maxTpm: 30000 };
+    }
+}
 
 /**
  * Get WSL IP address by running `wsl.exe hostname -I` from Windows
@@ -176,12 +290,25 @@ class SaveQueue {
         this.promise = Promise.resolve();
     }
 
-    enqueue(task) {
-        return new Promise((resolve, reject) => {
-            this.promise = this.promise
-                .then(() => task().then(resolve).catch(reject))
-                .catch(() => task().then(resolve).catch(reject));
-        });
+    async enqueue(task) {
+        // Capture the tail of the current chain
+        const previous = this.promise;
+        
+        // Create a new tail that waits for previous work, then runs the current task
+        const nextTail = (async () => {
+            try {
+                await previous;
+            } catch (e) {
+                // Ignore failures in previous tasks to prevent chain lock
+            }
+            return task();
+        })();
+
+        // Update the chain tail
+        this.promise = nextTail;
+        
+        // Return the promise for THIS specific task to the caller
+        return nextTail;
     }
 }
 const saveEvaluationQueue = new SaveQueue();
@@ -377,6 +504,163 @@ async function triggerEvolution(projectRoot, tech) {
         }
     } catch (error) {
         console.error('[SEMANTICGUARD PIVOT] Error triggering evolution:', error);
+    }
+}
+
+/**
+ * Phase 3: Detect architectural drift by comparing the saved document against 
+ * established rules in .semanticguard/system_rules.md.
+ * @param {vscode.TextDocument} document - The saved document
+ * @param {string} projectRoot - Workspace root path
+ */
+/**
+ * Phase 3: Detect architectural drift by comparing the saved document against 
+ * established rules in .semanticguard/system_rules.md.
+ */
+async function detectDriftAndEnforce(document, projectRoot) {
+    try {
+        const cfg = vscode.workspace.getConfiguration("semanticguard");
+        const isEnabled = cfg.get("enabled");
+        if (!isEnabled) return;
+
+        // Respect exclusion patterns
+        const relPath = vscode.workspace.asRelativePath(document.uri);
+        const excludes = cfg.get("excludePatterns") ?? [];
+        if (excludes.some((pat) => matchGlob(pat, relPath))) return;
+
+        // ─── STEP 1: Load Local Rules ─────────────────────────────────────────
+        const rulesPath = path.join(projectRoot, ".semanticguard", "system_rules.md");
+        let systemRules = "";
+        
+        try {
+            if (fs.existsSync(rulesPath)) {
+                systemRules = fs.readFileSync(rulesPath, 'utf8');
+            } else {
+                // Silent skip if no rules are defined for this project
+                return; 
+            }
+        } catch (e) {
+            console.error(`[SEMANTICGUARD DRIFT] Error reading rules:`, e);
+            return;
+        }
+
+        // ─── STEP 2: Retrieve API Key ─────────────────────────────────────────
+        const extensionContext = global.semanticguardContext;
+        if (!extensionContext) return;
+
+        const provider = extensionContext.globalState.get('semanticguard.provider') || 'groq';
+        const keyName = provider === 'groq' ? 'groq_api_key' : 'openrouter_api_key';
+        const apiKey = await extensionContext.secrets.get(keyName);
+
+        if (!apiKey) {
+            outputChannel.appendLine(`[${new Date().toISOString()}] [DRIFT] ⚠️ Skip: No API key found for drift detection.`);
+            return;
+        }
+
+        // ─── STEP 3: Call Drift Detector (Phase 3 Precision) ─────────────────
+        const startTime = Date.now();
+        outputChannel.appendLine(`[${new Date().toISOString()}] [DRIFT] Starting drift audit for: ${path.basename(document.fileName)}`);
+        
+        let serverUrl = cfg.get("serverUrl") ?? "http://127.0.0.1:8001";
+        const discoveredUrl = await discoverServerURL();
+        if (discoveredUrl) serverUrl = discoveredUrl;
+
+        const response = await fetchWithTimeout(`${serverUrl}/extract_rules`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                code_snippet: document.getText(),
+                filename: path.basename(document.fileName),
+                system_rules: systemRules
+            })
+        }, 15000);
+
+        if (!response.ok) {
+            outputChannel.appendLine(`[${new Date().toISOString()}] [DRIFT] ❌ API fail: ${response.status} ${response.statusText}`);
+            return;
+        }
+
+        const data = await response.json();
+        const endTime = Date.now();
+        const driftLatency = (endTime - startTime) / 1000;
+        
+        // ─── STEP 4: UI Update (Phase 3 Integration) ─────────────────────────
+        if (data.broken_rules && data.broken_rules.length > 0) {
+            outputChannel.appendLine(`[${new Date().toISOString()}] [DRIFT] 🚨 DRIFT DETECTED: found ${data.broken_rules.length} violation(s)`);
+            
+            // Map structured objects to Webview Finding Cards (Phase 3 Precision Upgrade)
+            const mappedFindings = data.broken_rules.map((finding, index) => {
+                // AI might return a string if it fails to follow the object schema
+                if (typeof finding === 'string') {
+                    const ruleIdMatch = finding.match(/Rule \d+/i);
+                    return {
+                        severity: "HIGH",
+                        vulnerability_type: "Architectural Drift",
+                        line_number: null,
+                        rule_id: ruleIdMatch ? ruleIdMatch[0] : `DRIFT-00${index + 1}`,
+                        description: finding
+                    };
+                }
+
+                return {
+                    severity: "HIGH",
+                    vulnerability_type: "Architectural Drift",
+                    line_number: parseInt(finding.line_number) || null,
+                    rule_id: finding.rule_id || `DRIFT-00${index + 1}`,
+                    description: finding.description || "Architectural rule violation detected"
+                };
+            });
+    
+            const webviewMessage = {
+                type: 'log',
+                title: 'Analysis: ' + path.basename(document.fileName),
+                score: "1.00", // High risk score for broken rules
+                action: "REJECT",
+                reasoning: "Architectural drift detected based on system_rules.md",
+                filename: path.basename(document.fileName),
+                fullPath: document.uri.fsPath,
+                findings: mappedFindings,
+                violations: [],
+                audit_mode: 'drift',
+                cloud_latency: driftLatency.toFixed(2)
+            };
+    
+            // Send to Webview and trigger the red UI state
+            if (typeof semanticguardSidebarProvider !== 'undefined' && semanticguardSidebarProvider) {
+                semanticguardSidebarProvider.sendMessage(webviewMessage, true);
+            }
+            
+            // Notification toast for visibility
+            vscode.window.showWarningMessage(`🚨 Architectural Drift: ${mappedFindings.length} rule(s) violated. Check Vault Access.`);
+    
+        } else {
+            outputChannel.appendLine(`[${new Date().toISOString()}] [DRIFT] ✅ Clean (no drift)`);
+            
+            // GREEN STATE: No Rules Broken
+            const webviewMessage = {
+                type: 'log',
+                title: 'Analysis: ' + path.basename(document.fileName),
+                score: "0.00",
+                action: "ACCEPT",
+                reasoning: "Code complies with all system_rules.md requirements.",
+                filename: path.basename(document.fileName),
+                fullPath: document.uri.fsPath,
+                findings: [],
+                violations: [],
+                audit_mode: 'drift',
+                cloud_latency: driftLatency.toFixed(2)
+            };
+    
+            if (typeof semanticguardSidebarProvider !== 'undefined' && semanticguardSidebarProvider) {
+                semanticguardSidebarProvider.sendMessage(webviewMessage, false);
+            }
+        }
+    } catch (error) {
+        console.log('[SEMANTICGUARD DRIFT] Error:', error.message);
+        outputChannel.appendLine(`[${new Date().toISOString()}] [DRIFT] ❌ Error: ${error.message}`);
     }
 }
 
@@ -688,6 +972,29 @@ function activate(context) {
                 vscode.window.showErrorMessage("SemanticGuard: No workspace folder open.");
                 return;
             }
+
+            // Step 0: Ask for prompt type (Stress Test vs V2)
+            const promptChoice = await vscode.window.showQuickPick([
+                {
+                    label: "$(zap) Stress Test (Genius)",
+                    description: "High-precision, strict no-weasel mandate (v3)",
+                    id: "stress_test_genius"
+                },
+                {
+                    label: "$(shield) Standard Audit (V2)",
+                    description: "Balanced security audit with hardened rules",
+                    id: "v2_hardened"
+                }
+            ], {
+                placeHolder: "What prompt do you want to use?",
+                title: "🛡️ SemanticGuard: Select Audit Engine"
+            });
+
+            if (!promptChoice) {
+                return; // User cancelled
+            }
+
+            const selectedPromptType = promptChoice.id;
             
             // Step 1: Let user pick which folder to audit
             let targetFolder;
@@ -782,25 +1089,8 @@ function activate(context) {
             
             // Warn about cost if Power Mode
             if (isPowerMode) {
-                // Detect TPM before showing confirmation
-                const provider = context.globalState.get('semanticguard.provider') || 'groq';
-                const keyName = provider === 'openrouter' ? 'openrouter_api_key' : 'groq_api_key';
-                const apiKey = await context.secrets.get(keyName);
-                const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
-                const cloudModelName = context.globalState.get(modelKey) || 'meta-llama/llama-4-scout-17b-16e-instruct';
-                
-                let tpmMessage = "";
-                if (apiKey) {
-                    const { TokenBucket, detectModelLimits } = require(path.join(context.extensionPath, 'token-bucket.js'));
-                    const { maxRpm, maxTpm } = await detectModelLimits(apiKey, cloudModelName);
-                    tpmMessage = `\n\nDetected Rate Limits: ${maxTpm.toLocaleString()} TPM, ~${maxRpm} RPM (estimated)`;
-                    if (maxTpm >= 500000) {
-                        tpmMessage += `\n🎉 Upgraded Account Detected!`;
-                    }
-                }
-                
                 const confirm = await vscode.window.showWarningMessage(
-                    `🔍 SemanticGuard: Full folder audit will send every file to the Cloud API. This may incur API costs.${tpmMessage}\n\nContinue?`,
+                    `🔍 SemanticGuard: Full folder audit will send every file to the Cloud API. This may incur API costs.\n\nContinue?`,
                     "Audit Entire Folder",
                     "Cancel"
                 );
@@ -832,51 +1122,86 @@ function activate(context) {
                 return;
             }
             
+            // ═══ DECLARE TPM/RPM VARIABLES FIRST (prevent shadowing) ═══
+            let detectedTPM = 30000;
+            let detectedRPM = 30;
+            
+            // Fetch API Key if in Power Mode
+            let apiKey = null;
+            let cloudModelName = '';
+            if (isPowerMode) {
+                const provider = extensionContext.globalState.get('semanticguard.provider') || 'groq';
+                const keyName = provider === 'openrouter' ? 'openrouter_api_key' : 'groq_api_key';
+                apiKey = await extensionContext.secrets.get(keyName);
+                const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
+                const fallbackCloud = provider === 'openrouter' ? 'deepseek/deepseek-r1' : 'meta-llama/llama-4-scout-17b-16e-instruct';
+                cloudModelName = extensionContext.globalState.get(modelKey) || fallbackCloud;
+
+                if (!apiKey) {
+                    vscode.window.showErrorMessage(`🛑 SemanticGuard: API Key missing for ${provider}. Please configure in settings.`);
+                    return;
+                }
+                
+                // ═══ STRICT ASYNC BARRIER: DETECT TPM/RPM AND UPGRADE SERVER ═══
+                console.log(`[SEMANTICGUARD FOLDER AUDIT] Detecting TPM/RPM from ${provider} API...`);
+                
+                // Only detect for Groq (OpenRouter doesn't expose rate limits in headers)
+                if (provider === 'groq') {
+                    const limits = await detectModelLimits(apiKey, cloudModelName);
+                    detectedTPM = limits.maxTpm;
+                    detectedRPM = limits.maxRpm;
+                    console.log(`[SEMANTICGUARD FOLDER AUDIT] Detected: ${detectedTPM.toLocaleString()} TPM, ${detectedRPM} RPM`);
+                } else {
+                    console.log(`[SEMANTICGUARD FOLDER AUDIT] Using default limits for ${provider}: ${detectedTPM.toLocaleString()} TPM, ${detectedRPM} RPM`);
+                }
+                
+                // STRICT AWAIT: Block until server upgrade completes
+                try {
+                    console.log(`[SEMANTICGUARD FOLDER AUDIT] Upgrading server TokenBucket: ${detectedTPM.toLocaleString()} TPM, ${detectedRPM} RPM`);
+                    const updateResponse = await fetchWithTimeout(`${serverUrl}/update_rate_limits`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            max_tpm: detectedTPM,
+                            max_rpm: detectedRPM
+                        })
+                    }, 10000);
+                    
+                    if (!updateResponse.ok) {
+                        const errorText = await updateResponse.text();
+                        console.error(`[SEMANTICGUARD FOLDER AUDIT] ❌ Upgrade failed: HTTP ${updateResponse.status} - ${errorText}`);
+                        vscode.window.showErrorMessage(`Failed to upgrade server rate limits. Proceeding with defaults (30K TPM).`);
+                    } else {
+                        const data = await updateResponse.json();
+                        console.log(`[SEMANTICGUARD FOLDER AUDIT] ✅ Server TokenBucket upgraded: ${data.old_tpm.toLocaleString()} → ${data.new_tpm.toLocaleString()} TPM`);
+                        console.log(`[SEMANTICGUARD FOLDER AUDIT] ✅ Refill rate: ${(data.new_tpm / 60).toFixed(0)} tokens/second`);
+                        console.log(`[SEMANTICGUARD FOLDER AUDIT] ✅ Server ready for high-throughput audit`);
+                    }
+                } catch (err) {
+                    console.error('[SEMANTICGUARD FOLDER AUDIT] ❌ Failed to update server rate limits:', err.message);
+                    vscode.window.showErrorMessage(`Failed to upgrade server rate limits: ${err.message}. Proceeding with defaults (30K TPM).`);
+                }
+            }
+            
             const modeLabel = isPowerMode ? "☁️ Cloud" : "⚡ Local";
-            vscode.window.showInformationMessage(
-                `🛡️ SemanticGuard: Starting folder audit of ${auditableFiles.length} files in "${relativePath}" [${modeLabel} Mode]...`
-            );
             
             // ═══ START TIMER ═══
             const auditStartTime = Date.now();
             
             const violations = [];
             const errors = [];
-            const errorDetails = {}; // Store detailed error info
+            const errorDetails = {};
             let processed = 0;
             let skipped = 0;
-            let layer1Blocked = 0; // Track files blocked by Layer 1
-            let layer2Analyzed = 0; // Track files that went to Layer 2
+            let layer1Blocked = 0;
+            let layer2Analyzed = 0;
             
-            // Store detected TPM for output display
-            let detectedTPM = 30000; // Default
-            let detectedRPM = 30; // Default
-            
-            // ═══ INTELLIGENT RATE LIMITING: Token Bucket ═══
-            const { TokenBucket, detectModelLimits } = require(path.join(context.extensionPath, 'token-bucket.js'));
-            
-            // Detect actual TPM limits from API
-            const provider = context.globalState.get('semanticguard.provider') || 'groq';
-            const keyName = provider === 'openrouter' ? 'openrouter_api_key' : 'groq_api_key';
-            const apiKey = await context.secrets.get(keyName);
-            
-            // CRITICAL FIX: Use CLOUD model, not local model
-            const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
-            const cloudModelName = context.globalState.get(modelKey) || 'meta-llama/llama-4-scout-17b-16e-instruct';
-            
-            let rateLimiter;
-            if (apiKey && isPowerMode) {
-                console.log(`[SEMANTICGUARD FOLDER AUDIT] Detecting rate limits from API for model: ${cloudModelName}...`);
-                const { maxRpm, maxTpm } = await detectModelLimits(apiKey, cloudModelName);
-                detectedTPM = maxTpm;
-                detectedRPM = maxRpm;
-                rateLimiter = new TokenBucket(maxRpm, maxTpm);
-                console.log(`[SEMANTICGUARD FOLDER AUDIT] Rate limiter initialized: ${maxTpm.toLocaleString()} TPM`);
-                console.log(`[SEMANTICGUARD FOLDER AUDIT] Token Bucket starts FULL — first ~${Math.floor(maxTpm / 5000)} files will be instant, then throttling begins`);
-            } else {
-                // Fallback to default limits
-                rateLimiter = new TokenBucket(30, 30000);
-            }
+            // ═══ RATE LIMITING: Delegated to server (stress_test.py pattern) ═══
+            // Server handles TokenBucket rate limiting - client sends concurrent requests
+            // CRITICAL: Concurrency of 2 prevents token burst (10 files × 2.5K tokens = 25K burst = 429 errors)
+            const CONCURRENCY_LIMIT = 2;  // Match stress_test.py for optimal throughput
+            const semaphore = { count: 0, max: CONCURRENCY_LIMIT };
+            const fileCounter = { count: 0 };
             
             // Progress notification
             await vscode.window.withProgress({
@@ -885,116 +1210,83 @@ function activate(context) {
                 cancellable: true
             }, async (progress, token) => {
                 
-                for (let i = 0; i < auditableFiles.length; i++) {
-                    const fileUri = auditableFiles[i];
+                const processFileWithSemaphore = async (fileUri) => {
+                    if (token.isCancellationRequested) return null;
                     
-                    if (token.isCancellationRequested) {
-                        console.log("[SEMANTICGUARD FOLDER AUDIT] Cancelled by user");
-                        break;
+                    // Wait for semaphore slot
+                    while (semaphore.count >= semaphore.max) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
                     }
-                    
-                    const fileName = fileUri.fsPath.split(/[/\\]/).pop();
-                    const fileRelativePath = vscode.workspace.asRelativePath(fileUri);
-                    
-                    progress.report({
-                        message: `${processed + 1}/${auditableFiles.length} — ${fileRelativePath}`,
-                        increment: 100 / auditableFiles.length
-                    });
+                    semaphore.count++;
                     
                     try {
+                        fileCounter.count++;
+                        const current = fileCounter.count;
+                        const total = auditableFiles.length;
+                        
+                        const fileName = fileUri.fsPath.split(/[/\\]/).pop();
+                        const fileRelativePath = vscode.workspace.asRelativePath(fileUri);
+                        
                         const document = await vscode.workspace.openTextDocument(fileUri);
                         const code = document.getText();
                         
                         if (!code.trim()) {
                             skipped++;
-                            continue;
+                            return null;
                         }
                         
-                        // Skip very large files over 500 lines in local mode
-                        const lineCount = code.split('\n').length;
-                        if (!isPowerMode && lineCount > 500) {
-                            console.log(`[SEMANTICGUARD FOLDER AUDIT] Skipping large file: ${fileRelativePath} (${lineCount} lines)`);
-                            skipped++;
-                            continue;
-                        }
+                        const tokens = Math.ceil(code.length / 3.7); // Literal detection: ~3.7 chars per token for code
+                        console.log(`[SEMANTICGUARD FOLDER AUDIT] [${current}/${total}] ${fileName} | Tokens: ${tokens.toLocaleString()}`);
                         
-                        // Pillars are loaded server-side from project_path
-                        const pillars = {};
-                        const processorMode = "GPU";
-                        
-                        // Strip comments while preserving line numbers for Power Mode
-                        const auditCode = isPowerMode ? stripCommentsPreserveLines(code) : code;
-                        
-                        const response = await fetchWithTimeout(`${serverUrl}/evaluate`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                filename: fileName,
-                                code_snippet: auditCode,
-                                pillars: pillars,
-                                project_path: vscode.workspace.workspaceFolders[0].uri.fsPath,
-                                processor_mode: processorMode,
-                                model_name: _selectedModel,
-                                power_mode: isPowerMode
-                            }),
-                        }, 60000);
-                        
-                        if (!response.ok) {
-                            const errorText = await response.text().catch(() => 'Unable to read error response');
-                            const errorMsg = `HTTP ${response.status}: ${errorText}`;
-                            console.error(`[SEMANTICGUARD FOLDER AUDIT] Server error on ${fileRelativePath}: ${errorMsg}`);
-                            errors.push(fileRelativePath);
-                            errorDetails[fileRelativePath] = errorMsg;
-                            processed++;
-                            continue;
-                        }
-                        
-                        const result = await response.json();
-                        
-                        // ═══ LAYER 1 TRACKING ═══
-                        if (result.action === "REJECT" && result.layer === "layer1") {
-                            layer1Blocked++;
-                            console.log(`[SEMANTICGUARD FOLDER AUDIT] Layer 1 BLOCKED: ${fileRelativePath}`);
-                        }
-                        
-                        // ═══ CRITICAL FIX: Handle L1_PASS in Power Mode ═══
-                        // When power_mode=true, backend returns L1_PASS if Layer 1 passes
-                        // We must then call Cloud API for Layer 2 analysis
-                        let finalResult = result;
-                        
-                        if (isPowerMode && result.action === "L1_PASS") {
-                            layer2Analyzed++;
-                            console.log(`[SEMANTICGUARD FOLDER AUDIT] L1_PASS received for ${fileRelativePath} — calling Cloud API for Layer 2`);
-                            
-                            try {
-                                // Call Cloud API directly (same as single-file save)
-                                const cloudResult = await callCloudAPI(context, {
+                        // Project path for pillars/rules loading
+                        const projectPath = vscode.workspace.getWorkspaceFolder(fileUri)?.uri.fsPath 
+                                         || vscode.workspace.workspaceFolders[0].uri.fsPath;
+
+                        let finalResult;
+                        const apiStartTime = Date.now();
+
+                        if (isPowerMode) {
+                            // Route through evaluateWithServer thin client
+                                finalResult = await evaluateWithServer(
+                                    serverUrl,
+                                    apiKey,
+                                    fileUri.fsPath,
+                                    code,
+                                    projectPath,
+                                    cloudModelName,
+                                    selectedPromptType
+                                );
+                        } else {
+                            // Local Mode: Standard audit path
+                            const lineCount = code.split('\n').length;
+                            if (lineCount > 500) {
+                                console.log(`[SEMANTICGUARD FOLDER AUDIT] Skipping large file locally: ${fileRelativePath} (${lineCount} lines)`);
+                                skipped++;
+                                return null;
+                            }
+
+                            const response = await fetchWithTimeout(`${serverUrl}/evaluate`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
                                     filename: fileName,
                                     code_snippet: code,
-                                    pillars: pillars,
-                                    project_path: vscode.workspace.workspaceFolders[0].uri.fsPath
-                                });
-                                
-                                finalResult = cloudResult;
-                                console.log(`[SEMANTICGUARD FOLDER AUDIT] Cloud API returned: ${cloudResult.action} with ${cloudResult.findings?.length || 0} findings`);
-                            } catch (cloudError) {
-                                console.error(`[SEMANTICGUARD FOLDER AUDIT] Cloud API failed for ${fileRelativePath}:`, cloudError);
-                                
-                                // Check for 429 rate limit error
-                                if (cloudError.message && cloudError.message.includes('429')) {
-                                    console.log(`[SEMANTICGUARD FOLDER AUDIT] 429 Rate Limit detected — setting global pause`);
-                                    await rateLimiter.setGlobalPause(30);
-                                }
-                                
-                                // Fall back to L1_PASS result (treat as safe)
-                                finalResult = result;
-                            }
+                                    project_path: projectPath,
+                                    processor_mode: "GPU",
+                                    model_name: _selectedModel,
+                                    power_mode: false
+                                }),
+                            }, 60000);
+
+                            if (!response.ok) throw new Error(`Server returned ${response.status}`);
+                            finalResult = await response.json();
                         }
                         
+                        const apiLatency = (Date.now() - apiStartTime) / 1000;
+
                         // Handle both old violations format and new findings format
                         if (finalResult.action === "REJECT") {
                             if (finalResult.findings?.length > 0) {
-                                // New V2 findings format
                                 for (const f of finalResult.findings) {
                                     violations.push({
                                         file: fileRelativePath,
@@ -1006,7 +1298,6 @@ function activate(context) {
                                     });
                                 }
                             } else if (finalResult.violations?.length > 0) {
-                                // Old violations format
                                 for (const v of finalResult.violations) {
                                     violations.push({
                                         file: fileRelativePath,
@@ -1019,47 +1310,40 @@ function activate(context) {
                             }
                         }
                         
-                        processed++;
-                        
-                        // ═══ INTELLIGENT RATE LIMITING: Token Bucket ═══
-                        if (i < auditableFiles.length - 1 && isPowerMode) {
-                            // Load system rules for token estimation
-                            const systemRules = loadSystemRules(vscode.workspace.workspaceFolders[0].uri.fsPath);
-                            const systemPrompt = systemRules || '';
-                            
-                            // Token estimation: ~4 characters per token
-                            // Account for: system prompt + code + response (2000 tokens)
-                            const estimatedTokens = Math.floor((systemPrompt.length + code.length) / 4) + 2000;
-                            
-                            // Use Token Bucket for precise rate limiting
-                            const waitTime = await rateLimiter.consumeWithWait(estimatedTokens);
-                            
-                            if (waitTime === -1) {
-                                // File too large, skip it
-                                console.log(`[SEMANTICGUARD FOLDER AUDIT] File too large (${estimatedTokens.toLocaleString()} tokens), skipping: ${fileRelativePath}`);
-                                skipped++;
-                                continue;
-                            } else if (waitTime > 0) {
-                                console.log(`[SEMANTICGUARD FOLDER AUDIT] Token bucket wait: ${waitTime.toFixed(2)}s for ${estimatedTokens.toLocaleString()} tokens (bucket state: ${rateLimiter.getState().tokens.toLocaleString()}/${rateLimiter.getState().capacity.toLocaleString()})`);
-                            } else {
-                                // Log instant processing (bucket has tokens)
-                                const state = rateLimiter.getState();
-                                console.log(`[SEMANTICGUARD FOLDER AUDIT] Instant processing (${estimatedTokens.toLocaleString()} tokens, bucket: ${state.tokens.toLocaleString()}/${state.capacity.toLocaleString()})`);
-                            }
-                        } else if (i < auditableFiles.length - 1) {
-                            // Local mode: simple delay
-                            await new Promise(resolve => setTimeout(resolve, 300));
+                        // Update Layer Metadata
+                        if (finalResult.layer === 'layer1') {
+                            layer1Blocked++;
+                        } else if (finalResult.layer === 'cloud' || finalResult.layer === 'layer2') {
+                            layer2Analyzed++;
                         }
                         
-                    } catch (err) {
-                        const errorMsg = `${err.name}: ${err.message}`;
-                        console.error(`[SEMANTICGUARD FOLDER AUDIT] Exception on ${fileRelativePath}:`, err);
-                        console.error(`[SEMANTICGUARD FOLDER AUDIT] Stack trace:`, err.stack);
-                        errors.push(fileRelativePath);
-                        errorDetails[fileRelativePath] = errorMsg;
+                        // Sync detected TPM/RPM from server
+                        if (finalResult.detected_tpm) detectedTPM = finalResult.detected_tpm;
+                        if (finalResult.detected_rpm) detectedRPM = finalResult.detected_rpm;
+                        
                         processed++;
+                        progress.report({
+                            message: `${processed}/${auditableFiles.length} — ${fileRelativePath} (${apiLatency.toFixed(2)}s)`,
+                            increment: 100 / auditableFiles.length
+                        });
+                        
+                        return finalResult;
+
+                    } catch (err) {
+                        const fileRelativePath = vscode.workspace.asRelativePath(fileUri);
+                        console.error(`[SEMANTICGUARD FOLDER AUDIT] Exception on ${fileRelativePath}:`, err.message);
+                        errors.push(fileRelativePath);
+                        errorDetails[fileRelativePath] = err.message;
+                        processed++;
+                        return null;
+                    } finally {
+                        semaphore.count--;
                     }
-                }
+                };
+
+                // ═══ LAUNCH ALL FILES CONCURRENTLY (test_few_shot_examples.py pattern) ═══
+                const tasks = auditableFiles.map(fileUri => processFileWithSemaphore(fileUri));
+                await Promise.all(tasks);
             });
             
             // ═══ END TIMER ═══
@@ -1092,6 +1376,152 @@ function activate(context) {
             auditOutputChannel.appendLine(`${'='.repeat(60)}`);
             auditOutputChannel.appendLine(`⏱️  Total Time: ${totalTimeSeconds.toFixed(2)}s (avg ${avgTimePerFile}s per file)`);
             auditOutputChannel.appendLine(`${'='.repeat(60)}\n`);
+
+            // Phase 3: Autopsy UI - Ground Truth Evaluation
+            if (relativePath.endsWith('Final_Test') || relativePath.includes('Final_Test')) {
+                const targetVulnerable = auditableFiles.filter(f => !f.fsPath.includes('_secure'));
+                const targetSafe = auditableFiles.filter(f => f.fsPath.includes('_secure'));
+                
+                const groundTruth = [
+                    { file: "api_server.py", category: "Insecure Flask/FastAPI Configuration" },
+                    { file: "calculator.py", category: "RCE (Remote Code Execution) via eval()" },
+                    { file: "fileServer.ts", category: "Path Traversal" },
+                    { file: "fileManager.ts", category: "Path Traversal" },
+                    { file: "external_api.py", category: "SSRF (Server-Side Request Forgery)" },
+                    { file: "file_processor.py", category: "Command Injection" },
+                    { file: "deep_link.js", category: "Open Redirect" },
+                    { file: "file_upload.js", category: "Insecure File Upload" },
+                    { file: "zip_slip.py", category: "Zip Slip / Arbitrary File Write" },
+                    { file: "ssrf_fetch.py", category: "SSRF" },
+                    { file: "redos_validator.js", category: "ReDoS (Regular Expression Denial of Service)" },
+                    { file: "prototype_pollute.js", category: "Prototype Pollution" }
+                ];
+                
+                const rejectedFiles = new Set(violations.map(v => v.file));
+                
+                // Fix Math: compare against relative path instead of basename
+                const truePositives = targetVulnerable.filter(f => rejectedFiles.has(vscode.workspace.asRelativePath(f)));
+                const falsePositives = targetSafe.filter(f => rejectedFiles.has(vscode.workspace.asRelativePath(f)));
+                const missedFiles = targetVulnerable.filter(f => !rejectedFiles.has(vscode.workspace.asRelativePath(f)));
+                
+                const accuracy = targetVulnerable.length > 0 ? (truePositives.length / targetVulnerable.length) * 100 : 0;
+                
+                auditOutputChannel.appendLine(`🔬 AUTOPSY MODE: Ground Truth Evaluation`);
+                auditOutputChannel.appendLine(`- Total Vulnerable Files: ${targetVulnerable.length}`);
+                auditOutputChannel.appendLine(`- Caught (True Positives): ${truePositives.length}`);
+                auditOutputChannel.appendLine(`- Missed: ${missedFiles.length}`);
+                auditOutputChannel.appendLine(`- False Positives (Safe files rejected): ${falsePositives.length}`);
+                auditOutputChannel.appendLine(`- Accuracy: ${accuracy.toFixed(1)}%`);
+                
+                if (missedFiles.length > 0) {
+                    auditOutputChannel.appendLine(`\n❌ MISSED FILES (LLM FAILED TO CATCH):`);
+                    for (const f of missedFiles) {
+                        const fileName = path.basename(f.fsPath);
+                        const relPath = vscode.workspace.asRelativePath(f);
+                        const category = groundTruth.find(gt => gt.file === fileName || gt.file === relPath)?.category || "Unknown";
+                        
+                        auditOutputChannel.appendLine(`   - ${fileName} [Category: ${category}]`);
+                        
+                        try {
+                            const projectPath = vscode.workspace.getWorkspaceFolder(f)?.uri.fsPath 
+                                             || vscode.workspace.workspaceFolders[0].uri.fsPath;
+                            const currentPrompt = loadSystemRules(projectPath);
+
+                            const doc = await vscode.workspace.openTextDocument(f);
+                            const autopsyResponse = await fetchWithTimeout(`${serverUrl}/run_autopsy`, {
+                                method: "POST",
+                                headers: { 
+                                    "Content-Type": "application/json",
+                                    "Authorization": `Bearer ${apiKey}`
+                                },
+                                body: JSON.stringify({
+                                    code_snippet: doc.getText(),
+                                    filename: fileName,
+                                    current_prompt: currentPrompt,
+                                    project_path: projectPath,
+                                    vulnerability_type: category,
+                                    analysis_mode: "MISS",
+                                    original_reason: `Ground truth specifies this is a ${category} vulnerability.`,
+                                    model_name: cloudModelName
+                                })
+                            }, 45000); 
+                            
+                            if (autopsyResponse.ok) {
+                                const autopsyData = await autopsyResponse.json();
+                                auditOutputChannel.appendLine(`     💡 Prompt Patch Suggestion [${autopsyData.vulnerability_type}]:`);
+                                if (autopsyData.bypassed_rule) {
+                                    auditOutputChannel.appendLine(`     📏 Bypassed Rule: ${autopsyData.bypassed_rule}`);
+                                }
+                                if (autopsyData.bypass_reason) {
+                                    auditOutputChannel.appendLine(`     ❓ Reason: ${autopsyData.bypass_reason}`);
+                                }
+                                auditOutputChannel.appendLine(`     → ${autopsyData.suggestion}`);
+                            }
+
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        } catch (e) {
+                            auditOutputChannel.appendLine(`     ⚠️ Autopsy diagnostic failed: ${e.message}`);
+                        }
+                    }
+                }
+
+                if (falsePositives.length > 0) {
+                    auditOutputChannel.appendLine(`\n⚠️ FALSE POSITIVES (SAFE FILES INCORRECTLY REJECTED):`);
+                    for (const f of falsePositives) {
+                        const fileName = path.basename(f.fsPath);
+                        const relPath = vscode.workspace.asRelativePath(f);
+                        
+                        // Find the original rejection reason from the violations array
+                        const originalViolation = violations.find(v => v.file === relPath);
+                        const reasoning = originalViolation ? originalViolation.reason : "No reasoning captured.";
+                        
+                        auditOutputChannel.appendLine(`   - ${fileName}`);
+                        auditOutputChannel.appendLine(`     🔍 AI Reasoning: ${reasoning}`);
+                        
+                        try {
+                            const projectPath = vscode.workspace.getWorkspaceFolder(f)?.uri.fsPath 
+                                             || vscode.workspace.workspaceFolders[0].uri.fsPath;
+                            const currentPrompt = loadSystemRules(projectPath);
+
+                            const doc = await vscode.workspace.openTextDocument(f);
+                            const autopsyResponse = await fetchWithTimeout(`${serverUrl}/run_autopsy`, {
+                                method: "POST",
+                                headers: { 
+                                    "Content-Type": "application/json",
+                                    "Authorization": `Bearer ${apiKey}`
+                                },
+                                body: JSON.stringify({
+                                    code_snippet: doc.getText(),
+                                    filename: fileName,
+                                    current_prompt: currentPrompt,
+                                    project_path: projectPath,
+                                    vulnerability_type: "Secure File",
+                                    analysis_mode: "FALSE_POSITIVE",
+                                    original_reason: reasoning,
+                                    model_name: cloudModelName
+                                })
+                            }, 45000); 
+                            
+                            if (autopsyResponse.ok) {
+                                const autopsyData = await autopsyResponse.json();
+                                auditOutputChannel.appendLine(`     💡 False Positive Fix Suggestion:`);
+                                if (autopsyData.bypassed_rule) {
+                                    auditOutputChannel.appendLine(`     📏 Bypassed Rule: ${autopsyData.bypassed_rule}`);
+                                }
+                                if (autopsyData.bypass_reason) {
+                                    auditOutputChannel.appendLine(`     ❓ Reason: ${autopsyData.bypass_reason}`);
+                                }
+                                auditOutputChannel.appendLine(`     → ${autopsyData.suggestion}`);
+                            }
+
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        } catch (e) {
+                            auditOutputChannel.appendLine(`     ⚠️ Autopsy diagnostic failed: ${e.message}`);
+                        }
+                    }
+                }
+                auditOutputChannel.appendLine(`${'='.repeat(60)}\n`);
+            }
             
             // Group violations by file for reporting
             const byFile = {};
@@ -1558,13 +1988,18 @@ function activate(context) {
             throw new Error(`${provider} API test failed: ${testResponse.status} - ${errorText}`);
         }
         
-        // Detect TPM limits from response headers
-        const { detectModelLimits } = require(path.join(context.extensionPath, 'token-bucket.js'));
-        const { maxRpm, maxTpm } = await detectModelLimits(apiKey, model);
-        
         const result = await testResponse.json();
-        result.detectedTPM = maxTpm;
-        result.detectedRPM = maxRpm;
+        
+        // Detect TPM/RPM limits for Groq provider
+        if (provider === 'groq') {
+            const limits = await detectModelLimits(apiKey, model);
+            result.detectedTPM = limits.maxTpm;
+            result.detectedRPM = limits.maxRpm;
+        } else {
+            // For other providers, use defaults
+            result.detectedTPM = 0;
+            result.detectedRPM = 0;
+        }
         
         return result;
     }
@@ -1645,25 +2080,6 @@ function activate(context) {
         }
     );
 
-    const toggleV2PromptsCmd = vscode.commands.registerCommand(
-        "semanticguard.toggleV2Prompts",
-        async () => {
-            const currentMode = context.globalState.get('semanticguard.experimental_v2_prompts') || false;
-            const newMode = !currentMode;
-            
-            await context.globalState.update('semanticguard.experimental_v2_prompts', newMode);
-            
-            const status = newMode ? "ENABLED" : "DISABLED";
-            const emoji = newMode ? "🧪" : "📝";
-            
-            vscode.window.showInformationMessage(
-                `${emoji} SemanticGuard V2 Prompts: ${status} ${newMode ? '(Experimental - Reduces false positives)' : '(Using legacy prompts)'}`
-            );
-            
-            console.log(`[SEMANTICGUARD V2] Experimental V2 prompts: ${status}`);
-        }
-    );
-
     const debugReasoningCmd = vscode.commands.registerCommand(
         "semanticguard.debugReasoning",
         async () => {
@@ -1683,7 +2099,7 @@ function activate(context) {
         }
     );
 
-    context.subscriptions.push(askCommand, openLedgerCommand, reviewChangesCommand, initializeProjectCommand, toggleProcessorCommand, selectModelCmd, auditFolderCmd, configureBYOKCmd, togglePowerModeCmd, toggleV2PromptsCmd, debugReasoningCmd);
+    context.subscriptions.push(askCommand, openLedgerCommand, reviewChangesCommand, initializeProjectCommand, toggleProcessorCommand, selectModelCmd, auditFolderCmd, configureBYOKCmd, togglePowerModeCmd, debugReasoningCmd);
 
     // Periodic server health check
     checkServerHealth();
@@ -1699,37 +2115,43 @@ function activate(context) {
 
         event.waitUntil((async () => {
             try {
+                const doc = event.document;
+                const fileName = path.basename(doc.fileName);
+                console.log(`[SEMANTICGUARD DEBUG] onWillSaveTextDocument triggered for: ${fileName} (Reason: ${event.reason})`);
+
                 // Only trigger on explicit manual saves (Ctrl+S / Cmd+S). Ignore auto-saves on focus out/delay.
                 if (event.reason !== vscode.TextDocumentSaveReason.Manual) {
-                    // Skip auto-save events
+                    console.log(`[SEMANTICGUARD DEBUG] Skipping non-manual save event (Reason: ${event.reason})`);
                     return;
                 }
 
                 const cfg = vscode.workspace.getConfiguration("semanticguard");
-                if (!cfg.get("enabled")) {
-                    // Airbag disabled in settings
+                const isEnabled = cfg.get("enabled");
+                console.log(`[SEMANTICGUARD DEBUG] Extension enabled: ${isEnabled}`);
+
+                if (!isEnabled) {
                     return;
                 }
 
                 // Bypass standard excludes if this is a Pillar file (Selective Pass)
-                const relPath = vscode.workspace.asRelativePath(event.document.uri);
+                const relPath = vscode.workspace.asRelativePath(doc.uri);
                 const isPillar = relPath.startsWith(".semanticguard") && relPath.endsWith(".md");
-                // Check if file is a pillar or excluded
+                console.log(`[SEMANTICGUARD DEBUG] File: ${relPath}, isPillar: ${isPillar}`);
 
                 if (!isPillar) {
                     const excludes = cfg.get("excludePatterns") ?? [];
                     if (excludes.some((pat) => matchGlob(pat, relPath))) {
-                        // File excluded by pattern
+                        console.log(`[SEMANTICGUARD DEBUG] Skipping excluded file: ${relPath}`);
                         return;
                     }
                 }
 
                 // Check Server Offline
+                console.log(`[SEMANTICGUARD DEBUG] Server online: ${serverOnline}`);
                 if (!serverOnline) {
                     const enforcementMode = cfg.get("enforcementMode") ?? "Soft";
                     if (enforcementMode === "Strict") {
                         console.warn('[SEMANTICGUARD] Server is OFFLINE. Strict mode enforcing BLOCK.');
-                        // Sleek toast notification instead of modal
                         vscode.window.showErrorMessage(`🛑 SemanticGuard: Server offline — Save blocked in Strict mode`);
                         throw new Error("SemanticGuard Strict Mode: Server is offline. Save blocked.");
                     }
@@ -1737,8 +2159,18 @@ function activate(context) {
                     return;
                 }
 
-                // Queue the evaluation sequentially to protect the GPU
-                await saveEvaluationQueue.enqueue(() => evaluateSave(event.document));
+                // NOTE: We no longer auto-audit standard code files on save via `/evaluate_cloud` 
+                // to prevent double-firing and confusion. 
+                // Phase 3 Drift Detection is now handled in `onDidSaveTextDocument`.
+                
+                // If this is a Pillar file, we should technically still audit it (Meta-Gate), 
+                // but the user's directive is to ensure `detectDriftAndEnforce` is the ONLY API call.
+                /* 
+                if (isPillar) {
+                    console.log(`[SEMANTICGUARD] Pillar file detected. Forwarding to evaluateSave...`);
+                    await saveEvaluationQueue.enqueue(() => evaluateSave(doc));
+                }
+                */
             } catch (error) {
                 console.error('[SEMANTICGUARD ERROR] Save listener async task failed:', error);
                 try { vscode.window.showErrorMessage(`SemanticGuard Extension Crash: ${error.message}`); } catch (e) { /* swallow */ }
@@ -1755,6 +2187,20 @@ function activate(context) {
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
         if (workspaceFolder && serverOnline) {
             const projectRoot = workspaceFolder.uri.fsPath;
+            const relPath = vscode.workspace.asRelativePath(document.uri);
+
+            // ─── Phase 3: Drift Detection ──────────
+            // Skip drift audits for files within the .semanticguard config directory
+            if (relPath.startsWith('.semanticguard')) {
+                console.log(`[SEMANTICGUARD DRIFT] Skipping audit for configuration file: ${relPath}`);
+                return;
+            }
+
+            // Trigger drift enforcement in parallel
+            detectDriftAndEnforce(document, projectRoot).catch(err => {
+                console.log('[SEMANTICGUARD DRIFT] Save Hook Error:', err.message);
+            });
+
             await detectPivot(document, projectRoot);
         }
     });
@@ -1789,6 +2235,12 @@ function isRuleSanctuaryPath(document) {
  * @returns {Promise<vscode.TextEdit[]>}
  */
 async function evaluateSave(document) {
+    const extensionContext = global.semanticguardContext;
+    if (!extensionContext) {
+        console.error('[SEMANTICGUARD] Extension context not available in evaluateSave');
+        return []; // Fail-open: allow save if context unavailable
+    }
+
     const currentContent = document.getText();
     const fileKey = document.uri.toString();
 
@@ -1917,11 +2369,6 @@ async function evaluateSave(document) {
         const previousContent = _lastAuditedContent.get(fileKey);
 
         // ── CHECK MODE EARLY: Power Mode needs full context ───────────────
-        const extensionContext = global.semanticguardContext;
-        if (!extensionContext) {
-            console.error('[SEMANTICGUARD] Extension context not available');
-            return; // Fail-open: allow save if context unavailable
-        }
         const isPowerMode = extensionContext.globalState.get('semanticguard.mode') === 'cloud';
 
         let codeContent;
@@ -1997,121 +2444,38 @@ async function evaluateSave(document) {
             // Note: isPowerMode already checked above for snapshot logic
             
             let data;
+            let cloudModelName;
             
             if (isPowerMode) {
-                console.log("[SEMANTICGUARD TRAFFIC COP] Power Mode detected — routing through Layer 1 + Cloud");
-                console.log(`[SEMANTICGUARD TRAFFIC COP] Sending full file: ${totalLines} lines for deep analysis`);
+                console.log("[SEMANTICGUARD TRAFFIC COP] Power Mode detected — routing through evaluate_cloud");
                 
-                // Strip comments to protect Layer 1 Regex from false positives
-                const strippedCodeContent = stripCommentsPreserveLines(codeContent);
+                // Fetch API Key
+                const provider = extensionContext.globalState.get('semanticguard.provider') || 'groq';
+                const keyName = provider === 'openrouter' ? 'openrouter_api_key' : 'groq_api_key';
+                const apiKey = await extensionContext.secrets.get(keyName);
                 
-                // Step 1: Run Layer 1 on Python server
-                const layer1Response = await fetchWithTimeout(`${serverUrl}/evaluate`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        filename: fileName,
-                        code_snippet: strippedCodeContent,
-                        pillars: pillars,
-                        project_path: projectPath,
-                        processor_mode: processorMode,
-                        model_name: _selectedModel,
-                        power_mode: true  // Signal to run Layer 1 only
-                    }),
-                }, timeoutMs);
+                const modelKey = provider === 'openrouter' ? 'openrouter_model' : 'groq_model';
+                // Task: Fix 400 Error by providing correct cloud model fallback
+                const fallbackCloud = provider === 'openrouter' ? 'deepseek/deepseek-r1' : 'meta-llama/llama-4-scout-17b-16e-instruct';
+                cloudModelName = extensionContext.globalState.get(modelKey) || fallbackCloud;
 
-                if (!layer1Response.ok) {
-                    console.warn(`SemanticGuard: Layer 1 server returned ${layer1Response.status} — failing open`);
-                    updateStatusBar(extensionContext, 'idle');
-                    return [];
+                if (!apiKey) {
+                    console.error("[SEMANTICGUARD TRAFFIC COP] API Key missing for Power Mode");
+                    vscode.window.showErrorMessage(`🛑 SemanticGuard: API Key missing for ${provider}. Please configure in settings.`);
+                    return []; // Fail open
                 }
 
-                const layer1Data = await layer1Response.json();
-                
-                // Step 2: Check Layer 1 result
-                if (layer1Data.action === "REJECT") {
-                    // Layer 1 caught it — block immediately
-                    console.log("[SEMANTICGUARD TRAFFIC COP] Layer 1 REJECT — blocking save");
-                    data = layer1Data;
-                } else if (layer1Data.action === "L1_PASS") {
-                    // Layer 1 passed — call Cloud API for Layer 2
-                    console.log("[SEMANTICGUARD TRAFFIC COP] Layer 1 passed — calling Cloud API");
-                    
-                    try {
-                        const cloudResult = await callCloudAPI(extensionContext, {
-                            filename: fileName,
-                            code_snippet: codeContent,
-                            pillars: pillars
-                        });
-                        
-                        // ═══ REQUIREMENT 5: FALLBACK LINE NUMBER DETECTION ═══
-                        // Process violations to correct line numbers using fallback logic
-                        if (cloudResult.violations && Array.isArray(cloudResult.violations)) {
-                            console.log(`[SEMANTICGUARD FALLBACK] Processing ${cloudResult.violations.length} violations`);
-                            
-                            cloudResult.violations = cloudResult.violations.map(violation => {
-                                const reportedLine = violation.line_number;
-                                const violatingSnippet = violation.violating_snippet;
-                                
-                                // Apply fallback detection if violating_snippet is provided
-                                if (violatingSnippet) {
-                                    const correctedLine = detectCorrectLineNumber(
-                                        reportedLine,
-                                        violatingSnippet,
-                                        document
-                                    );
-                                    
-                                    // Update violation with corrected line number
-                                    return {
-                                        ...violation,
-                                        line_number: correctedLine,
-                                        original_line_number: reportedLine, // Keep original for debugging
-                                        line_corrected: correctedLine !== reportedLine
-                                    };
-                                } else {
-                                    console.warn(`[SEMANTICGUARD FALLBACK] No violating_snippet for violation at line ${reportedLine}`);
-                                    return violation;
-                                }
-                            });
-                            
-                            const correctedCount = cloudResult.violations.filter(v => v.line_corrected).length;
-                            if (correctedCount > 0) {
-                                console.log(`[SEMANTICGUARD FALLBACK] ✓ Corrected ${correctedCount} line numbers using fallback logic`);
-                            }
-                        }
-                        
-                        data = cloudResult;
-                        console.log("[SEMANTICGUARD TRAFFIC COP] Cloud API result:", data.action);
-                    } catch (cloudError) {
-                        console.error("[SEMANTICGUARD TRAFFIC COP] Cloud API failed:", cloudError);
-                        vscode.window.showErrorMessage(`⚠️ Power Mode failed: ${cloudError.message}. Falling back to local.`);
-                        
-                        // Fallback: run full local audit
-                        const fallbackResponse = await fetchWithTimeout(`${serverUrl}/evaluate`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                filename: fileName,
-                                code_snippet: codeContent,
-                                pillars: pillars,
-                                project_path: projectPath,
-                                processor_mode: processorMode,
-                                model_name: _selectedModel,
-                                power_mode: false
-                            }),
-                        }, timeoutMs);
-                        
-                        if (fallbackResponse.ok) {
-                            data = await fallbackResponse.json();
-                        } else {
-                            updateStatusBar(extensionContext, 'idle');
-                            return [];
-                        }
-                    }
-                } else {
-                    // Unexpected response
-                    data = layer1Data;
-                }
+                // Task 6: Route through the new Thin Client
+                data = await evaluateWithServer(
+                    serverUrl,
+                    apiKey,
+                    document.uri.fsPath,
+                    codeContent,
+                    projectPath,
+                    cloudModelName
+                );
+
+                console.log(`[SEMANTICGUARD TRAFFIC COP] Thin Client result: ${data.action}`);
             } else {
                 // Local Mode: Standard full audit
                 console.log("[SEMANTICGUARD TRAFFIC COP] Local Mode — running full local audit");
@@ -2329,576 +2693,6 @@ function stripCommentsPreserveLines(code) {
         }
         return line;
     }).join('\n');
-}
-
-// ─── Cloud API Call (Power Mode - Multi-Provider) ────────────────────────────
-
-async function callCloudAPI(context, payload) {
-    const startTime = Date.now(); // High-resolution performance timer
-    
-    try {
-        // Get current provider
-        const provider = context.globalState.get('semanticguard.provider') || 'openrouter';
-        
-        // Check for experimental V2 prompt mode
-        const useV2Prompts = context.globalState.get('semanticguard.experimental_v2_prompts') || false;
-        
-        // Provider-specific configuration
-        const providerConfig = {
-            openrouter: {
-                keyName: "openrouter_api_key",
-                modelKey: "openrouter_model",
-                endpoint: "https://openrouter.ai/api/v1/chat/completions",
-                displayName: "OpenRouter"
-            },
-            groq: {
-                keyName: "groq_api_key",
-                modelKey: "groq_model",
-                endpoint: "https://api.groq.com/openai/v1/chat/completions",
-                displayName: "Groq"
-            }
-        };
-        
-        const config = providerConfig[provider];
-        if (!config) {
-            throw new Error(`Unknown provider: ${provider}`);
-        }
-        
-        // Get API key and model
-        const apiKey = await context.secrets.get(config.keyName);
-        const modelId = context.globalState.get(config.modelKey) || 
-                       (provider === 'openrouter' ? 'anthropic/claude-3.5-sonnet' : 'meta-llama/llama-4-scout-17b-16e-instruct');
-        
-        if (!apiKey) {
-            throw new Error(`${config.displayName} API key not found. Please configure Power Mode first.`);
-        }
-        
-        console.log(`[SEMANTICGUARD POWER MODE] Calling ${config.displayName} with model: ${modelId} (V${useV2Prompts ? '2' : '1'} prompts)`);
-        
-        // ═══ LOAD SYSTEM RULES FROM PROJECT ═══
-        const projectPath = payload.project_path || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-        const systemRules = loadSystemRules(projectPath);
-        
-        if (!systemRules) {
-            console.warn('[SEMANTICGUARD POWER MODE] No system_rules.md found - using empty ruleset');
-        }
-        
-        // ═══ GHOST STRIPPER: Remove Comments While Preserving Line Numbers ═══
-        const originalCode = payload.code_snippet;
-        const strippedCode = stripCommentsPreserveLines(originalCode);
-        console.log(`[SEMANTICGUARD GHOST STRIPPER] Stripped comments from ${originalCode.split('\n').length} lines`);
-        
-        // ═══ REQUIREMENT 1: LINE NUMBER INJECTION ═══
-        // Inject line numbers into code before sending to Cloud API
-        const numberedCode = injectLineNumbers(strippedCode);
-        console.log(`[SEMANTICGUARD LINE INJECTION] Injected line numbers into ${strippedCode.split('\n').length} lines`);
-        
-        // Build the prompt based on version
-        let systemPrompt, userPrompt;
-        
-        if (useV2Prompts) {
-            // V2 Constrained Prompt System (Fixed - Production Ready)
-            systemPrompt = `You are a security auditor that must minimize false positives. You ONLY flag issues that are realistically exploitable in the given context.
-
-HARD CONSTRAINTS (CRITICAL - FOLLOW EXACTLY):
-1. Do NOT assume user input unless explicitly shown
-2. Do NOT assume shell=True unless explicitly present
-2b. Environment variables used in SQL queries ARE a real injection risk — treat as REJECT
-3. Treat hardcoded constants as SAFE unless proven otherwise
-   EXCEPTION: Hardcoded credentials (API keys, passwords, tokens, secrets) are ALWAYS CRITICAL regardless of being constants
-4. Prefer FALSE NEGATIVE over FALSE POSITIVE when uncertain
-5. If unsure → classify as LOW, not HIGH/CRITICAL
-
-CRITICAL SECURITY PATTERNS (ALWAYS FLAG):
-- Hardcoded credentials: API keys (AWS, OpenAI, etc.), passwords, tokens, secrets
-  Pattern: Strings matching [A-Z0-9]{20,} or containing "key", "secret", "password", "token" in variable name
-- Sensitive data in output sinks: print(), console.log(), logger.debug(), logger.info()
-  If password, credit card, SSN, or PII reaches ANY output → CRITICAL
-- SQL injection: String concatenation or f-strings in SQL queries
-  Includes: WHERE, FROM, LIKE, ORDER BY clauses with dynamic values
-
-REQUIRED REASONING STEPS (MANDATORY ORDER):
-1. Detect risky pattern (e.g., subprocess, eval, SQL, hardcoded credential, logging sensitive data)
-2. Check for user-controlled input (YES / NO)
-   NOTE: Environment variables CAN be attacker-controlled in some contexts
-3. Check execution context:
-   - shell=True? (YES / NO)
-   - argument list vs string?
-   - Is sensitive data being logged/printed?
-4. Determine exploitability:
-   - Can attacker influence execution? (YES / NO)
-   - Is credential exposed in code? (YES / NO)
-   - Is PII/password reaching output? (YES / NO)
-5. Only then assign severity
-
-If steps are skipped → response is INVALID
-
-OUTPUT SCHEMA (STRICT JSON ONLY):
-{
-    "pattern_detected": "description of risky pattern found",
-    "user_controlled_input": true/false,
-    "uses_shell": true/false,
-    "argument_type": "list/string/none",
-    "exploitability": "real/theoretical/none",
-    "severity": "CRITICAL/HIGH/MEDIUM/LOW/NONE",
-    "confidence": 0.0-1.0,
-    "reasoning": "step-by-step explanation following the 5 required steps"
-}
-
-ANTI-HALLUCINATION GUARD:
-If the code does not explicitly show a vulnerability, you MUST NOT infer one.
-
-VALIDATION RULES:
-- If user_controlled_input = false BUT hardcoded credential detected → severity = CRITICAL
-- If sensitive data (password, SSN, credit card) in print/log → severity = CRITICAL
-- If uses_shell = false AND argument_type = "list" → severity ≤ LOW
-- If exploitability = "none" AND no credential exposure → severity = NONE
-- If pattern_detected = "none" → all other fields should reflect no risk`;
-
-            userPrompt = `Analyze this code for security violations following the required reasoning steps:
-
-Filename: ${payload.filename}
-
-Code:
-\`\`\`
-${numberedCode}
-\`\`\`
-
-Follow the 5 required reasoning steps in order:
-1. Pattern Detection: What risky patterns do you see?
-2. Input Analysis: Is there user-controlled input?
-3. Context Analysis: How is the risky pattern used?
-4. Exploitability: Can an attacker actually exploit this?
-5. Severity Assignment: Based on real exploitability
-
-Provide your analysis in the required JSON format.`;
-        } else {
-            // V1 PURGED - Now using V2 Taint Analysis System
-            // MERGE STEP 1: Inject system_rules.md
-            const rulesBlock = systemRules ? `
-===============================================================================
-
-PROJECT-SPECIFIC SECURITY RULES (from system_rules.md):
-
-${systemRules}
-
-===============================================================================
-` : '';
-            
-            if (systemRules) {
-                console.log(`[SEMANTICGUARD RULES] Injected ${systemRules.length} chars into prompt`);
-            }
-            
-            systemPrompt = `You are an AGGRESSIVE AppSec auditor focused on EXPLOITABILITY, not patterns.
-
-Your job is to find REAL, EXPLOITABLE security issues. Avoid false positives.
-
-${rulesBlock}
-ZERO-TOLERANCE FOR HARDCODED FALSE POSITIVES:
-- Hardcoded strings are SAFE unless they are actual secrets/credentials
-- Model names, file paths, configuration values are NOT vulnerabilities
-- Only flag hardcoded API keys, passwords, tokens, or secrets
-
-TAINT ANALYSIS RULES (STRICT):
-1. SOURCE: Only user-controlled input is dangerous
-
-Untrusted sources — trace these:
-- HTTP: request.json(), req.query, req.body, req.params, form data
-- Browser: document.cookie, localStorage, sessionStorage, window.location, location.href, location.hash, location.search, URLSearchParams, window.name
-- Runtime: sys.argv[1+], os.environ (when user-influenced), file uploads, user session values, WebSocket messages
-- DOM: innerHTML reads, textContent reads, getAttribute()
-
-CRITICAL: Unvalidated Input Deserialization
-- request.json or req.body used WITHOUT validation/sanitization is a vulnerability
-- Look for missing jsonschema, validate_json, pydantic, marshmallow, joi, yup, zod
-- Flag if user data reaches application logic without schema validation
-
-Trusted sources — do NOT flag:
-- Hardcoded string literals (unless they ARE the dangerous payload)
-- Script constants defined in-file
-- os.environ["KEY"] = "literal" (assigning literal)
-- os.environ.copy() (copying full env, not user-controlled key)
-
-2. SINK: Dangerous sinks — flag if untrusted input reaches these:
-
-Code Execution:
-- eval(), exec(), compile(), Function() constructor
-- subprocess with shell=True, os.system(), os.popen()
-- spawn() with shell mode or user-controlled binary
-
-CRITICAL SUBPROCESS RULE:
-- subprocess.run(['command', 'arg']) with list arguments and NO shell=True is SAFE
-- subprocess.run('command', shell=True) with string and shell=True is DANGEROUS
-- If you see subprocess with list arguments and no shell=True → DO NOT FLAG IT
-
-DOM/XSS:
-- innerHTML, outerHTML, document.write(), document.writeln()
-- insertAdjacentHTML(), srcdoc attribute
-- setTimeout(string), setInterval(string)
-
-Injection:
-- SQL: string concatenation in queries (not parameterized)
-- Template: Jinja2 render with user input, EJS with user input
-- Path: path.join() / os.path.join() with user-controlled segments without realpath() + startswith() validation
-
-Deserialization:
-- pickle.loads(), yaml.load() (not safe_load), unserialize()
-
-Network:
-- fetch(), requests.get/post() with user-controlled URLs (SSRF)
-- XMLHttpRequest with user-controlled target
-
-3. FLOW: Vulnerability exists ONLY if dangerous user input reaches dangerous sink
-   - Trace the exact data flow from source to sink
-   - If user input is sanitized, validated, or hardcoded → SAFE
-
-CRITICAL SECURITY PATTERNS (ALWAYS FLAG):
-- Hardcoded credentials: API keys, passwords, tokens, secrets
-- User input in eval(), exec(), os.system()
-- User input in SQL string concatenation
-- User input in file paths without validation
-- Hardcoded XSS payloads in innerHTML, document.write()
-- Hardcoded dangerous strings in eval()
-
-RULE_ID MAPPING (MANDATORY - NEVER USE "NONE"):
-
-**For XSS/DOM Issues**:
-- "RULE_11_STEP0: Static Dangerous Content" (hardcoded XSS, innerHTML with <script>)
-
-**For Command Injection**:
-- "RULE_102: Shell Injection" (subprocess with shell=True, os.system)
-
-**For Code Injection**:
-- "RULE_101: Eval Injection" (eval(), exec(), compile())
-
-**For SQL Injection**:
-- "RULE_103: SQL Injection" (string concatenation in SQL)
-
-**For Hardcoded Secrets**:
-- "RULE_100: Hardcoded Secrets" (API keys, passwords, tokens)
-
-**For Data Leaks**:
-- "RULE_105: Logging Gate" (sensitive data in logs)
-- "RULE_104: PHI Protection" (PII/PHI in insecure sinks)
-
-**For Custom Rules** (if system_rules.md has RULE_8, RULE_9, etc.):
-- Use exact format: "RULE_8: PHI_PROTECTION"
-
-**Default Fallbacks** (if no specific rule matches):
-- "RULE_11_STEP0: Static Dangerous Content" (for hardcoded dangerous strings)
-- "RULE_11: Multi-Hop Taint Analysis" (for dynamic taint flows)
-
-REQUIRED JSON OUTPUT (STRICT SCHEMA):
-{
-  "findings": [
-    {
-      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
-      "rule_id": "<use exact format from RULE_ID MAPPING above - NEVER use NONE>",
-      "vulnerability_type": "Hardcoded Secrets|Code Injection|SQL Injection|Path Traversal|DOM-based XSS|etc",
-      "line_number": <exact_line_number>,
-      "description": "Brief description of the actual vulnerability"
-    }
-  ]
-}
-
-FEW-SHOT EXAMPLES:
-
-Example 1 (Hardcoded XSS):
-{"findings": [{"severity": "CRITICAL", "rule_id": "RULE_11_STEP0: Static Dangerous Content", "vulnerability_type": "DOM-based XSS", "line_number": 4, "description": "Hardcoded XSS payload in innerHTML"}]}
-
-Example 2 (eval with hardcoded string):
-{"findings": [{"severity": "CRITICAL", "rule_id": "RULE_101: Eval Injection", "vulnerability_type": "Code Injection", "line_number": 1, "description": "eval() with dangerous hardcoded string"}]}
-
-Example 3 (Safe code):
-{"findings": []}
-
-If safe: {"findings": []}
-
-ANTI-HALLUCINATION MANDATE:
-- If no user input reaches dangerous sinks → {"findings": []}
-- If only hardcoded values are used → {"findings": []} (unless credentials or dangerous strings)
-- If input is properly sanitized → {"findings": []}
-- NO false positives for safe patterns
-
-ZERO-TOLERANCE NO-WEASEL MANDATE:
-You are FORBIDDEN from creating a finding if your own reasoning contains ANY of these phrases:
-- "Although hardcoded"
-- "Despite being an array"
-- "Although the arguments are hardcoded"
-- "Although the binary is hardcoded"
-- "Could potentially"
-- "An attacker could potentially"
-- "Might be"
-- "If an attacker"
-
-These phrases prove you already know the code is SAFE.
-If you catch yourself writing them, DISCARD the finding.
-A finding that admits inputs are hardcoded is a LOGIC FAILURE.
-
-Exception: Step 0 static dangerous content (hardcoded XSS payloads, hardcoded eval strings) — these are flagged regardless.
-
-===============================================================================
-
-PHASE 5 – PRE-FLIGHT CHECKLIST (mandatory before writing any JSON):
-
-For EVERY potential finding:
-  Q1: Can an attacker change this value without already having shell access? NO → REMOVE IT.
-  Q2: Does my reasoning use a weasel phrase from above?                    YES → REMOVE IT.
-  Q3: Is the "secret" a model name, port, host, or local URL?              YES → REMOVE IT.
-
-After the checklist – if zero findings remain, output: {"findings": []}
-
-===============================================================================
-
-FINAL RULE: Pattern matching = noise. Proven taint path = finding. When in doubt, return {"findings": []}.
-False negatives are recoverable. False positives destroy trust.`;
-
-            userPrompt = `Analyze this code for REAL security vulnerabilities using strict taint analysis:
-
-Filename: ${payload.filename}
-
-Code:
-\`\`\`
-${numberedCode}
-\`\`\`
-
-Apply taint analysis:
-1. Identify user-controlled sources (if any)
-2. Trace data flow to dangerous sinks
-3. Only flag if user input reaches dangerous sink
-
-Return JSON with findings array. If safe, return {"findings": []}.`;
-        }
-
-        // Build headers based on provider
-        const headers = {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`
-        };
-        
-        // OpenRouter requires additional headers
-        if (provider === 'openrouter') {
-            headers["HTTP-Referer"] = "https://github.com/dsadsadsadsadas/SemanticGuard";
-            headers["X-Title"] = "SemanticGuard Gatekeeper";
-        }
-
-        // 🔍 DEBUG INSTRUMENTATION: Capture raw payload before API call
-        const DEBUG_PAYLOAD = {
-            "system_prompt": systemPrompt,
-            "user_prompt": userPrompt,
-            "model": modelId,
-            "temperature": 0.3,
-            "max_tokens": 2000,
-            "response_format": { type: "json_object" },
-            "post_ghost_strip_content": strippedCode,
-            "post_line_injection_content": numberedCode,
-            "provider": config.displayName,
-            "use_v2_prompts": useV2Prompts
-        };
-        const fs = require('fs');
-        fs.writeFileSync("debug_extension_payload.json", JSON.stringify(DEBUG_PAYLOAD, null, 2), 'utf-8');
-        console.log('[SEMANTICGUARD DEBUG] Raw payload written to debug_extension_payload.json');
-
-        const response = await fetchWithTimeout(config.endpoint, {
-            method: "POST",
-            headers: headers,
-            body: JSON.stringify({
-                model: modelId,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: userPrompt }
-                ],
-                temperature: 0.3,  // Aligned with stress_test.py for consistency
-                max_tokens: 2000,
-                response_format: { type: "json_object" }  // Force strict JSON mode
-            })
-        }, 30000);
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`${config.displayName} API failed: ${response.status} - ${errorText}`);
-        }
-
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content;
-        
-        if (!content) {
-            throw new Error(`No response content from ${config.displayName}`);
-        }
-        
-        console.log(`[SEMANTICGUARD POWER MODE] Raw response from ${config.displayName}:`, content);
-        
-        // 🛠️ BULLETPROOF JSON EXTRACTOR - Handles nested braces correctly
-        // 1. Strip out markdown code blocks if the LLM hallucinated them
-        let cleanResponse = content.replace(/```json/gi, '').replace(/```/g, '').trim();
-        
-        // 2. Find the boundaries of the outermost JSON object using string indices
-        const firstBrace = cleanResponse.indexOf('{');
-        if (firstBrace === -1) {
-            throw new Error(`No JSON object found in ${config.displayName} response`);
-        }
-        
-        // 3. Find the matching closing brace by counting nested braces
-        let braceCount = 0;
-        let lastBrace = -1;
-        
-        for (let i = firstBrace; i < cleanResponse.length; i++) {
-            if (cleanResponse[i] === '{') {
-                braceCount++;
-            } else if (cleanResponse[i] === '}') {
-                braceCount--;
-                if (braceCount === 0) {
-                    lastBrace = i;
-                    break; // Found the matching closing brace
-                }
-            }
-        }
-        
-        if (lastBrace === -1) {
-            throw new Error(`Incomplete JSON object in ${config.displayName} response`);
-        }
-        
-        // 4. Extract the complete JSON object from first { to matching }
-        const jsonString = cleanResponse.substring(firstBrace, lastBrace + 1);
-        
-        // 5. Parse the safely extracted string
-        let result;
-        try {
-            result = JSON.parse(jsonString);
-            console.log(`[SEMANTICGUARD POWER MODE] ✅ Successfully parsed JSON from ${config.displayName}`);
-        } catch (parseError) {
-            console.error(`[SEMANTICGUARD POWER MODE] JSON parse failed:`, parseError);
-            console.error(`[SEMANTICGUARD POWER MODE] Attempted to parse:`, jsonString);
-            throw new Error(`Invalid JSON from ${config.displayName}: ${parseError.message}`);
-        }
-        
-        // V2 Response Processing and Validation
-        // ALWAYS process findings format (both V1 and V2 use it now)
-        result = await processV2Response(result, config.displayName, payload);
-        
-        // Calculate performance metrics
-        const duration = (Date.now() - startTime) / 1000; // Convert to seconds
-        
-        // Add performance metadata to result
-        result.cloud_provider = config.displayName;
-        result.cloud_latency = duration.toFixed(2);
-        result.audit_mode = 'cloud';
-        result.prompt_version = useV2Prompts ? 'v2' : 'v1';
-        
-        console.log(`[SEMANTICGUARD POWER MODE] Parsed result from ${config.displayName}:`, result);
-        console.log(`[SEMANTICGUARD POWER MODE] ⚡ Performance: ${duration.toFixed(2)}s latency`);
-        
-        return result;
-        
-    } catch (error) {
-        console.error("[SEMANTICGUARD POWER MODE] Cloud API error:", error);
-        throw error;
-    }
-}
-
-// ─── V2 Response Processing and Validation ──────────────────────────────────
-
-async function processV2Response(v2Response, providerName, payload) {
-    const extensionContext = global.semanticguardContext;
-    const debugMode = extensionContext?.globalState.get('semanticguard.debug_reasoning') || false;
-    
-    if (debugMode) {
-        console.log(`[SEMANTICGUARD V2 DEBUG] ═══════════════════════════════════════`);
-        console.log(`[SEMANTICGUARD V2 DEBUG] Processing V2 findings from ${providerName}`);
-        console.log(`[SEMANTICGUARD V2 DEBUG] Raw V2 Response:`, JSON.stringify(v2Response, null, 2));
-        console.log(`[SEMANTICGUARD V2 DEBUG] ═══════════════════════════════════════`);
-    } else {
-        console.log(`[SEMANTICGUARD V2] Processing V2 findings from ${providerName}`);
-    }
-    
-    // V2 FINDINGS FORMAT: {"findings": [...]}
-    const findings = v2Response.findings || [];
-    
-    if (debugMode) {
-        console.log(`[SEMANTICGUARD V2 DEBUG] Extracted ${findings.length} findings`);
-        findings.forEach((finding, index) => {
-            console.log(`[SEMANTICGUARD V2 DEBUG] Finding ${index + 1}:`, finding);
-        });
-    }
-    
-    // Convert V2 findings to legacy format for compatibility with existing UI
-    const legacyResponse = convertFindingsToLegacyFormat(findings, v2Response);
-    
-    if (debugMode) {
-        console.log(`[SEMANTICGUARD V2 DEBUG] ═══════════════════════════════════════`);
-        console.log(`[SEMANTICGUARD V2 DEBUG] Final V2 Analysis:`);
-        console.log(`[SEMANTICGUARD V2 DEBUG] - Findings Count: ${findings.length}`);
-        console.log(`[SEMANTICGUARD V2 DEBUG] - Legacy Action: ${legacyResponse.action}`);
-        console.log(`[SEMANTICGUARD V2 DEBUG] - Legacy Score: ${legacyResponse.drift_score}`);
-        console.log(`[SEMANTICGUARD V2 DEBUG] ═══════════════════════════════════════`);
-    } else {
-        console.log(`[SEMANTICGUARD V2] Converted to legacy format:`, legacyResponse);
-    }
-    
-    return legacyResponse;
-}
-
-// V2 PURGE: Legacy retry function removed - V2 findings format is simpler and more reliable
-
-function convertFindingsToLegacyFormat(findings, rawResponse) {
-    // V2 FINDINGS FORMAT: Convert {"findings": [...]} to legacy format
-    
-    if (!findings || findings.length === 0) {
-        // SAFE: No findings
-        return {
-            action: "ACCEPT",
-            drift_score: 0.0,
-            reasoning: "No security vulnerabilities detected.",
-            violations: [],
-            findings: [] // Include V2 findings for new UI
-        };
-    }
-    
-    // VULNERABLE: Has findings
-    const maxSeverity = getMaxSeverity(findings);
-    const driftScore = severityToScore(maxSeverity);
-    
-    // Convert findings to legacy violations format for backward compatibility
-    const violations = findings.map((finding, index) => ({
-        rule_id: finding.rule_id || `SECURITY_VIOLATION_${index + 1}`,
-        rule_name: finding.vulnerability_type || "Security Issue",
-        line_number: finding.line_number || 0,
-        violation: finding.description || "Security vulnerability detected.",
-        confidence: "HIGH", // V2 doesn't use confidence
-        severity: finding.severity || "MEDIUM"
-    }));
-    
-    const reasoning = findings.length === 1 
-        ? `Security vulnerability: ${findings[0].description}`
-        : `${findings.length} security vulnerabilities detected.`;
-    
-    return {
-        action: "REJECT",
-        drift_score: driftScore,
-        reasoning: reasoning,
-        violations: violations,
-        findings: findings // Include V2 findings for new UI
-    };
-}
-
-function getMaxSeverity(findings) {
-    const severityOrder = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
-    for (const severity of severityOrder) {
-        if (findings.some(f => f.severity === severity)) {
-            return severity;
-        }
-    }
-    return "LOW";
-}
-
-function severityToScore(severity) {
-    const severityToScore = {
-        "CRITICAL": 1.0,
-        "HIGH": 0.8,
-        "MEDIUM": 0.6,
-        "LOW": 0.3
-    };
-    return severityToScore[severity] || 0.3;
 }
 
 // ─── Pillar Reader ────────────────────────────────────────────────────────────
@@ -3312,6 +3106,7 @@ function fetchWithTimeout(urlStr, options = {}, ms) {
                 resolve({
                     ok: res.statusCode >= 200 && res.statusCode < 300,
                     status: res.statusCode,
+                    headers: res.headers,  // ← ADD THIS: Include response headers
                     json: async () => JSON.parse(data),
                     text: async () => data
                 });
@@ -3326,10 +3121,100 @@ function fetchWithTimeout(urlStr, options = {}, ms) {
         req.on('error', err => reject(err));
 
         if (options.body) {
-            req.write(typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
+            req.write(options.body);
         }
         req.end();
     });
+}
+
+/**
+ * 🚀 Core Thin Client: Evaluates code via the Python server's /evaluate_cloud endpoint.
+ * Handles authentication, gzip compression, and fail-open logic.
+ * 
+ * @param {string} serverUrl - Base URL of the Python server
+ * @param {string} apiKey - Groq/OpenRouter API key
+ * @param {string} filePath - Path to the file being audited
+ * @param {string} codeContent - The text to audit
+ * @param {string} projectRoot - Root directory of the project
+ * @param {string} modelName - Model identifier (e.g., deepseek-r1:latest)
+ * @returns {Promise<Object>} - The server response { action: "ACCEPT"|"REJECT", reasoning, findings: [] }
+ */
+async function evaluateWithServer(serverUrl, apiKey, filePath, codeContent, projectRoot, modelName, promptType = "v2_hardened") {
+    const filename = path.basename(filePath);
+    
+    try {
+        // ─── STEP 1: Load Local Rules (Context-Aware Auditing) ──────────────
+        let systemRules = "";
+        try {
+            const rulesPath = path.join(projectRoot, ".semanticguard", "system_rules.md");
+            if (fs.existsSync(rulesPath)) {
+                systemRules = fs.readFileSync(rulesPath, 'utf8');
+                console.log(`[SEMANTICGUARD] Ingested project rules from: ${rulesPath}`);
+            }
+        } catch (rulesErr) {
+            console.error(`[SEMANTICGUARD] Failed to read rules:`, rulesErr);
+        }
+
+        // ═══ ADD LINE NUMBERS (test_few_shot_examples.py pattern) ═══
+        const lines = codeContent.split('\n');
+        const numberedLines = lines.map((line, i) => `${i + 1}: ${line}`);
+        const numberedCode = numberedLines.join('\n');
+        
+        const body = JSON.stringify({
+            code_snippet: numberedCode,  // ← Send numbered code
+            filename: filename,
+            project_path: projectRoot,
+            system_rules: systemRules,   // ← Transmit local context
+            model_name: modelName,
+            prompt_type: promptType
+        });
+
+        const headers = {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+        };
+
+        console.log(`[SEMANTICGUARD] Forwarding ${filename} to ${serverUrl}/evaluate_cloud...`);
+        
+        // Task 3: 60-second timeout
+        const response = await fetchWithTimeout(`${serverUrl}/evaluate_cloud`, {
+            method: "POST",
+            headers: headers,
+            body: body
+        }, 60000);
+
+        if (!response.ok) {
+            throw new Error(`Server returned HTTP ${response.status}`);
+        }
+
+        // Task 4: JSON Parsing & Validation
+        const data = await response.json();
+        
+        if (!data || typeof data.action === 'undefined') {
+            throw new Error("Invalid response format: missing 'action'");
+        }
+
+        return {
+            action: data.action,
+            findings: data.findings || [],
+            reasoning: data.reasoning || "No reasoning provided",
+            drift_score: data.drift_score || 0,
+            layer: data.layer || "cloud",
+            detected_tpm: data.detected_tpm,
+            detected_rpm: data.detected_rpm
+        };
+
+    } catch (error) {
+        // FAIL-OPEN: If server is down or times out, ALLOW the save.
+        console.error(`[SEMANTICGUARD THIN CLIENT] Error auditing ${filename}:`, error.message);
+        console.warn(`[SEMANTICGUARD THIN CLIENT] Failing open for ${filename}`);
+        
+        return {
+            action: "ACCEPT",
+            findings: [],
+            reasoning: `Fail-open triggered due to error: ${error.message}`
+        };
+    }
 }
 
 /**
@@ -3973,29 +3858,29 @@ class SemanticGuardSidebarProvider {
             if (message.type === 'reset') {
                 document.body.classList.remove('compromised');
                 compromiseBanner.classList.remove('active');
-                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p>Awaiting architectural changes...</p>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p>Awaiting architectural changes...</p>';
                 return;
             }
             
             if (message.type === 'resign_success') {
                 document.body.classList.remove('compromised');
                 compromiseBanner.classList.remove('active');
-                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p style="color: var(--vscode-testing-iconPassed); font-weight: bold;">✅ Successfully Re-Signed Vault!</p>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p style="color: var(--vscode-testing-iconPassed); font-weight: bold;">✅ Successfully Re-Signed Vault!</p>';
                 setTimeout(() => {
-                    contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p>Awaiting architectural changes...</p>';
+                    contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><p>Awaiting architectural changes...</p>';
                 }, 3000);
                 return;
             }
 
             // SCANNING: show loading spinner while AI is thinking
             if (message.type === 'scanning') {
-                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><div class="scanning"><div class="spinner"></div><span>🛡️ SemanticGuard is evaluating architectural drift...</span></div>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><div class="scanning"><div class="spinner"></div><span>🛡️ SemanticGuard is evaluating architectural drift...</span></div>';
                 return;
             }
 
             // ERROR: show server failure while evaluating
             if (message.type === 'error') {
-                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><div class="action-card" style="border-left: 4px solid var(--vscode-errorForeground);"><p class="action-error">⚠️ SemanticGuard Error</p><p style="color: var(--vscode-editor-foreground); font-size: 0.9em;">' + message.message + '</p><p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; font-size: 0.85em; margin-top: 8px;">Audit failed — check server logs for details.</p></div>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div><div class="action-card" style="border-left: 4px solid var(--vscode-errorForeground);"><p class="action-error">⚠️ SemanticGuard Error</p><p style="color: var(--vscode-editor-foreground); font-size: 0.9em;">' + message.message + '</p><p style="color: var(--vscode-terminal-ansiYellow); font-style: italic; font-size: 0.85em; margin-top: 8px;">Audit failed — check server logs for details.</p></div>';
                 return;
             }
             
@@ -4018,6 +3903,7 @@ class SemanticGuardSidebarProvider {
                 
                 html += '</h3>';
                 
+/*
                 // FIX 2: DRIFT METER WITH COLOR CODING (Distance-Based)
                 // 0.0 = Perfect (Green), 0.3-0.6 = Warning (Yellow), 0.6+ = Critical (Red)
                 // ONLY show risk score if there are findings (vulnerabilities detected)
@@ -4043,6 +3929,7 @@ class SemanticGuardSidebarProvider {
                     html += '</div>';
                     html += '</div>';
                 }
+*/
 
                 // THOUGHT sequestered for terminal review (UI remains lean)
 /*
@@ -4134,7 +4021,7 @@ class SemanticGuardSidebarProvider {
                 }
 
                 entry.innerHTML = html;
-                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button id="mode-toggle" class="settings-gear" title="Toggle Local/Power Mode" style="font-size: 14px; padding: 4px 8px; color: white; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);" onclick="window.toggleMode()"><span id="mode-text">Local</span></button><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div>';
+                contentDiv.innerHTML = '<div class="header-container"><h2>🏛️ SemanticGuard Vault Access</h2><div style="display: flex; gap: 8px; align-items: center;"><button class="settings-gear" title="Configure Power Mode (BYOK)" onclick="window.configureBYOK()">⚙️</button></div></div>';
                 contentDiv.appendChild(entry);
 
                 // Wire up buttons via event delegation on the entry element

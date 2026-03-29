@@ -2,7 +2,7 @@
   "name": "semanticguard-gatekeeper",
   "displayName": "SemanticGuard Gatekeeper 🛡️",
   "description": "Architectural airbag — blocks file saves that violate your project's .semanticguard/ pillar rules.",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "publisher": "trepansec",
   "license": "AGPL-3.0-only",
   "repository": {

@@ -51,6 +51,29 @@ RULES:
 - If the variable passes through a safe transformation before output — ACCEPT
 - If you cannot confirm the variable reaches any output in the provided lines — ACCEPT
 - Literal strings are always SAFE
+- Database connection objects (conn, connection) are NOT sensitive data — ACCEPT
+- Query results that are parameterized are SAFE — ACCEPT
+- Variables that are only used for control flow (not output) — ACCEPT
+
+FEW-SHOT EXAMPLES — CORRECT VERDICTS:
+
+Example 1 — Parameterized query result logged (SAFE):
+Variable: connection
+Code: connection.query(query, [email], (err, results) => { console.log(results); });
+Correct verdict: {"verdict": "ACCEPT", "confidence": "HIGH", "rejection_reason": ""}
+Reason: Parameterized query results are safe to log. The query uses ? placeholder.
+
+Example 2 — Database connection object (SAFE):
+Variable: conn
+Code: conn = sqlite3.connect('users.db'); conn.commit()
+Correct verdict: {"verdict": "ACCEPT", "confidence": "HIGH", "rejection_reason": ""}
+Reason: Connection objects are not sensitive data. They are control flow objects.
+
+Example 3 — Safe response with validated data (SAFE):
+Variable: query
+Code: const query = req.query.q; res.send('OK');
+Correct verdict: {"verdict": "ACCEPT", "confidence": "HIGH", "rejection_reason": ""}
+Reason: res.send('OK') sends a literal string, not the query variable.
 """
 
 def _build_focused_prompt(

@@ -154,10 +154,23 @@ debug_*.json
 # ─── SemanticGuard Specific ────────────────────────────────────────────────
 .semanticguard/semanticguard_vault/
 .trepan/trepan_vault/
+.semanticguard/Walkthrough.md
+.semanticguard/done_tasks.md
+.semanticguard/pending_tasks.md
+.semanticguard/history_phases.md
+.semanticguard/problems_and_resolutions.md
+.semanticguard/.semanticguard.lock
 
 # ─── Development & Testing (Local Only) ────────────────────────────────────
 st/debug_*.json
 st/*_payload.json
+
+# ─── AI Context & Tooling ──────────────────────────────────────────────────
+.gemini/
+.kiro/
+
+# ─── User Specific ─────────────────────────────────────────────────────────
+🛡️ SemanticGuard V2 Breaking the A.txt
 
 # ─── Batch & Shell Scripts (Platform-Specific) ─────────────────────────────
 # Uncomment if you want to ignore all batch files

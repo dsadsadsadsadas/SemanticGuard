@@ -756,3 +756,34 @@ def extract_data_flow_spec_ts(source_code: str, file_extension: str) -> dict:
         logger.error(f"Tree-sitter extraction failed for {file_extension}: {e}")
 
     return spec
+
+
+def get_hardened_system_prompt(dynamic_rules: str = "") -> str:
+    """
+    Returns the hardened V2.5 Golden System Prompt, with optional 
+    project-specific rules injected.
+    """
+    rules_block = f"""
+===============================================================================
+
+PROJECT-SPECIFIC SECURITY RULES (Loaded from system_rules.md):
+
+{dynamic_rules}
+
+===============================================================================
+""" if dynamic_rules.strip() else ""
+    
+    return f"{rules_block}\n{STRUCTURAL_INTEGRITY_SYSTEM}"
+
+
+def get_drift_detection_prompt(system_rules: str) -> str:
+    return f"""You are a strict Context Enforcement Engine. 
+Read the following developer rules:
+<rules>
+{system_rules}
+</rules>
+
+Analyze the provided numbered code snippet. Did the developer violate ANY of the specific rules listed above? 
+If a rule is broken, output valid JSON in this exact format:
+{{"broken_rules": [{{"rule_id": "Rule 5", "description": "You used a print() statement", "line_number": 42}}]}}
+If no rules are broken, output: {{"broken_rules": []}}"""

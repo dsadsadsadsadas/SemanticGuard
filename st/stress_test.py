@@ -80,6 +80,12 @@ GROQ_MODELS = {
         "max_tpm": 30000
     },
     "3": {
+        "name": "openai/gpt-oss-120b",
+        "display": "GPT OSS 120B",
+        "max_rpm": 30,
+        "max_tpm": 12000
+    },
+    "4": {
         "name": "custom",
         "display": "Custom Model (Manual TPM Entry)",
         "max_rpm": None,  # Will be prompted
@@ -564,19 +570,21 @@ After the checklist ? if zero findings remain, output: {{"findings": []}}
 FINAL RULE: Pattern matching = noise. Proven taint path = finding. When in doubt, return {{"findings": []}}.
 False negatives are recoverable. False positives destroy trust.
 
-OUTPUT FORMAT ? respond with ONLY this JSON, no markdown, no extra text:
+OUTPUT FORMAT — respond with ONLY this JSON, no markdown, no extra text:
 
 {{"findings": [
   {{
     "is_vulnerable": true,
-    "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+    "severity": "CRITICAL",
     "vulnerability_type": "Brief type",
-    "line_number": <exact line number from prepended code, or null>,
+    "line_number": null,
     "description": "Proven taint: [UntrustedSource] reaches [DangerousSink] without sanitization."
   }}
 ]}}
 
-If safe: {{"findings": []}}"""
+(Note: For severity, strictly use "CRITICAL", "HIGH", "MEDIUM", or "LOW". For line_number, use exact integer or null)
+If safe, output exactly: {{"findings": []}}
+"""
     
     async def audit_file(self, file_path: Path, current: int = None, total: int = None, file_token_count: int = None) -> Dict:
         """Audit a single file with global leaky bucket rate limiting
@@ -652,12 +660,25 @@ If safe: {{"findings": []}}"""
                     "model": self.model,
                     "temperature": 0.3,
                     "max_tokens": 500,
-                    "response_format": {"type": "json_object"}
                 }
+                if self.model != "openai/gpt-oss-120b":
+                    DEBUG_PAYLOAD["response_format"] = {"type": "json_object"}
                 with open("debug_stress_payload.json", "w", encoding="utf-8") as f:
                     json.dump(DEBUG_PAYLOAD, f, indent=2)
                 print(f"{colored('[DEBUG] Payload written to debug_stress_payload.json', Colors.YELLOW)}")
                 
+                json_payload = {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 500,
+                }
+                if self.model != "openai/gpt-oss-120b":
+                    json_payload["response_format"] = {"type": "json_object"}
+                    
                 response = await asyncio.to_thread(
                     requests.post,
                     self.endpoint,
@@ -665,16 +686,7 @@ If safe: {{"findings": []}}"""
                         "Authorization": f"Bearer {self.api_key}",
                         "Content-Type": "application/json"
                     },
-                    json={
-                        "model": self.model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
-                        "temperature": 0.3,
-                        "max_tokens": 500,
-                        "response_format": {"type": "json_object"}
-                    },
+                    json=json_payload,
                     timeout=60
                 )
                 
@@ -1028,7 +1040,7 @@ def select_model(api_key: str) -> Tuple[str, str, int, int]:
         else:
             print(f"     {colored('(You will enter TPM manually)', Colors.DIM)}")
     
-    choice = input(f"\n{colored('Select model (1, 2, or 3): ', Colors.YELLOW)}")
+    choice = input(f"\n{colored('Select model (1, 2, 3, or 4): ', Colors.YELLOW)}")
     
     if choice not in GROQ_MODELS:
         print(f"{colored('[ERROR] Invalid choice', Colors.RED)}")
@@ -1037,7 +1049,7 @@ def select_model(api_key: str) -> Tuple[str, str, int, int]:
     model_info = GROQ_MODELS[choice]
     
     # Handle custom model with manual TPM entry
-    if choice == "3":
+    if choice == "4":
         print(f"\n{colored('? Custom Model Configuration', Colors.CYAN)}")
         
         # Get model name
@@ -1275,7 +1287,14 @@ def print_ground_truth(scanner: CodebaseScanner, client: GroqAuditClient, result
     
     caught_paths = [Path(v["file"]).name for v in client.vulnerabilities_found]
     missed_files = []
+    false_positives = []
     
+    for v in client.vulnerabilities_found:
+        file_path = Path(v["file"])
+        finding_text = str(v.get("finding", "No reasoning provided"))
+        if "_secure" in file_path.name:
+            false_positives.append((file_path, finding_text))
+            
     for tv in target_vulnerable:
         if tv.name not in caught_paths:
             skipped_paths = {p[0].name: p[1] for p in scanner.skipped_files}
@@ -1301,25 +1320,43 @@ def print_ground_truth(scanner: CodebaseScanner, client: GroqAuditClient, result
     print(f"[TARGET] Target Vulnerable Files: {len(target_vulnerable)}")
     print(f"[OK] Successfully Caught: {len([tv for tv in target_vulnerable if tv.name in caught_paths])}")
     
-    print(f"\n[ERROR] MISSED FILES ({len(missed_files)}):")
+    print(f"\n{colored(f'[ERROR] FALSE NEGATIVE COUNTER: {len(missed_files)} Missed Vulnerabilities', Colors.RED)}")
     for file_path, root_cause, detail in missed_files:
-        print(f"- {file_path.name} -> WHY: {root_cause} {detail}")
+        print(f"- [False Negative] {file_path.name} -> WHY: {root_cause} {detail}")
         
-    return missed_files
+    if false_positives or "Final_Test" in str(scanner.codebase_path):
+        print(f"\n{colored(f'[WARN] FALSE POSITIVE COUNTER: {len(false_positives)} Safe Files Flagged', Colors.YELLOW)}")
+        for file_path, reasoning in false_positives:
+            print(f"- [False Positive] {colored(file_path.name, Colors.DIM)} -> Reasoning: {reasoning}")
+        if not false_positives:
+            print(f"- {colored('No false positives detected. Accuracy baseline maintained.', Colors.DIM)}")
+            
+    return missed_files, false_positives
 
-async def run_autopsy(client: GroqAuditClient, missed_files: List[Tuple[Path, str, str]]):
-    """Diagnose why files were missed"""
-    if not missed_files:
+async def run_autopsy(client: GroqAuditClient, missed_files: List[Tuple[Path, str, str]], false_positives: Optional[List[Tuple[Path, str]]] = None):
+    """Diagnose why files were missed or incorrectly rejected"""
+    if not missed_files and not false_positives:
         return
         
-    for file_path, root_cause, detail in missed_files:
-        print(f"\n{colored('[SCAN] AUTOPSY REPORT:', Colors.HEADER)}")
-        print(f"{colored(f'Analyzing missed file: {file_path.name}...', Colors.CYAN)}")
-        
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                code = f.read()
-                
+    if missed_files:
+        print(f"\n{colored('>>> Autopsy Report: Missed Vulnerabilities', Colors.HEADER)}")
+        for file_path, root_cause, detail in missed_files:
+            print(f"{colored(f'Analyzing missed file: {file_path.name}...', Colors.CYAN)}")
+            await _perform_ai_diagnosis(client, file_path, "missed")
+
+    if false_positives:
+        print(f"\n{colored('>>> Autopsy Report: False Positives (Safe Files Flagged)', Colors.HEADER)}")
+        for file_path, reasoning in false_positives:
+            print(f"{colored(f'Analyzing false positive: {file_path.name}...', Colors.CYAN)}")
+            await _perform_ai_diagnosis(client, file_path, "false_positive", reasoning)
+
+async def _perform_ai_diagnosis(client: GroqAuditClient, file_path: Path, fail_type: str, reasoning: str = ""):
+    """Internal helper to get AI diagnosis for a failure"""
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            code = f.read()
+            
+        if fail_type == "missed":
             system_prompt = (
                 "You are the Chief Architect of the Trepan Security Engine.\n"
                 "Our engine just failed to detect a vulnerability in the provided code file.\n"
@@ -1327,37 +1364,46 @@ async def run_autopsy(client: GroqAuditClient, missed_files: List[Tuple[Path, st
                 "Did our Layer 1 AST/Regex fail to spot the Risk Surface? Or did our Layer 2 System Prompt fail to classify it as dangerous?\n"
                 "Provide a 2-sentence explanation and suggest ONE exact regex pattern or prompt rule we should add to our engine to catch this in the future."
             )
-            
-            print(f"{colored('[BRAIN] Thinking...', Colors.DIM)}")
-            
-            response = await asyncio.to_thread(
-                requests.post,
-                client.endpoint,
-                headers={
-                    "Authorization": f"Bearer {client.api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": client.model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"Analyze this missed file:\n\n{code}"}
-                    ],
-                    "temperature": 0.2,
-                    "max_tokens": 500
-                },
-                timeout=60
+        else:
+            system_prompt = (
+                f"You are the Chief Architect of the Trepan Security Engine.\n"
+                f"Our engine incorrectly flagged this SAFE file as vulnerable.\n"
+                f"Previous AI Reasoning: {reasoning}\n"
+                "Your job is to tell us WHY our engine was over-aggressive.\n"
+                "What safety pattern did it miss? What rule was misinterpreted?\n"
+                "Provide a 2-sentence explanation and suggest ONE exact 'No-Weasel' or 'Override' rule we should add to our prompt to prevent this false positive."
             )
+        
+        print(f"{colored('[BRAIN] Thinking...', Colors.DIM)}")
+        
+        response = await asyncio.to_thread(
+            requests.post,
+            client.endpoint,
+            headers={
+                "Authorization": f"Bearer {client.api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": client.model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Analyze this file:\n\n{code}"}
+                ],
+                "temperature": 0.2,
+                "max_tokens": 500
+            },
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            diagnosis = data["choices"][0]["message"]["content"].strip()
+            print(f"{colored('[TIP] AI DIAGNOSIS:', Colors.YELLOW)}\n{diagnosis}\n")
+        else:
+            print(f"{colored('[TIP] AI DIAGNOSIS: [API Error/Rate Limit during Autopsy]', Colors.RED)}\n")
             
-            if response.status_code == 200:
-                data = response.json()
-                diagnosis = data["choices"][0]["message"]["content"].strip()
-                print(f"{colored('[TIP] AI DIAGNOSIS:', Colors.YELLOW)}\n{diagnosis}\n")
-            else:
-                print(f"{colored('[TIP] AI DIAGNOSIS: [API Error/Rate Limit during Autopsy]', Colors.RED)}\n")
-                
-        except Exception as e:
-            print(f"{colored(f'[TIP] AI DIAGNOSIS: [Local Error during Autopsy: {str(e)}]', Colors.RED)}\n")
+    except Exception as e:
+        print(f"{colored(f'[TIP] AI DIAGNOSIS: [Local Error during Autopsy: {str(e)}]', Colors.RED)}\n")
 
 # --- Main -------------------------------------------------------------------
 
@@ -1445,10 +1491,10 @@ async def main():
     print(f"{colored('[TIME]  Audit Duration: ', Colors.CYAN)}{colored(time_str, Colors.BOLD)}")
     
     # Ground Truth Evaluator
-    missed = print_ground_truth(scanner, client, results)
+    missed, fp = print_ground_truth(scanner, client, results)
     
-    if missed:
-        await run_autopsy(client, missed)
+    if missed or fp:
+        await run_autopsy(client, missed, fp)
     
     print(f"\n{colored('[OK] Stress test complete!', Colors.GREEN)}")
 

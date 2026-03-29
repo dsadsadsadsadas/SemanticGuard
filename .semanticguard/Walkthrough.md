@@ -2508,3 +2508,423 @@ Notes: The code explicitly mentions following system rules, which implies adhere
 ## 2026-03-25 17:00:27 | Result: REJECT
 **Thought Process:**
 > [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 6.
+
+## 2026-03-25 18:12:57 | Result: ACCEPT
+**Thought Process:**
+> 
+
+## 2026-03-25 18:48:54 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 453.
+
+## 2026-03-25 18:55:11 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 453.
+
+## 2026-03-25 19:52:15 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-25 19:52:16 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-EXPLOIT on line 4.
+
+## 2026-03-25 19:52:17 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-EXPLOIT on line 6.
+
+## 2026-03-25 19:52:17 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-25 19:52:26 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 4.
+
+## 2026-03-25 19:52:30 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-25 19:52:45 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-25 19:52:50 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 8.
+
+## 2026-03-25 19:52:53 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 6.
+
+## 2026-03-25 20:09:09 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-EXPLOIT on line 4.
+
+## 2026-03-25 20:09:11 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-EXPLOIT on line 6.
+
+## 2026-03-25 20:09:12 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-25 20:09:20 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-25 20:09:25 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 4.
+
+## 2026-03-25 20:09:42 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 8.
+
+## 2026-03-25 20:09:48 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 6.
+
+## 2026-03-25 20:09:54 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-25 20:10:17 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-25 20:22:36 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-25 20:22:41 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-EXPLOIT on line 4.
+
+## 2026-03-25 20:22:44 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-EXPLOIT on line 6.
+
+## 2026-03-25 20:22:49 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 4.
+
+## 2026-03-25 20:22:55 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-25 20:23:15 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-25 20:23:29 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 8.
+
+## 2026-03-25 20:23:35 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 6.
+
+## 2026-03-25 20:23:41 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-25 21:01:48 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-25 21:01:52 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-EXPLOIT on line 6.
+
+## 2026-03-25 21:01:54 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 4.
+
+## 2026-03-25 21:02:02 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-25 21:02:06 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-EXPLOIT on line 4.
+
+## 2026-03-25 21:02:28 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-25 21:02:47 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 8.
+
+## 2026-03-25 21:02:54 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 6.
+
+## 2026-03-25 21:03:00 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-26 07:47:26 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-EXPLOIT on line 6.
+
+## 2026-03-26 07:47:27 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-26 07:47:45 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-EXPLOIT on line 4.
+
+## 2026-03-26 07:54:13 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-EXPLOIT on line 4.
+
+## 2026-03-26 07:54:22 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-26 07:54:23 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-EXPLOIT on line 6.
+
+## 2026-03-26 07:54:23 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 4.
+
+## 2026-03-26 07:54:25 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-26 07:54:27 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-26 07:54:32 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-26 07:54:32 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 6.
+
+## 2026-03-26 07:54:38 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 8.
+
+## 2026-03-26 07:59:28 | Result: REJECT
+**Thought Process:**
+> [Layer1] 6 violation(s) found. Most severe: L1-EXPLOIT on line 3136.
+
+## 2026-03-26 07:59:53 | Result: REJECT
+**Thought Process:**
+> [Layer1] 6 violation(s) found. Most severe: L1-EXPLOIT on line 3106.
+
+## 2026-03-26 08:02:46 | Result: REJECT
+**Thought Process:**
+> [Layer1] 6 violation(s) found. Most severe: L1-EXPLOIT on line 3103.
+
+## 2026-03-26 08:10:09 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-26 08:10:15 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-26 08:10:16 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-EXPLOIT on line 4.
+
+## 2026-03-26 08:10:18 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-EXPLOIT on line 6.
+
+## 2026-03-26 08:10:18 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 4.
+
+## 2026-03-26 08:11:13 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-26 08:12:11 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 8.
+
+## 2026-03-26 08:12:33 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 6.
+
+## 2026-03-26 08:12:53 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-26 09:45:29 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-EXPLOIT on line 6.
+
+## 2026-03-26 09:45:30 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-26 09:45:41 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-26 09:45:53 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-EXPLOIT on line 4.
+
+## 2026-03-26 09:46:30 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 4.
+
+## 2026-03-26 09:46:58 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-26 09:47:40 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-26 09:47:44 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 8.
+
+## 2026-03-26 09:47:48 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 6.
+
+## 2026-03-26 09:55:22 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-EXPLOIT on line 6.
+
+## 2026-03-26 09:55:24 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-26 09:55:59 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 11.
+
+## 2026-03-26 13:19:58 | Result: ACCEPT
+**Thought Process:**
+> No clear evidence of data flow logic
+
+## 2026-03-26 13:20:04 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 5.
+
+## 2026-03-26 13:20:08 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 4.
+
+## 2026-03-26 13:23:36 | Result: ACCEPT
+**Thought Process:**
+> No clear data flow from source to sink
+
+## 2026-03-26 13:23:43 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 5.
+
+## 2026-03-26 13:23:46 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 4.
+
+## 2026-03-26 13:52:58 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-26 13:52:58 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-EXPLOIT on line 6.
+
+## 2026-03-26 13:53:00 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-EXPLOIT on line 12.
+
+## 2026-03-26 13:53:09 | Result: REJECT
+**Thought Process:**
+> [Layer1] 2 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-26 13:53:11 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-EXPLOIT on line 4.
+
+## 2026-03-26 13:53:22 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 4.
+
+## 2026-03-26 13:53:36 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 2.
+
+## 2026-03-26 13:53:58 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 8.
+
+## 2026-03-26 13:54:04 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 6.
+
+## 2026-03-26 13:54:10 | Result: REJECT
+**Thought Process:**
+> [Layer1] 1 violation(s) found. Most severe: L1-SECRET on line 3.
+
+## 2026-03-26 14:05:40 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 5.
+
+## 2026-03-26 14:05:44 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 4.
+
+## 2026-03-26 14:05:54 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 11.
+
+## 2026-03-26 14:06:31 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 5.
+
+## 2026-03-26 14:06:35 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 4.
+
+## 2026-03-26 14:06:45 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 11.
+
+## 2026-03-26 14:07:41 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 5.
+
+## 2026-03-26 14:07:44 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 4.
+
+## 2026-03-26 14:07:54 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 11.
+
+## 2026-03-26 14:09:47 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 5.
+
+## 2026-03-26 14:09:51 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 4.
+
+## 2026-03-26 14:10:01 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 11.
+
+## 2026-03-26 14:19:20 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 5.
+
+## 2026-03-26 14:19:28 | Result: REJECT
+**Thought Process:**
+> [Layer1 + Layer2] 1 violation(s) found. Most severe: L2-DATA-FLOW on line 4.

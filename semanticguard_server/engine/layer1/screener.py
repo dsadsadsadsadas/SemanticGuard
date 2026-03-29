@@ -70,6 +70,7 @@ EXPLOITABILITY_KEYWORDS = {
     "exec_with_input": r"exec\s*\(\s*(?:userInput|req\.|request\.|params\.|query\.|body\.)",
     "os_system_with_input": r"os\.system\s*\(\s*(?:userInput|req\.|request\.|params\.|query\.|body\.)",
     "env_injection": r"(?:LD_PRELOAD|BASH_ENV|ZDOTDIR|PYTHONPATH|NODE_OPTIONS)\s*:\s*(?:userInput|req\.|request\.|params\.|query\.|body\.)",
+    "insecure_config": r"(?:debug|reload)\s*=\s*True",
 }
 
 # SYSTEM KEYWORDS: +2 pts each (Risk Surface Detection)
@@ -236,8 +237,8 @@ def should_audit(code: str, file_extension: str, file_path: str = None) -> Tuple
     # Calculate risk score (exploitability-based)
     risk_score = calculate_risk_score(code)
     
-    # POSITIVE FILTER: must have at least ONE exploitable keyword (score > 0)
-    if risk_score > 0:
+    # POSITIVE FILTER: must have at least ONE exploitable keyword or high signal (score >= 2)
+    if risk_score >= 2:
         return True, f"Exploitability score: {risk_score}", risk_score
     
     # Default: skip (no exploitable patterns found)

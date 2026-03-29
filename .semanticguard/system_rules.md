@@ -32,8 +32,7 @@ Keep it simple, keep it readable. You're flying solo, so future-you needs to und
 - Always handle errors explicitly
 - No silent failures
 - Log errors with context (what failed, why, when)
-
-## Rule 7: Test the Critical Path
+z## Rule 7: Test the Critical Path
 - Write tests for business logic
 - Write tests for edge cases
 - Don't test trivial getters/setters
@@ -91,3 +90,16 @@ Rule 3 : YOUR ARE NOT ALLOWED TO TOUCH trepan_vault NOR .trepan.lock
 
 ## SemanticGuard Mandatory Defaults
 Rule 4 : YOUR ARE NOT ALLOWED TO TOUCH semanticguard_vault NOR .semanticguard.lock
+
+## Forbidden Libraries (Context Drift Detection)
+
+**RULE_12: FORBIDDEN_LIBRARY_REQUESTS**
+
+DO NOT use the `requests` library in this project.
+- Use `httpx` instead for all HTTP operations
+- Reason: Project standardizes on httpx for async support and better performance
+
+If you detect usage of `import requests` or `requests.get/post/put/delete`, flag as:
+- Severity: MEDIUM
+- Vulnerability Type: Context Drift - Forbidden Library
+- Description: "Code uses 'requests' library which is forbidden in this project. Use 'httpx' instead for async support."

@@ -28,22 +28,7 @@ import json
 import asyncio
 from datetime import datetime
 from contextlib import asynccontextmanager
-
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-
-import os
-import re
-import time
-import json
-import hashlib
-import difflib
-import logging
-import traceback
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Optional, List, Dict, Tuple, Any, Union
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -76,14 +61,42 @@ def is_semanticguard_path(file_path: str) -> bool:
 
 # Handle both relative and absolute imports for flexibility
 try:
-    from .prompt_builder import build_prompt, build_meta_gate_prompt, extract_data_flow_spec, STRUCTURAL_INTEGRITY_SYSTEM, STRUCTURAL_INTEGRITY_SYSTEM_LLAMA, METAGATE_AUDIT_SYSTEM
+    from .prompt_builder import (
+        build_prompt, 
+        build_meta_gate_prompt, 
+        extract_data_flow_spec, 
+        STRUCTURAL_INTEGRITY_SYSTEM, 
+        STRUCTURAL_INTEGRITY_SYSTEM_LLAMA, 
+        METAGATE_AUDIT_SYSTEM, 
+        get_hardened_system_prompt, 
+        get_drift_detection_prompt
+    )
     from .response_parser import guillotine_parser
     from .model_loader import get_model, generate
-except ImportError:
+except (ImportError, ValueError):
     # Fallback for when running directly (not as a package)
-    from prompt_builder import build_prompt, build_meta_gate_prompt, extract_data_flow_spec, STRUCTURAL_INTEGRITY_SYSTEM, STRUCTURAL_INTEGRITY_SYSTEM_LLAMA, METAGATE_AUDIT_SYSTEM
+    import sys
+    _dir = os.path.dirname(os.path.abspath(__file__))
+    if _dir not in sys.path:
+        sys.path.append(_dir)
+    from prompt_builder import (
+        build_prompt, 
+        build_meta_gate_prompt, 
+        extract_data_flow_spec, 
+        STRUCTURAL_INTEGRITY_SYSTEM, 
+        STRUCTURAL_INTEGRITY_SYSTEM_LLAMA, 
+        METAGATE_AUDIT_SYSTEM, 
+        get_hardened_system_prompt, 
+        get_drift_detection_prompt
+    )
     from response_parser import guillotine_parser
     from model_loader import get_model, generate
+
+# Import TokenBucket for cloud rate limiting
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'st'))
+from token_bucket import TokenBucket
+import requests
 
 logging.basicConfig(
     level=logging.INFO,
@@ -113,6 +126,238 @@ SILENT_EXCLUSIONS = [
     "editor.fontFamily",
     "workbench.colorTheme"
 ]
+
+# ─── Layer 1 Pre-Screener (Migrated from stress_test.py) ──────────────────
+
+class CloudLayer1PreScreener:
+    """
+    Exploitability-Based Security Filtering.
+    Analyzes execution control surfaces and environment variable injection.
+    Reduces false positives by focusing on real attack paths.
+    
+    Migrated from st/stress_test.py for cloud evaluation endpoint.
+    """
+    
+    # Hard skip: test files and low-risk directories
+    HARD_SKIP_PATTERNS = {
+        "test_file": r"\.test\.(ts|js)$",
+        "spec_file": r"\.spec\.(ts|js)$",
+        "test_dir": r"[/\\]test[s]?[/\\]",
+        "mock_file": r"\.mock\.(ts|js)$",
+    }
+    
+    # Hard skip: low-risk filename keywords
+    SAFE_FILENAME_KEYWORDS = {
+        "css": r"(?i)(style|css|theme|color|icon|view|ui|component|button|input|label|modal|dialog|sidebar|toolbar|menu|widget)",
+        "test": r"(?i)(test|spec|mock|fixture|stub)",
+        "doc": r"(?i)(readme|doc|example|sample|demo)",
+    }
+    
+    # Hard skip: low-risk content keywords
+    SAFE_CONTENT_KEYWORDS = {
+        "css_content": r"(?i)(\.css|@media|@keyframes|background-color|border-radius|font-size|padding|margin)",
+        "theme_content": r"(?i)(theme|color|palette|dark|light|accent|primary|secondary)",
+        "ui_content": r"(?i)(react|vue|angular|component|jsx|tsx|\bdom\b)",
+    }
+    
+    # EXPLOITABILITY KEYWORDS: +5 pts each (real attack paths)
+    EXPLOITABILITY_KEYWORDS = {
+        "user_controlled_spawn": r"spawn\s*\(\s*(?:userInput|req\.|request\.|params\.|query\.|body\.)",
+        "shell_true_subprocess": r"subprocess\s*\.\s*(?:call|run|Popen)\s*\([^)]*shell\s*=\s*True",
+        "eval_with_input": r"eval\s*\(\s*(?:userInput|req\.|request\.|params\.|query\.|body\.|expr|formula|input|data)",
+        "exec_with_input": r"exec\s*\(\s*(?:userInput|req\.|request\.|params\.|query\.|body\.|expr|formula|input|data)",
+        "os_system_with_input": r"os\.system\s*\(\s*(?:userInput|req\.|request\.|params\.|query\.|body\.)",
+        "env_injection": r"(?:LD_PRELOAD|BASH_ENV|ZDOTDIR|PYTHONPATH|NODE_OPTIONS)\s*:\s*(?:userInput|req\.|request\.|params\.|query\.|body\.)",
+        "zip_slip": r"(?i)(zipfile|ZipFile|tarfile|extractall|extract\()",
+        "deserialization": r"(?i)(yaml\.load\(|pickle\.loads\()",
+        "prototype_pollution_sink": r"(?i)(__proto__|prototype|Object\.assign\()",
+        "open_redirect_sink": r"(?i)(window\.location|res\.redirect\()",
+        "insecure_config": r"debug\s*=\s*True",
+        "file_upload_risk": r"(?i)(mimetype|file_upload)",
+        "ssh_injection": r"exec_command",
+    }
+    
+    # SYSTEM KEYWORDS: +2 pts each (Risk Surface Detection)
+    SYSTEM_KEYWORDS = {
+        # Command execution (broad catch)
+        "os_system": r"\bos\.system\s*\(",
+        "subprocess_call": r"\bsubprocess\.",
+        "spawn": r"\bspawn\s*\(",
+        "popen": r"\bpopen\s*\(",
+        "exec_call": r"\bexec\s*\(",
+        
+        # Code evaluation (broad catch)
+        "eval_call": r"\beval\s*\(",
+        "compile_call": r"\bcompile\s*\(",
+        
+        # File system access (Path Traversal detection)
+        "file_open": r"\bopen\s*\(",
+        "file_read": r"\.read\s*\(",
+        "file_write": r"\.write\s*\(",
+        "fs_module": r"\bfs\.",
+        "path_join": r"\bpath\.join",
+        "require_fs": r"require\s*\(\s*['\"]fs['\"]",
+        "require_child": r"require\s*\(\s*['\"]child_process['\"]",
+        
+        # Network/HTTP
+        "http": r"(?i)(http|https|request|response)",
+        "fetch": r"\bfetch\s*\(",
+        "axios": r"\baxios\.",
+        
+        # Database
+        "database": r"(?i)(database|sql|query|connection|pool|sqlite3|cursor\.execute|SQLAlchemy|execute\()",
+        "execute_query": r"(?i)(execute|query)\s*\(",
+        
+        # Authentication/Authorization/Session (Risk Surface)
+        "auth": r"(?i)(authenticate|authorize|permission|role|access|login|session)",
+        
+        # Cryptography/RNG Risk (Risk Surface)
+        "crypto": r"(?i)(crypto|encrypt|decrypt|hash|sign|verify|\brandom\.|Math\.random)",
+        
+        # Data Parsing Risk (Risk Surface)
+        "data_parsing": r"(?i)(\bxml\.|ElementTree|yaml\.load)",
+        "json_parse": r"JSON\.parse",
+        "pickle_load": r"pickle\.load",
+        
+        # Insecure Deserialization/Validation (AUTOPSY FIX)
+        "unvalidated_request_json": r"request\.json(?!.*(validate|sanitize|schema|jsonschema|pydantic|marshmallow))",
+        "unvalidated_req_body": r"req\.body(?!.*(validate|sanitize|schema|joi|yup|zod))",
+        
+        # UI/Template Risk - XSS (Risk Surface)
+        "ui_template": r"(?i)(render_template|html\.escape|\bjinja|innerHTML|template|format|<div|<h[1-6]|<html|html\s*=|f\"\"\"[\s\S]*?<|class=\")",
+        
+        # Secrets/Credentials (hardcoded detection)
+        "hardcoded_key": r"(?i)(api_key|apikey|secret|password|token)\s*=\s*['\"][^'\"]{8,}['\"]",
+        "aws_key": r"(?i)(aws_access_key|aws_secret)",
+        "bearer_token": r"(?i)bearer\s+[a-zA-Z0-9_\-\.]+",
+        
+        # Diagnostics additions from Autopsy Mode
+        "concurrency": r"(?i)\b(threading|thread|mutex|lock)\b",
+        "xml_advanced": r"(?i)(lxml|etree|XMLParser)",
+        "cors_network": r"(?i)(\bcors\b|Access-Control-Allow)",
+        "deep_link": r"(?i)(window\.location|\bhref\b)",
+        "file_upload": r"(?i)(multer|formidable|req\.files?)",
+        "graphql": r"(?i)(ApolloServer|\bgraphql\b|introspection)",
+        "prototype_pollution": r"(?i)(__proto__|\.prototype\b|Object\.assign|\bmerge\b)",
+        "redos_risk": r"(?i)(RegExp|\.match\(|\.test\()",
+        "financial_logic": r"(?i)(transfer|balance|payment|transaction|checkout|invoice|amount)",
+    }
+    
+    # UI PENALTIES: -3 pts each (low-risk UI code)
+    UI_PENALTIES = {
+        "html_element": r"(?i)(HTMLElement|innerHTML|textContent|className)",
+        "color": r"(?i)(color|Color|COLOR)",
+        "theme": r"(?i)(theme|Theme|THEME)",
+        "style": r"(?i)(style|Style|STYLE)",
+        "view": r"(?i)(view|View|VIEW)",
+    }
+    
+    @staticmethod
+    def _is_hard_skip_file(filename: str, code: str) -> Tuple[bool, str]:
+        """Check if file should be hard-skipped (test, style, etc.)"""
+        filename_lower = filename.lower()
+        
+        # Check hard skip patterns
+        for pattern_name, pattern in CloudLayer1PreScreener.HARD_SKIP_PATTERNS.items():
+            if re.search(pattern, filename_lower):
+                return True, f"Hard skip: {pattern_name}"
+        
+        # Check safe filename keywords
+        for keyword_type, pattern in CloudLayer1PreScreener.SAFE_FILENAME_KEYWORDS.items():
+            if re.search(pattern, filename_lower):
+                return True, f"Hard skip: {keyword_type} in filename"
+        
+        # Check safe content keywords (quick scan)
+        for keyword_type, pattern in CloudLayer1PreScreener.SAFE_CONTENT_KEYWORDS.items():
+            if re.search(pattern, code[:2000]):  # Only scan first 2KB
+                return True, f"Hard skip: {keyword_type} in content"
+        
+        return False, ""
+    
+    SECRET_KEYWORDS = {
+        "secret": r"(?i)secret",
+        "password": r"(?i)password",
+        "api_key": r"(?i)api_key",
+        "token": r"(?i)token",
+        "credentials": r"(?i)credentials",
+        "stripe": r"(?i)stripe",
+        "aws": r"(?i)aws"
+    }
+
+    @staticmethod
+    def calculate_risk_score(code: str) -> int:
+        """
+        Calculate exploitability-based risk score.
+        
+        Scoring:
+        - Exploitability Keywords: +5 pts each (real attack paths)
+        - System Keywords: +2 pts each (needs context analysis)
+        - UI Penalties: -3 pts each (low-risk UI code)
+        
+        Returns: risk score (0 or higher)
+        """
+        score = 0
+        
+        # Count exploitability keywords (real attack paths)
+        for keyword_name, pattern in CloudLayer1PreScreener.EXPLOITABILITY_KEYWORDS.items():
+            matches = len(re.findall(pattern, code))
+            score += matches * 5
+        
+        # Count sensitive keywords (FORCE PASS)
+        for keyword_name, pattern in CloudLayer1PreScreener.SECRET_KEYWORDS.items():
+            matches = len(re.findall(pattern, code))
+            score += matches * 5
+            
+        # Count system keywords (needs context)
+        for keyword_name, pattern in CloudLayer1PreScreener.SYSTEM_KEYWORDS.items():
+            matches = len(re.findall(pattern, code))
+            score += matches * 2
+        
+        # Apply UI penalties
+        for keyword_name, pattern in CloudLayer1PreScreener.UI_PENALTIES.items():
+            matches = len(re.findall(pattern, code))
+            score -= matches * 3
+        
+        # Ensure score doesn't go below 0
+        return max(0, score)
+    
+    @staticmethod
+    def should_audit(code: str, file_extension: str, filename: str = "") -> Tuple[bool, str, int]:
+        """
+        Exploitability-based filtering: only audit files with real attack paths.
+        Returns (should_audit, reason, risk_score)
+        
+        HARD SKIP if:
+        - File is .test.ts, .spec.ts, or in test/ folder
+        - Filename contains: css, theme, icon, color, view, ui, component, etc.
+        - Content is mostly CSS/theme/UI code
+        
+        AUDIT ONLY if:
+        - File has exploitable execution control issues
+        - File has system/network access that could be exploited
+        """
+        # Skip non-code files
+        if len(code) < 100:
+            return False, "File too small (< 100 chars)", 0
+        
+        if file_extension.lower() in ['.md', '.markdown', '.txt', '.json', '.yaml', '.yml', '.lock', '.env', '.toml', '.ini', '.cfg', '.css', '.scss', '.less']:
+            return False, "Non-executable file type", 0
+        
+        # Hard skip test/style/ui files
+        if filename:
+            is_skip, reason = CloudLayer1PreScreener._is_hard_skip_file(filename, code)
+            if is_skip:
+                return False, reason, 0
+        
+        # Calculate risk score (exploitability-based)
+        risk_score = CloudLayer1PreScreener.calculate_risk_score(code)
+        
+        # POSITIVE FILTER: must have at least ONE exploitable keyword or risk signals (score >= 2)
+        if risk_score >= 2:
+            return True, f"Exploitability score: {risk_score}", risk_score
+        
+        # Default: skip (no exploitable patterns found)
+        return False, "No exploitable attack paths detected", 0
 
 def clean_code_snippet(filename: str, code: str) -> str:
     """
@@ -2055,6 +2300,25 @@ Begin analysis:
 # (Ollama integration completely removed in favor of native PyTorch/Unsloth inference)
 _model_ready = False
 
+# ─── Global Cloud Rate Limiter ──────────────────────────────────────────────
+# Instantiate a global TokenBucket for cloud API rate limiting
+# Default: 30 RPM, 30,000 TPM (Groq free tier)
+# Will be upgraded when UI sends detected limits via /update_rate_limits endpoint
+cloud_rate_limiter = TokenBucket(max_rpm=30, max_tpm=30000)
+logger.info("🌩️ Cloud rate limiter initialized: 30 RPM, 30,000 TPM")
+
+# ─── Outbound HTTP Semaphore (Thundering Herd Prevention) ──────────────────
+# Limits simultaneous socket connections to Groq API
+# Even if 10 requests wake from sleep simultaneously, only 3 can call Groq at once
+groq_outbound_semaphore = asyncio.Semaphore(3)
+logger.info("🚦 Groq outbound semaphore initialized: max 3 concurrent HTTP connections")
+global_eval_semaphore = asyncio.Semaphore(2)
+logger.info("🚦 Global evaluation semaphore initialized: max 2 concurrent evaluations")
+
+# ─── Golden System Prompt (98% Accuracy from stress_test.py) ───────────────
+
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -2234,7 +2498,7 @@ async def health(request: Request):
 
 
 @app.post("/evaluate", response_model=EvaluateResponse, tags=["Gatekeeper"])
-async def evaluate(req: EvaluateRequest):
+async def evaluate(req: EvaluateRequest, request: Request):
     """
     Evaluate a user prompt against the 5 workspace pillars.
 
@@ -2242,6 +2506,13 @@ async def evaluate(req: EvaluateRequest):
     
     If power_mode=True, runs Layer 1 only and returns L1_PASS if clean.
     """
+    # Extract API key from Authorization header for Power Mode
+    api_key = None
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        api_key = auth_header[7:]  # Remove "Bearer " prefix
+        logger.debug(f"Extracted API key from Authorization header (length: {len(api_key)})")
+    
     # ── LOG SIGNAL ──
     # Extra diagnostic log as requested by user
     # cmd_preview = req.code_snippet[:100].replace('\n', ' ')
@@ -2373,8 +2644,9 @@ async def evaluate(req: EvaluateRequest):
         # Choose system prompt based on model
         system_prompt = STRUCTURAL_INTEGRITY_SYSTEM_LLAMA if "llama" in req.model_name.lower() else STRUCTURAL_INTEGRITY_SYSTEM
         
-        # Pass processor_mode and model_name to generate()
-        raw = await asyncio.to_thread(generate, prompt, system_prompt, processor_mode=req.processor_mode, model_name=req.model_name)
+        # Pass processor_mode, model_name, engine_mode, and api_key to generate()
+        engine_mode = os.environ.get("SEMANTICGUARD_ENGINE_MODE", "local")
+        raw = await asyncio.to_thread(generate, prompt, system_prompt, processor_mode=req.processor_mode, model_name=req.model_name, engine_mode=engine_mode, api_key=api_key)
 
         print("\n" + "="*40)
         print(f"🧠 SEMANTICGUARD RAW THOUGHTS [{req.model_name}]:")
@@ -2758,8 +3030,9 @@ async def evaluate_pillar(req: EvaluatePillarRequest):
     try:
         # FIX 6: Use /api/chat endpoint with system/user separation
         # OFFLOAD to thread pool to prevent blocking the async event loop during GPU inference
-        # Pass processor_mode and model_name to generate()
-        raw = await asyncio.to_thread(generate, user_prompt, system_prompt=system_prompt, processor_mode=req.processor_mode, model_name=req.model_name)
+        # Pass processor_mode, model_name, and engine_mode to generate()
+        engine_mode = os.environ.get("SEMANTICGUARD_ENGINE_MODE", "local")
+        raw = await asyncio.to_thread(generate, user_prompt, system_prompt=system_prompt, processor_mode=req.processor_mode, model_name=req.model_name, engine_mode=engine_mode)
 
         print("\n" + "="*40)
         print("🏛️ SEMANTICGUARD META-GATE RAW THOUGHTS:")
@@ -2947,6 +3220,66 @@ class MemoryEvolutionResponse(BaseModel):
     rules_added: int
     message: str
 
+# ─── Cloud Evaluation Models ────────────────────────────────────────────────
+
+# ─── New Request Model for Context Extraction ──────────────────────────
+class ExtractRulesRequest(BaseModel):
+    code_snippet: str
+    filename: str
+    system_rules: str = ""
+    model_name: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+
+class BrokenRule(BaseModel):
+    rule_id: str
+    description: str
+    line_number: Optional[int] = None
+
+class ExtractRulesResponse(BaseModel):
+    broken_rules: List[BrokenRule]
+    tokens_used: int
+    latency: float
+
+class EvaluateCloudRequest(BaseModel):
+    code_snippet: str = Field(..., description="Content of the file to audit")
+    filename: str = Field(..., description="Filename being audited")
+    project_path: str = Field("", description="Absolute path to the project root")
+    system_rules: str = Field("", description="Contents of .semanticguard/system_rules.md")
+    model_name: str = Field("meta-llama/llama-4-scout-17b-16e-instruct", description="Groq model to use")
+    prompt_type: str = Field("v2_hardened", description="v2_hardened or stress_test_genius")
+
+class CloudFinding(BaseModel):
+    severity: str = Field(..., description="CRITICAL, HIGH, MEDIUM, or LOW")
+    vulnerability_type: str = Field(..., description="Type of vulnerability")
+    line_number: Optional[int] = Field(None, description="Line number where vulnerability occurs")
+    description: str = Field(..., description="Description of the vulnerability")
+
+class EvaluateCloudResponse(BaseModel):
+    action: str = Field(..., description="ACCEPT or REJECT")
+    findings: List[CloudFinding] = Field(default_factory=list, description="List of security findings")
+    reasoning: str = Field("", description="Layer 1 reasoning or cloud audit summary")
+    layer: str = Field("", description="Which layer caught it: layer1 or cloud")
+    tokens_used: int = Field(0, description="Total tokens consumed by Groq API")
+    latency: float = Field(0.0, description="API call latency in seconds")
+    risk_score: int = Field(0, description="Layer 1 risk score")
+    detected_tpm: int = Field(30000, description="Detected TPM from server bucket")
+    detected_rpm: int = Field(30, description="Detected RPM from server bucket")
+
+class AutopsyRequest(BaseModel):
+    code_snippet: str = Field(..., description="Vulnerable code that was missed or incorrectly flagged")
+    filename: str = Field(..., description="Filename of the vulnerability")
+    vulnerability_type: str = Field("Unknown", description="Known category of the vulnerability")
+    analysis_mode: str = Field("MISS", description="MISS (False Negative) or FALSE_POSITIVE")
+    original_reason: Optional[str] = Field(None, description="The reasoning string why it was flagged (for FP) or should have been flagged (for Miss)")
+    model_name: str = Field("meta-llama/llama-4-scout-17b-16e-instruct", description="Groq model to use")
+    current_prompt: Optional[str] = Field(None, description="The dynamic rules context (e.g. system_rules.md content)")
+    project_path: Optional[str] = Field(None, description="Path to project root to load rules from disk")
+
+class AutopsyResponse(BaseModel):
+    suggestion: str = Field(..., description="AI suggestion for golden prompt patch")
+    vulnerability_type: str = Field(..., description="Self-corrected vulnerability type")
+    bypassed_rule: Optional[str] = Field(None, description="Specific section or rule in the prompt that should have triggered (Phase 2)")
+    bypass_reason: Optional[str] = Field(None, description="Why the AI think it bypassed the rule despite its existence (Phase 2)")
+
 @app.post("/move_task", response_model=TaskResponse, tags=["Task Management"])
 async def move_task(req: MoveTaskRequest):
     """
@@ -3012,3 +3345,628 @@ async def evolve_memory(req: EvolveMemoryRequest):
     except Exception as e:
         logger.error(f"Memory evolution failed: {e}")
         raise HTTPException(status_code=500, detail=f"Memory evolution failed: {str(e)}")
+
+
+# ─── Rate Limit Update Endpoint ─────────────────────────────────────────────
+
+class UpdateRateLimitsRequest(BaseModel):
+    max_tpm: int = Field(..., description="Detected TPM from API")
+    max_rpm: int = Field(..., description="Detected RPM from API")
+
+class UpdateRateLimitsResponse(BaseModel):
+    status: str = Field(..., description="success or error")
+    message: str = Field(..., description="Status message")
+    old_tpm: int = Field(..., description="Previous TPM")
+    new_tpm: int = Field(..., description="New TPM")
+
+@app.post("/update_rate_limits", response_model=UpdateRateLimitsResponse, tags=["Cloud Gatekeeper"])
+async def update_rate_limits(req: UpdateRateLimitsRequest):
+    """
+    Update server's TokenBucket with detected TPM/RPM from UI.
+    Called by UI before starting folder audit.
+    """
+    try:
+        old_tpm = cloud_rate_limiter.max_tpm
+        old_rpm = cloud_rate_limiter.max_rpm
+        
+        # Only upgrade if detected limits are higher
+        if req.max_tpm > cloud_rate_limiter.max_tpm:
+            cloud_rate_limiter.max_tpm = req.max_tpm
+            cloud_rate_limiter.capacity = req.max_tpm
+            cloud_rate_limiter.tokens = req.max_tpm  # ← TOP UP CURRENT TOKENS
+            cloud_rate_limiter.refill_rate = req.max_tpm / 60.0
+            cloud_rate_limiter.max_file_tokens = min(int(req.max_tpm * 0.2), 100000)
+            logger.info(f"🚀 UPGRADED TokenBucket: {old_tpm:,} → {req.max_tpm:,} TPM")
+            logger.info(f"🚀 Refill rate: {cloud_rate_limiter.refill_rate:,.0f} tokens/second")
+            logger.info(f"🚀 Current tokens topped up: {cloud_rate_limiter.tokens:,}")
+        
+        if req.max_rpm > cloud_rate_limiter.max_rpm:
+            cloud_rate_limiter.max_rpm = req.max_rpm
+            logger.info(f"🚀 UPGRADED TokenBucket: {old_rpm} → {req.max_rpm} RPM")
+        
+        return UpdateRateLimitsResponse(
+            status="success",
+            message=f"Rate limits updated: {req.max_tpm:,} TPM, {req.max_rpm} RPM",
+            old_tpm=old_tpm,
+            new_tpm=cloud_rate_limiter.max_tpm
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to update rate limits: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─── Cloud Evaluation Endpoint (Thin Client / Fat Server) ──────────────────
+
+@app.post("/evaluate_cloud", response_model=EvaluateCloudResponse, tags=["Cloud Gatekeeper"])
+async def evaluate_cloud(req: EvaluateCloudRequest, request: Request):
+    """
+    Cloud evaluation endpoint - The Fat Server brain for thin client architecture.
+    
+    Pipeline:
+    1. Extract API key from Authorization header
+    2. Run Layer 1 Pre-Screener (exploitability-based filtering)
+    3. If Layer 1 rejects → return immediately
+    4. If Layer 1 passes → call Groq API with golden 98% accuracy prompt
+    5. Parse findings and return standardized response
+    
+    This endpoint consolidates all the golden logic from stress_test.py:
+    - Layer1PreScreener for pre-filtering
+    - TokenBucket for rate limiting
+    - Golden system prompt for 98% accuracy
+    - Groq API integration with retry logic
+    """
+    async with global_eval_semaphore:
+        start_time = time.time()
+    
+        # ─── STEP 1: Extract API Key ───────────────────────────────────────────
+        api_key = None
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            api_key = auth_header[7:]  # Remove "Bearer " prefix
+        
+        if not api_key:
+            logger.error("Cloud evaluation: Missing API key in Authorization header")
+            raise HTTPException(
+                status_code=401,
+                detail="Missing API key. Please provide Authorization: Bearer <api_key> header."
+            )
+        
+        logger.info(f"Cloud evaluation: {req.filename} (API key length: {len(api_key)})")
+        
+        # ─── STEP 2: Run Layer 1 Pre-Screener ──────────────────────────────────
+        file_extension = os.path.splitext(req.filename)[1]
+        
+        # BYPASS: If system_rules are provided, we MUST audit even if the file is small
+        # This ensures rules like "No print" are caught even in 1-line files.
+        if req.system_rules:
+            logger.info(f"Layer 1 Pre-Screener: BYPASS (Local rules provided)")
+            should_audit, reason, risk_score = True, "Context-Aware Override", 1.0
+        else:
+            should_audit, reason, risk_score = CloudLayer1PreScreener.should_audit(
+                code=req.code_snippet,
+                file_extension=file_extension,
+                filename=req.filename
+            )
+        
+        if not should_audit:
+            logger.info(f"Layer 1 Pre-Screener: SKIP - {reason}")
+            return EvaluateCloudResponse(
+                action="ACCEPT",
+                findings=[],
+                reasoning=f"Layer 1 Pre-Screener: {reason}",
+                layer="layer1",
+                tokens_used=0,
+                latency=time.time() - start_time,
+                risk_score=risk_score,
+                detected_tpm=cloud_rate_limiter.max_tpm,
+                detected_rpm=cloud_rate_limiter.max_rpm
+            )
+        
+        logger.info(f"Layer 1 Pre-Screener: PASS - Risk score: {risk_score}")
+    
+        # ─── STEP 3: Prepare Code with Line Numbers ────────────────────────────
+        # Prepend line numbers to every line so the LLM can reference them precisely
+        numbered_lines = [f"{i+1}: {line}" for i, line in enumerate(req.code_snippet.splitlines())]
+        numbered_code = "\n".join(numbered_lines)
+        
+        # ─── STEP 4: Load Project-Specific Rules & Prompt ──────────────────────
+        dynamic_rules = ""
+        if req.project_path:
+            rules_path = os.path.join(req.project_path, ".semanticguard", "system_rules.md")
+            try:
+                with open(rules_path, 'r', encoding='utf-8') as f:
+                    dynamic_rules = f.read().strip()
+                logger.info(f"Loaded {len(dynamic_rules)} chars from system_rules.md")
+            except FileNotFoundError:
+                logger.debug("No system_rules.md found - using default rules")
+        
+        # Build Golden System Prompt first so we can accurately measure its length
+        system_prompt = get_hardened_system_prompt(dynamic_rules, req.prompt_type)
+        user_prompt = f"Audit this code (each line prefixed with its line number):\n\n{numbered_code}"
+
+        # ─── STEP 5: Token Estimation and Rate Limiting ────────────────────────
+        # Accurately detect tokens: count words/punctuation for BPE approximation
+        # Matches Groq's BPE logic much more closely than simple char-division
+        system_prompt_tokens = len(re.findall(r"\w+|[^\w\s]", system_prompt))
+        code_tokens = len(re.findall(r"\w+|[^\w\s]", req.code_snippet))
+        output_reserve = 500  # Matches "max_tokens": 500 in STEP 7
+        estimated_tokens = system_prompt_tokens + code_tokens + output_reserve
+        
+        logger.info(f"AUDITING {req.filename} | Detected Tokens: {estimated_tokens:,} (Prompt: {system_prompt_tokens:,} + Code: {code_tokens:,} + Output: {output_reserve})")
+        
+        # Check if file is too large
+        if estimated_tokens > cloud_rate_limiter.max_file_tokens:
+            logger.warning(f"File too large: {estimated_tokens:,} tokens > {cloud_rate_limiter.max_file_tokens:,} max")
+            return EvaluateCloudResponse(
+                action="ACCEPT",
+                findings=[],
+                reasoning=f"File too large ({estimated_tokens:,} tokens). Skipped cloud audit.",
+                layer="layer1",
+                tokens_used=0,
+                latency=time.time() - start_time,
+                risk_score=risk_score,
+                detected_tpm=cloud_rate_limiter.max_tpm,
+                detected_rpm=cloud_rate_limiter.max_rpm
+            )
+        
+        # Wait for token availability (global rate limiting)
+        wait_time = await cloud_rate_limiter.consume_with_wait(estimated_tokens)
+        
+        if wait_time > 0:
+            logger.info(f"Rate limiting: Waited {wait_time:.2f}s for {estimated_tokens:,} tokens")
+        
+        # ─── GLOBAL PAUSE DOUBLE-CHECK (Race Condition Prevention) ─────────────
+        # After waking from sleep, check if another request triggered a global pause
+        while cloud_rate_limiter.global_pause_until and time.time() < cloud_rate_limiter.global_pause_until:
+            pause_remaining = cloud_rate_limiter.global_pause_until - time.time()
+            if pause_remaining > 0:
+                logger.warning(f"Request woke up but global pause is active. Sleeping for {pause_remaining:.2f}s")
+                await asyncio.sleep(pause_remaining)
+    
+        # ─── STEP 7: Call Groq API with Retry Logic ────────────────────────────
+        max_retries = 3
+        retry_count = 0
+        groq_endpoint = "https://api.groq.com/openai/v1/chat/completions"
+        
+        while retry_count <= max_retries:
+            try:
+                api_start = time.time()
+                
+                # ═══ THUNDERING HERD PREVENTION: Semaphore-controlled HTTP call ═══
+                # Even if 10 requests wake from sleep simultaneously, only 3 can call Groq at once
+                async with groq_outbound_semaphore:
+                    response = await asyncio.to_thread(
+                        requests.post,
+                        groq_endpoint,
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": req.model_name,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt}
+                            ],
+                            "temperature": 0.3,
+                            "max_tokens": 500,
+                            "response_format": {"type": "json_object"}
+                        },
+                        timeout=60
+                    )
+                
+                api_latency = time.time() - api_start
+                
+                # Handle HTTP errors
+                if response.status_code != 200:
+                    # Refund tokens on error
+                    cloud_rate_limiter.refund(estimated_tokens, 0)
+                    
+                    # Special handling for 429 (rate limit)
+                    if response.status_code == 429:
+                        if retry_count < max_retries:
+                            retry_count += 1
+                            await cloud_rate_limiter.set_global_pause(30.0)
+                            logger.warning(f"429 Rate Limit! Detail: {response.text[:500]}")
+                            logger.warning(f"Global pause 30s, retry {retry_count}/{max_retries}")
+                            await asyncio.sleep(30)
+                            continue
+                        else:
+                            raise HTTPException(
+                                status_code=429,
+                                detail=f"Groq rate limit exceeded after {max_retries} retries"
+                            )
+                    
+                    # Retry on timeout errors (408, 504)
+                    if response.status_code in [408, 504] and retry_count < max_retries:
+                        retry_count += 1
+                        logger.warning(f"HTTP {response.status_code} timeout, retry {retry_count}/{max_retries}")
+                        await asyncio.sleep(15)
+                        continue
+                    
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"Groq API error: {response.text[:200]}"
+                    )
+                
+                # ─── STEP 8: Parse Groq Response ───────────────────────────────
+                data = response.json()
+                tokens_used = data.get("usage", {}).get("total_tokens", estimated_tokens)
+                result_content = data["choices"][0]["message"]["content"]
+                
+                # Refund difference if actual is lower than estimate
+                cloud_rate_limiter.refund(estimated_tokens, tokens_used)
+                
+                logger.info(f"Groq API success: {tokens_used:,} tokens, {api_latency:.2f}s latency")
+                
+                # ─── STEP 9: Parse Findings ────────────────────────────────────
+                try:
+                    parsed = json.loads(result_content.strip())
+                    
+                    # Normalize findings to a list
+                    findings_raw = []
+                    if isinstance(parsed, list):
+                        findings_raw = parsed
+                    elif isinstance(parsed, dict):
+                        findings_raw = parsed.get("findings", [])
+                        # Handle stringified array
+                        if isinstance(findings_raw, str) and findings_raw.strip().startswith("["):
+                            try:
+                                findings_raw = json.loads(findings_raw)
+                            except:
+                                findings_raw = []
+                        # Fallback to single-object schema
+                        if (not findings_raw or not isinstance(findings_raw, list)) and "is_vulnerable" in parsed:
+                            findings_raw = [parsed]
+                    
+                    if not isinstance(findings_raw, list):
+                        findings_raw = []
+                    
+                    # Convert to CloudFinding objects
+                    findings = []
+                    for finding in findings_raw:
+                        if not isinstance(finding, dict):
+                            continue
+                        if finding.get("is_vulnerable") is True:
+                            findings.append(CloudFinding(
+                                severity=str(finding.get("severity", "UNKNOWN")).upper(),
+                                vulnerability_type=str(finding.get("vulnerability_type", "Unknown Vulnerability")),
+                                line_number=finding.get("line_number"),
+                                description=str(finding.get("description", "No description provided."))
+                            ))
+                    
+                    # Determine action
+                    action = "REJECT" if findings else "ACCEPT"
+                    
+                    total_latency = time.time() - start_time
+                    
+                    logger.info(f"Cloud evaluation complete: {action} with {len(findings)} finding(s)")
+                    
+                    return EvaluateCloudResponse(
+                        action=action,
+                        findings=findings,
+                        reasoning=f"Cloud audit via {req.model_name}: {len(findings)} finding(s) detected" if findings else "Cloud audit: No vulnerabilities detected",
+                        layer="cloud",
+                        tokens_used=tokens_used,
+                        latency=total_latency,
+                        risk_score=risk_score,
+                        detected_tpm=cloud_rate_limiter.max_tpm,
+                        detected_rpm=cloud_rate_limiter.max_rpm
+                    )
+                    
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON parse error: {str(e)[:100]}")
+                    logger.error(f"Raw response: {result_content[:500]}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to parse Groq response: {str(e)[:100]}"
+                    )
+            
+            except (requests.Timeout, asyncio.TimeoutError) as e:
+                if retry_count < max_retries:
+                    retry_count += 1
+                    logger.warning(f"Timeout! Retry {retry_count}/{max_retries}")
+                    await asyncio.sleep(15)
+                    continue
+                
+                logger.error(f"Timeout after {max_retries} retries")
+                raise HTTPException(
+                    status_code=504,
+                    detail=f"Groq API timeout after {max_retries} retries"
+                )
+            
+            except Exception as e:
+                logger.error(f"Cloud evaluation error: {str(e)[:200]}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Cloud evaluation failed: {str(e)[:200]}"
+                )
+    
+        # Should never reach here
+        raise HTTPException(
+            status_code=500,
+            detail="Unknown error in cloud evaluation"
+        )
+
+@app.post("/extract_rules", response_model=ExtractRulesResponse, tags=["Cloud Gatekeeper"])
+async def extract_rules(req: ExtractRulesRequest, request: Request):
+    """
+    Context Extraction Endpoint - Lightweight 'Vibe Coder' architecture extractor.
+    """
+    async with global_eval_semaphore:
+        start_time = time.time()
+    
+        # ─── STEP 1: Extract API Key ───────────────────────────────────────────
+        api_key = None
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            api_key = auth_header[7:]
+        
+        if not api_key:
+            logger.error("Context extraction: Missing API key in Authorization header")
+            raise HTTPException(
+                status_code=401,
+                detail="Missing API key. Please provide Authorization: Bearer <api_key> header."
+            )
+        
+        logger.info(f"Context extraction: {req.filename} (API key length: {len(api_key)})")
+        
+        # ─── STEP 2: Prepare Prompt (Phase 3 Precision Upgrade) ───────────────
+        # Add line numbers to the code snippet for precise referencing
+        numbered_code = "\n".join([f"{i+1} | {line}" for i, line in enumerate(req.code_snippet.splitlines())])
+        
+        system_prompt = get_drift_detection_prompt(req.system_rules)
+        user_prompt = f"Analyze this file ({req.filename}). Did it violate any of the provided system rules?\n\n{numbered_code}"
+
+        # ─── STEP 3: Token Estimation and Rate Limiting ────────────────────────
+        # LIGHTWEIGHT FORMULA: (chars // 4 + output_reserve) * 1.15 safety tax
+        output_reserve = 800
+        estimated_tokens = int(((len(system_prompt) + len(req.code_snippet)) // 4 + output_reserve) * 1.15)
+        
+        logger.info(f"EXTRACTING RULES {req.filename} | Estimated Tokens: {estimated_tokens:,}")
+        
+        # Wait for token availability (global rate limiting)
+        wait_time = await cloud_rate_limiter.consume_with_wait(estimated_tokens)
+        
+        if wait_time > 0:
+            logger.info(f"Rate limiting: Waited {wait_time:.2f}s for {estimated_tokens:,} tokens")
+        
+        # ─── GLOBAL PAUSE DOUBLE-CHECK (Race Condition Prevention) ─────────────
+        while cloud_rate_limiter.global_pause_until and time.time() < cloud_rate_limiter.global_pause_until:
+            pause_remaining = cloud_rate_limiter.global_pause_until - time.time()
+            if pause_remaining > 0:
+                logger.warning(f"Extracted Rules request woke up but global pause is active. Sleeping for {pause_remaining:.2f}s")
+                await asyncio.sleep(pause_remaining)
+    
+        # ─── STEP 4: Call Groq API with Retry Logic ────────────────────────────
+        max_retries = 3
+        retry_count = 0
+        groq_endpoint = "https://api.groq.com/openai/v1/chat/completions"
+        
+        while retry_count <= max_retries:
+            try:
+                api_start = time.time()
+                
+                # Semaphore-controlled HTTP call
+                async with groq_outbound_semaphore:
+                    response = await asyncio.to_thread(
+                        requests.post,
+                        groq_endpoint,
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": req.model_name,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt}
+                            ],
+                            "temperature": 0.3,
+                            "max_tokens": 500,
+                            "response_format": {"type": "json_object"}
+                        },
+                        timeout=60
+                    )
+                
+                api_latency = time.time() - api_start
+                
+                # Handle HTTP errors
+                if response.status_code != 200:
+                    cloud_rate_limiter.refund(estimated_tokens, 0)
+                    
+                    if response.status_code == 429:
+                        if retry_count < max_retries:
+                            retry_count += 1
+                            await cloud_rate_limiter.set_global_pause(30.0)
+                            logger.warning(f"429 Rate Limit in Extraction! Retry {retry_count}/{max_retries}")
+                            await asyncio.sleep(30)
+                            continue
+                        else:
+                            raise HTTPException(status_code=429, detail="Groq rate limit exceeded after retries")
+                    
+                    if response.status_code in [408, 504] and retry_count < max_retries:
+                        retry_count += 1
+                        logger.warning(f"HTTP {response.status_code} timeout, retry {retry_count}/{max_retries}")
+                        await asyncio.sleep(15)
+                        continue
+                    
+                    raise HTTPException(status_code=response.status_code, detail=f"Groq API error: {response.text[:200]}")
+                
+                # ─── STEP 5: Parse Groq Response ───────────────────────────────
+                data = response.json()
+                tokens_used = data.get("usage", {}).get("total_tokens", estimated_tokens)
+                result_content = data["choices"][0]["message"]["content"]
+                
+                # Refund difference
+                cloud_rate_limiter.refund(estimated_tokens, tokens_used)
+                
+                logger.info(f"Extraction success: {tokens_used:,} tokens, {api_latency:.2f}s latency")
+                
+                try:
+                    parsed = json.loads(result_content.strip())
+                    broken_rules = parsed.get("broken_rules", [])
+                    
+                    total_latency = time.time() - start_time
+                    return ExtractRulesResponse(
+                        broken_rules=broken_rules,
+                        tokens_used=tokens_used,
+                        latency=total_latency
+                    )
+                    
+                except json.JSONDecodeError as e:
+                    logger.error(f"Extraction JSON parse error: {str(e)[:100]}")
+                    raise HTTPException(status_code=500, detail=f"Failed to parse extraction response: {str(e)[:100]}")
+            
+            except (requests.Timeout, asyncio.TimeoutError) as e:
+                if retry_count < max_retries:
+                    retry_count += 1
+                    await asyncio.sleep(15)
+                    continue
+                raise HTTPException(status_code=504, detail="Groq API timeout after retries")
+            
+            except Exception as e:
+                logger.error(f"Context extraction error: {str(e)[:200]}")
+                raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)[:200]}")
+    
+        raise HTTPException(status_code=500, detail="Unknown error in extraction")
+
+@app.post("/run_autopsy", response_model=AutopsyResponse, tags=["Cloud Gatekeeper"])
+async def run_autopsy(req: AutopsyRequest, request: Request):
+    """
+    Self-Healing Prompt Loop: Analyzes a missed vulnerability and suggests a patch 
+    for the Golden System Prompt.
+    """
+    # Extract API Key
+    api_key = None
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        api_key = auth_header[7:]
+    
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Missing API key")
+
+    # Load dynamic rules for context
+    dynamic_rules = req.current_prompt if req.current_prompt else ""
+    
+    # If project_path is provided, try to load rules from disk as fallback/override
+    if req.project_path:
+        rules_path = os.path.join(req.project_path, ".semanticguard", "system_rules.md")
+        try:
+            if os.path.exists(rules_path):
+                with open(rules_path, 'r', encoding='utf-8') as f:
+                    disk_rules = f.read().strip()
+                    if disk_rules:
+                        dynamic_rules = disk_rules
+                        logger.info(f"Autopsy: Loaded {len(dynamic_rules)} chars from system_rules.md on disk")
+        except Exception as e:
+            logger.warning(f"Autopsy: Failed to load rules from disk: {e}")
+
+    # ALWAYS construct the FULL golden prompt so the Meta-LLM sees the exact same rules as the auditor
+    golden_prompt = get_hardened_system_prompt(dynamic_rules)
+    
+    logger.info(f"Running autopsy for {req.filename} ({req.analysis_mode}) using reconstructed Golden Prompt")
+
+    if req.analysis_mode == "FALSE_POSITIVE":
+        meta_prompt = f"""You are a Meta-Prompt Engineer for SemanticGuard.
+The following Golden System Prompt incorrectly flagged a SAFE file as vulnerable (FALSE POSITIVE).
+
+[INCORRECT REASONING GIVEN BY AI]
+{req.original_reason}
+
+[GOLDEN SYSTEM PROMPT]
+{golden_prompt}
+
+[SAFE CODE - {req.filename}]
+{req.code_snippet}
+
+YOUR MISSION:
+1. Explain why the Golden System Prompt incorrectly flagged this safe code.
+2. Identify WHICH SPECIFIC RULE or SECTION in the [GOLDEN SYSTEM PROMPT] was responsible for this false positive.
+3. Suggest a precise 1-2 sentence modification or exclusion rule to prevent this specific False Positive.
+4. Explain WHY the AI triggered this rule despite it being safe code.
+
+MANDATORY: You MUST output valid JSON in this exact format: 
+{{
+  "suggestion": "your 1-2 sentence fix here", 
+  "vulnerability_type": "False Positive - {req.vulnerability_type}",
+  "bypassed_rule": "The specific rule label or section header that triggered",
+  "bypass_reason": "Explanation of the logic failure for this false positive"
+}}.
+"""
+    else:
+        meta_prompt = f"""You are a Meta-Prompt Engineer for SemanticGuard.
+The following Golden System Prompt FAILED to detect a CRITICAL vulnerability in the provided code (MISS).
+
+[KNOWN VULNERABILITY TYPE]
+{req.vulnerability_type}
+
+[ORIGINAL GROUND TRUTH CONTEXT]
+{req.original_reason if req.original_reason else "Vulnerable code missed during regular audit."}
+
+[GOLDEN SYSTEM PROMPT]
+{golden_prompt}
+
+[VULNERABLE CODE - {req.filename}]
+{req.code_snippet}
+
+YOUR MISSION:
+1. This code IS VULNERABLE to {req.vulnerability_type}. You MUST identify exactly how it bypassed the Golden System Prompt.
+2. Locate the EXACT SECTION or RULE in the [GOLDEN SYSTEM PROMPT] that SHOULD have caught this (e.g., SECTION ZERO, RULE_101, etc.).
+3. Explain WHY the AI failed to trigger that rule (e.g., "Taint path was too deep", "Rule was too vague", "Attention saturation").
+4. Suggest a precise 1-2 sentence rule or Regex pattern that MUST be added to the Golden Prompt to ensure this is caught.
+
+MANDATORY: You MUST output valid JSON in this exact format: 
+{{
+  "suggestion": "your 1-2 sentence rule here", 
+  "vulnerability_type": "{req.vulnerability_type}",
+  "bypassed_rule": "The section header or Rule ID that failed to trigger",
+  "bypass_reason": "Detailed analysis of why the LLM ignored/bypassed the existing rule"
+}}.
+"""
+
+    try:
+        response = await asyncio.to_thread(
+            requests.post,
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": req.model_name,
+                "messages": [
+                    {"role": "system", "content": "You are a professional security researcher and prompt engineer. You only communicate via valid JSON."},
+                    {"role": "user", "content": meta_prompt}
+                ],
+                "temperature": 0.2,
+                "response_format": {"type": "json_object"}
+            },
+            timeout=45
+        )
+
+        if not response.ok:
+            raise HTTPException(status_code=response.status_code, detail=f"Autopsy failed: {response.text}")
+
+        try:
+            data = response.json()
+            raw_content = data["choices"][0]["message"]["content"]
+            result = json.loads(raw_content)
+            
+            return AutopsyResponse(
+                suggestion=result.get("suggestion", "No suggestion provided."),
+                vulnerability_type=result.get("vulnerability_type", "Unknown"),
+                bypassed_rule=result.get("bypassed_rule", "None identified"),
+                bypass_reason=result.get("bypass_reason", "No reason provided")
+            )
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error(f"Autopsy AI Hallucination: {str(e)}")
+            logger.error(f"Raw response text: {response.text}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"AI returned malformed JSON. Raw text: {response.text[:500]}"
+            )
+
+    except Exception as e:
+        logger.error(f"Autopsy error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

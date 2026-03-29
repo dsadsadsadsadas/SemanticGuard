@@ -8,6 +8,7 @@ import requests
 import subprocess
 import time
 import sys
+import os
 import shutil
 import re as _re
 
@@ -70,17 +71,108 @@ def ensure_ollama_alive():
     return False
 
 
-def generate(prompt: str, system_prompt: str = None, processor_mode: str = "CPU", model_name: str = None) -> str:
+def _generate_groq(prompt: str, system_prompt: str = None, model_name: str = None, api_key: str = None) -> str:
     """
-    Run inference using local Ollama API with /api/chat endpoint.
+    Run inference using Groq Cloud API.
+    
+    Args:
+        prompt: User prompt
+        system_prompt: System prompt (optional)
+        model_name: Model to use (defaults to llama-4-scout-17b-16e-instruct)
+        api_key: Groq API key (required)
+    
+    Returns:
+        Generated text from Groq API
+    """
+    # Use passed API key or fall back to environment variable
+    if not api_key:
+        api_key = os.environ.get("GROQ_API_KEY")
+    
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY not provided. Power Mode requires a Groq API key from the extension configuration.")
+    
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    
+    # Build messages array
+    messages = []
+    if system_prompt:
+        messages.append({
+            "role": "system",
+            "content": system_prompt
+        })
+    
+    messages.append({
+        "role": "user",
+        "content": prompt
+    })
+    
+    # Default to Llama 4 Scout if no model specified
+    active_model = model_name or "meta-llama/llama-4-scout-17b-16e-instruct"
+    
+    payload = {
+        "model": active_model,
+        "messages": messages,
+        "temperature": 0.3,
+        "max_tokens": 512,
+        "response_format": {"type": "json_object"}
+    }
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    logger.info(f"   Sending request to Groq API ({active_model})...")
+    logger.info(f"   System prompt: {system_prompt[:100] if system_prompt else 'None'}...")
+    logger.info(f"   User prompt: {prompt[:100]}...")
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"❌ Groq API error: {e}")
+        logger.error(f"   Response: {response.text if response else 'No response'}")
+        raise RuntimeError(f"Groq API error: {e}")
+    except requests.exceptions.Timeout:
+        logger.error("Groq API request timed out after 60 seconds")
+        raise RuntimeError("Groq API timeout")
+    except Exception as e:
+        logger.error(f"❌ Groq API request failed: {e}")
+        raise RuntimeError(f"Groq API error: {e}")
+    
+    try:
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        
+        logger.info(f"   Generated {len(content)} characters from Groq API")
+        logger.debug(f"[GROQ] RAW OUTPUT ({len(content)} chars):\n{content}")
+        
+        return content
+    except (KeyError, IndexError) as e:
+        logger.error(f"❌ Failed to parse Groq response: {e}")
+        logger.error(f"   Response data: {data if 'data' in locals() else 'No data'}")
+        raise RuntimeError(f"Failed to parse Groq response: {e}")
+
+
+def generate(prompt: str, system_prompt: str = None, processor_mode: str = "CPU", model_name: str = None, engine_mode: str = "local", api_key: str = None) -> str:
+    """
+    Run inference using local Ollama API or cloud API based on engine mode.
     Uses Alpaca-compatible chat format for fine-tuned models.
     
     Args:
         prompt: User prompt
         system_prompt: System prompt (optional)
         processor_mode: "GPU" (default) or "CPU"
-        model_name: Model to use (optional, defaults to deepseek-r1:7b)
+        model_name: Model to use (optional, defaults to deepseek-r1:7b for local, llama-4-scout for power)
+        engine_mode: "local" (Ollama) or "power" (Groq Cloud API)
+        api_key: API key for cloud providers (required for power mode)
     """
+    # Route based on engine mode
+    if engine_mode == "power":
+        # Use Groq Cloud API for Power Mode
+        return _generate_groq(prompt, system_prompt, model_name, api_key)
+    
+    # Default: Local Ollama
     url = "http://localhost:11434/api/chat"
     
     # Build messages array for chat endpoint
